@@ -615,9 +615,9 @@ When you identify a problem and prepare a solution, STOP and consider:
 Skills write methodology artifacts to a companion workspace, not the project repo.
 Full design: `docs/superpowers/specs/2026-04-09-workspace-model-design.md`
 
-- Claude opens in the workspace (`~/claude/private/<project>/`)
-- Project added automatically via `add-dir` (instructed by workspace CLAUDE.md)
-- Run `/workspace-init` once per project to create the workspace
+- **cc-praxis workspace:** `~/claude/public/cc-praxis/` → GitHub: `mdproctor/wsp-cc-praxis`
+- Claude opens in the workspace; project loaded via `add-dir` in workspace CLAUDE.md
+- Navigation: `proj/` in workspace → project; `wksp/` in project → workspace
 
 ## Key Skills
 

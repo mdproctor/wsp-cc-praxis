@@ -4,7 +4,7 @@ title: "The Workspace Gets a Workspace"
 date: 2026-05-22
 type: phase-update
 entry_type: note
-subtype: log
+subtype: diary
 projects: [cc-praxis]
 tags: [workspace-init, methodology, blog-routing]
 ---

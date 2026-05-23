@@ -455,6 +455,10 @@ python3 scripts/validation/validate_project_types.py --verbose
 
 # Check if a primary doc needs modularising
 python3 scripts/validation/validate_doc_structure.py CLAUDE.md
+
+# Revert stray subtype: log → subtype: diary (run periodically until sessions converge)
+python3 scripts/revert_diary_subtype.py          # dry-run: shows what needs changing
+python3 scripts/revert_diary_subtype.py --apply  # apply changes
 ```
 
 **After editing any skill:** run `sync-local` so `~/.claude/skills/` has the latest version.
@@ -811,3 +815,4 @@ filtering or dropping commits that touch these paths.
 |------|------------|
 | `CLAUDE.md` | Project conventions (build, test, naming) |
 | `docs/adr/` | Architecture decision records |
+| `docs/protocols/` | Standing rules for taxonomy and conventions (e.g. subtype naming, cleanup patterns) |

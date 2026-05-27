@@ -5,6 +5,19 @@ Promote to an ADR when ready to decide; discard when no longer relevant.
 
 ---
 
+## 2026-05-27 — Hortora: framework registry for LLM-accelerated development
+
+**Priority:** high
+**Status:** active
+
+A new Hortora layer — hub files per framework that aggregate existing garden entries, index key documentation URLs, capture integration patterns, and tag frameworks by domain (the problem they solve, not what they are). An LLM says "I need workflow capability", queries by domain tag, finds matching frameworks already indexed with their key docs and garden gotchas linked, and proceeds without cold web searching. Frameworks can be pre-registered before they're needed — Apache Camel filed under `integration` today so it's discoverable when an app needs EIP patterns tomorrow. Generalises beyond individual projects: the Quarkus community could maintain shared hub files; any LLM-driven development workflow benefits.
+
+**Context:** Emerged from auditing whether quarkus-flow-dev skill adds real value or is just embedded reference material. Realised the garden already has scattered quarkus entries (GE-0031–0045, casehub-engine entries) but no aggregation point. The registry is the missing layer between individual GE-* gotchas and framework-level orientation. Design spec written to `~/.hortora/docs/framework-registry.md`.
+
+**Promoted to:** *(pending)*
+
+---
+
 ## 2026-04-13 — Blog entry types: article vs. note, with routing metadata
 
 **Priority:** medium

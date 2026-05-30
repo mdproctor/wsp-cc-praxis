@@ -13,7 +13,13 @@ Next logical piece: generalise `java-update-design` → universal `update-design
 - **issue-94 branch** — still exists locally, all work on main. Safe to delete · XS · Low
 - **issue-96 branch** — same · XS · Low
 - **`design-snapshot`** — redundant once `update-design` is universal; pending that refactor · M · Med
-- **README redesign** — paused (visual companion mockups in `.superpowers/brainstorm/`); skill cleanup was the right first step · M · Low
+- **README redesign** — paused; decisions made, ready to implement · M · Low
+  - Problem: positioned as skill bundles, should be positioned as a workflow
+  - Chosen structure: workflow-first (option B) — work/goals/results table, `/work` as hero
+  - Above the fold: four-stage lifecycle strip (`/work` → Build → `/work end` → Next session), no skill names
+  - "What changes" section: four cards by workflow stage
+  - Before/after: concrete contrast, no skill names anywhere
+  - Visual mockups on disk: `.superpowers/brainstorm/39544-1779802304/content/` (work-centered.html is the closest to final)
 
 ## What's Next
 

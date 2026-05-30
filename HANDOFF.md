@@ -1,38 +1,32 @@
-# HANDOFF — 2026-05-23
+# HANDOFF — 2026-05-30
 
 ## Last Session
 
-Issue #96 complete — but reversed. Came in to finish the `diary→log` rename;
-discovered "log" was the wrong word for personal narrative writing and reverted
-instead. 121 files across 7 repos changed back to `subtype: diary`. Skill files
-updated and synced. ADR-0011 written. Two protocols captured.
+Major skill consolidation: 58 → 44 skills, 73 → 25 slash commands. Added `project-init` (normalised setup gateway), migrated 4 principles skills + quarkus skills to Hortora (`approaches/` and `frameworks/` directories). Deleted `epic`, `update-primary-doc`, `blog-git-commit`. Simplified `custom-git-commit`. Added `work-end` step 8k (mvn install for Java). Fixed handover rename blocking.
 
 ## Immediate Next Step
 
-Run `python3 scripts/revert_diary_subtype.py` (dry-run) to check for new drift
-from sessions that haven't yet picked up the updated skills. Apply if any appear.
+Next logical piece: generalise `java-update-design` → universal `update-design` (create or update ARC42STORIES.MD for any project type), then delete `design-snapshot`. The architecture decision is agreed; the implementation hasn't started.
 
 ## What's Left
 
-- **Blog routing question** — cc-praxis posts in `docs/_posts/` not cross-published;
-  decision pending on project-only vs cross-publish · XS · Low
 - **issue-94 branch** — still exists locally, all work on main. Safe to delete · XS · Low
-- **Eventual consistency** — run `scripts/revert_diary_subtype.py` periodically
-  until zero drift. See `docs/protocols/taxonomy-rename-idempotent-script.md` · XS · Low
+- **issue-96 branch** — same · XS · Low
+- **`design-snapshot`** — redundant once `update-design` is universal; pending that refactor · M · Med
+- **README redesign** — paused (visual companion mockups in `.superpowers/brainstorm/`); skill cleanup was the right first step · M · Low
 
 ## What's Next
 
 | # | Description | Scale | Complexity | Notes |
 |---|-------------|-------|------------|-------|
-| — | Write Proposal B (short taxonomy article) | S | Low | Needs Sparge viewer for A/B first |
-| — | Proposal A 6-part series | XL | Med | After Proposal B validated |
-| — | Academic paper research | M | High | Kinneavy 1971, JSTOR, Procida |
-| — | Resolve cc-praxis blog cross-publish question | XS | Low | See What's Left |
+| — | Generalise java-update-design → universal update-design (create or update) | M | Med | Then delete design-snapshot |
+| — | Remove remaining auto-triggered slash commands (quarkus-flow has no command; check others) | XS | Low | |
+| — | Update framework-registry.md spec to document approaches/ layer | XS | Low | Hortora docs |
+| — | README redesign (work/goals/results framing) | M | Low | Paused; foundation now solid |
 
 ## References
 
-- Blog: `blog/2026-05-22-mdp01-workspace-gets-a-workspace.md`
-- ADR: `docs/adr/0011-revert-subtype-diary-log-to-diary.md`
-- Protocols: `docs/protocols/` (2 new — taxonomy naming, cleanup script pattern)
-- Garden: `tools/GE-20260522-543863.md` (git checkout-b silently reverts to main)
-- Cleanup script: `scripts/revert_diary_subtype.py` — idempotent, dry-run by default
+- Blog: `blog/2026-05-30-mdp01-frameworks-approaches-and-phantom-skills.md`
+- Hortora frameworks: `~/.hortora/garden/frameworks/quarkus-flow.md`
+- Hortora approaches: `~/.hortora/garden/approaches/` (observability, observability-patterns, code-review, security-audit, dependency-management, testing)
+- Framework registry spec: `~/.hortora/garden/docs/framework-registry.md`

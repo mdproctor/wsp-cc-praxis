@@ -1,0 +1,8 @@
+branch: issue-108-remove-empty-command-dirs
+project-sha: e138924
+date: 2026-05-31
+issue: 108
+issue-repo: mdproctor/cc-praxis
+flyway-next-v: none
+design-repo: workspace
+design-section-hashes:

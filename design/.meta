@@ -1,0 +1,8 @@
+branch: issue-109-write-content-restructure
+project-sha: $(git -C /Users/mdproctor/claude/cc-praxis rev-parse HEAD)
+date: 2026-06-01
+issue: 109
+issue-repo: mdproctor/cc-praxis
+flyway-next-v: none
+design-repo: workspace
+design-section-hashes:

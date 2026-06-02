@@ -13,6 +13,8 @@ Run `add-dir /Users/mdproctor/claude/cc-praxis` before any other work.
 | Skill | Writes to |
 |-------|-----------|
 | brainstorming (specs) | `specs/` |
+
+**Spec path override:** The brainstorming skill defaults to `docs/superpowers/specs/` in the project repo. This project overrides that: specs promote to `docs/specs/` (not `docs/superpowers/specs/`). When writing a spec, use `docs/specs/YYYY-MM-DD-<topic>-design.md`.
 | writing-plans (plans) | `plans/` |
 | handover | `HANDOFF.md` |
 | idea-log | `IDEAS.md` |

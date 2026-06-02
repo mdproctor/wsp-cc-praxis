@@ -36,3 +36,6 @@ Next logical piece: generalise `java-update-design` → universal `update-design
 - Hortora frameworks: `~/.hortora/garden/frameworks/quarkus-flow.md`
 - Hortora approaches: `~/.hortora/garden/approaches/` (observability, observability-patterns, code-review, security-audit, dependency-management, testing)
 - Framework registry spec: `~/.hortora/garden/docs/framework-registry.md`
+
+---
+*2026-06-02 addendum:* Re-applied `update-claude-md` modular detection fix (commit `237b865` on `issue-109-write-content-restructure`). Another session had reverted it. Same 5 edits as before — bash file-presence replaces `document_discovery.py`, Step 4e routing table added.

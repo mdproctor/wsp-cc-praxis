@@ -358,7 +358,7 @@ Some skills in this repository are **developer-only** — they require a cloned 
 
 **Rules:**
 - ✅ **In `skills/` directory** — auto-discovered and synced for developers
-- ❌ **Not in `marketplace.json`** — invisible to the web installer and not installable via plugin
+- ❌ **Not in `marketplace.json`** — not installable via plugin
 - ❌ **Not in README.md** — not documented as a user-facing skill
 - ✅ **SKILL.md includes a prominent DEV-ONLY note** — so Claude knows not to recommend it to marketplace users
 
@@ -432,14 +432,7 @@ When working on this repository, use these commands:
 python3 scripts/claude-skill sync-local --all -y
 # Or use the slash command: /sync-local
 
-# Launch the web skill manager UI
-python3 scripts/web_installer.py          # opens http://localhost:8765
-# (or: cc-praxis, if bin/ is on PATH via plugin install)
-
-# Regenerate web app data after chaining changes
-python3 scripts/generate_web_app_data.py
-
-# Run all tests (1152 tests; ~2m including Playwright UI tests)
+# Run all tests
 python3 -m pytest tests/ -v
 
 # Run commit-tier validators
@@ -456,15 +449,10 @@ python3 scripts/validation/validate_project_types.py --verbose
 
 # Check if a primary doc needs modularising
 python3 scripts/validation/validate_doc_structure.py CLAUDE.md
-
-# Revert stray subtype: log → subtype: diary (run periodically until sessions converge)
-python3 scripts/revert_diary_subtype.py          # dry-run: shows what needs changing
-python3 scripts/revert_diary_subtype.py --apply  # apply changes
 ```
 
 **After editing any skill:** run `sync-local` so `~/.claude/skills/` has the latest version.
 **After adding a new skill:** run `generate_commands.py` AND add to `marketplace.json` plugins list.
-**After chaining changes:** run `generate_web_app_data.py` to sync `docs/index.html` CHAIN data.
 **Worktrees for feature development:** use `.worktrees/` (gitignored). Create with `git worktree add .worktrees/<name> -b <branch>`. Always use `--force` when removing after subagent use.
 
 ## How Claude Code Loads Skills
@@ -536,12 +524,10 @@ Bundle membership is defined in **`.claude-plugin/marketplace.json` § `bundles`
 
 **To create a new bundle:**
 1. Edit `.claude-plugin/marketplace.json` — add a new entry to the `bundles` array with `name`, `displayName`, `description`, and `skills`
-2. No changes needed to `install-skills/SKILL.md` or `uninstall-skills/SKILL.md` — they render bundles dynamically
 
 **To remove a skill from a bundle:**
 1. Edit `.claude-plugin/marketplace.json` — remove the skill name from the bundle's `skills` array
 
-**Never** add bundle membership or skill counts directly to `install-skills/SKILL.md` or `uninstall-skills/SKILL.md` — they will drift.
 
 ### When Adding a New Project Type
 
@@ -550,8 +536,6 @@ Bundle membership is defined in **`.claude-plugin/marketplace.json` § `bundles`
 - [ ] **`CLAUDE.md` § Project Types table** — add the new type row (this is the canonical source of truth)
 - [ ] **`docs/PROJECT-TYPES.md`** — full type documentation and routing logic
 - [ ] **`git-commit/SKILL.md`** — routing logic in Step 0 (adds new type branch)
-- [ ] **`install-skills/SKILL.md`** — hook script it creates (`Choices:` line)
-- [ ] **`~/.claude/hooks/check_project_setup.sh`** — live hook (`Choices:` line)
 - [ ] **Run `python scripts/validation/validate_project_types.py --verbose`** — confirms no hardcoded lists were missed
 
 **The validator (`validate_project_types.py`) catches hardcoded lists automatically at commit time,
@@ -647,7 +631,6 @@ Full design: `docs/superpowers/specs/2026-04-09-workspace-model-design.md`
 - `java-dev` — all Java development extends this
 
 **Skill manager:**
-- `cc-praxis-ui` — visual web UI for managing skills; launched via `/cc-praxis-ui` or `cc-praxis` in terminal; powered by `scripts/web_installer.py`
 
 **Workflow integrators** (chain multiple skills):
 - `git-commit` — entry point for all commits; routes by project type; offers issue-workflow setup on first use

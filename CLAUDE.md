@@ -146,27 +146,21 @@ The `description` field determines when Claude loads the skill. Follow these rul
 
 Skills follow a hierarchical naming pattern:
 
-**Generic principles skills** (suffix: `-principles`):
-- `code-review-principles` — language-agnostic review checklist
-- `security-audit-principles` — universal OWASP Top 10
-- `dependency-management-principles` — universal BOM patterns
-- `observability-principles` — universal logging/tracing/metrics
+**Router skills** (language-agnostic entry points with lazy-loaded content files):
+- `code-review` — routes to `java.md`, `typescript.md`, or `python.md` based on project type
+- `security-audit` — same pattern
+- `dependency-update` — routes to `maven.md`, `npm.md`, or `pip.md`
+- `git-commit` — routes to `java.md`, `custom.md`, or generic
+- `update-design` — routes to `java.md`, `typescript.md`, or `python.md`
+- `project-health` — routes to `java.md`, `typescript.md`, `python.md`, `skills-repo.md`, `blog.md`, `custom.md`
 
-**Language-specific skills** (prefix: language name):
-- `java-dev` — Java development
-- `java-code-review` — extends `code-review-principles` for Java/Quarkus
-- `java-security-audit` — extends `security-audit-principles` for Java/Quarkus
-- `java-git-commit` — extends `git-commit` for Java repositories
+**Language-specific dev skills** (one per language — auto-trigger on file type):
+- `java-dev` — Java/Quarkus development
+- `ts-dev` — TypeScript development
+- `python-dev` — Python development
+- `quarkus-flow` — Quarkus Flow patterns
 
-**Tool-specific skills** (prefix: tool name):
-- `maven-dependency-update` — extends `dependency-management-principles` for Maven
-
-**Framework-specific skills** (prefix: framework name):
-- `quarkus-flow-dev` — Quarkus + quarkus-flow development
-- `quarkus-flow-testing` — Quarkus + quarkus-flow testing
-- `quarkus-observability` — extends `observability-principles` for Quarkus
-
-**Why this matters:** The naming pattern makes it clear which skills are generic foundations vs. language/tool-specific implementations. When adding support for new languages, create skills like `go-code-review` (extends `code-review-principles`), `gradle-dependency-update` (extends `dependency-management-principles`), etc.
+**Why this matters:** Language content lives in `.md` files inside the router skill's directory, not in separate skills. A Java developer only loads Java content — Python/TS content files are never read. When adding a new language to an existing router, add a content file (e.g. `code-review/go.md`) and update the dispatch table in `SKILL.md`.
 
 #### Extending to New Languages
 
@@ -185,16 +179,16 @@ Quick check: `ls -d *-dev *-code-review *-security-audit 2>/dev/null` should sho
 Skills explicitly reference each other to create workflows. The README documents the complete chaining matrix, but when editing skills:
 
 1. **Add cross-references in "Skill Chaining" sections** (capitalized, not "Skill chaining")
-2. **Make references bidirectional** when appropriate (e.g., java-security-audit ↔ java-code-review)
+2. **Make references bidirectional** when appropriate (e.g., `security-audit` ↔ `code-review`)
 3. **Use Prerequisites sections** for layered skills (e.g., quarkus-flow-testing builds on java-dev and quarkus-flow-dev)
 4. **Generic principles skills are never invoked directly** — they're referenced via Prerequisites by language/framework-specific skills
 
 Example chaining patterns:
 ```
-# Java repositories with both DESIGN.md and CLAUDE.md:
-java-dev → java-code-review → java-git-commit → java-update-design + update-claude-md (automatic)
+# Java repository:
+java-dev → code-review → git-commit → update-design + update-claude-md (automatic)
 
-# Any repository with CLAUDE.md:
+# Any repository:
 git-commit → update-claude-md (automatic)
 ```
 
@@ -526,23 +520,6 @@ The `issue-workflow` skill handles setup of this configuration and the pre-commi
 repository (`~/claude/cc-praxis/`), then run `sync-local` to propagate. This keeps
 git history, validation, and marketplace metadata in sync.
 
-### When Adding a Skill to a Bundle (or Changing Bundles)
-
-Bundle membership is defined in **`.claude-plugin/marketplace.json` § `bundles`** — the single source of truth. The install/uninstall wizard skills read this at runtime, so the menus and counts update automatically.
-
-**To add a skill to an existing bundle:**
-1. Edit `.claude-plugin/marketplace.json` — add the skill name to the relevant `bundles[].skills` array
-2. Commit and push — the wizard picks it up immediately
-
-**To create a new bundle:**
-1. Edit `.claude-plugin/marketplace.json` — add a new entry to the `bundles` array with `name`, `displayName`, `description`, and `skills`
-2. No changes needed to `install-skills/SKILL.md` or `uninstall-skills/SKILL.md` — they render bundles dynamically
-
-**To remove a skill from a bundle:**
-1. Edit `.claude-plugin/marketplace.json` — remove the skill name from the bundle's `skills` array
-
-**Never** add bundle membership or skill counts directly to `install-skills/SKILL.md` or `uninstall-skills/SKILL.md` — they will drift.
-
 ### When Adding a New Project Type
 
 **Adding a new project type (e.g. `python`, `go`) requires updating ALL of these:**
@@ -550,7 +527,6 @@ Bundle membership is defined in **`.claude-plugin/marketplace.json` § `bundles`
 - [ ] **`CLAUDE.md` § Project Types table** — add the new type row (this is the canonical source of truth)
 - [ ] **`docs/PROJECT-TYPES.md`** — full type documentation and routing logic
 - [ ] **`git-commit/SKILL.md`** — routing logic in Step 0 (adds new type branch)
-- [ ] **`install-skills/SKILL.md`** — hook script it creates (`Choices:` line)
 - [ ] **`~/.claude/hooks/check_project_setup.sh`** — live hook (`Choices:` line)
 - [ ] **Run `python scripts/validation/validate_project_types.py --verbose`** — confirms no hardcoded lists were missed
 
@@ -637,35 +613,24 @@ Full design: `docs/superpowers/specs/2026-04-09-workspace-model-design.md`
 - `work-resume` — reads `.pause-stack`; shows picker if multiple paused branches; rebases selected branch onto current main (picks up work that landed while paused); resets the WIP commit to restore working state; removes entry from stack
 - `epic` — **deprecated**. Use `work-start` (replaces `/epic begin`) and `work-end` (replaces `/epic close`). Retained for reference during migration
 
-**Generic foundation skills** (not invoked directly, referenced via Prerequisites):
-- `code-review-principles` — universal code review checklist (extended by `java-code-review`)
-- `security-audit-principles` — universal OWASP Top 10 (extended by `java-security-audit`)
-- `dependency-management-principles` — universal BOM patterns (extended by `maven-dependency-update`)
-- `observability-principles` — universal logging/tracing/metrics (extended by `quarkus-observability`)
+**Router skills** (dispatch to per-language content files — never load cross-language content):
+- `code-review` — Java/TS/Python review via `java.md`, `typescript.md`, `python.md`
+- `security-audit` — Java/TS/Python OWASP audit, same pattern
+- `dependency-update` — Maven/npm/pip management via `maven.md`, `npm.md`, `pip.md`
+- `git-commit` — routes to `java.md`, `custom.md`, or generic
+- `update-design` — DESIGN.md sync via `java.md`, `typescript.md`, `python.md`
+- `project-health` — universal checks + per-type content files
 
-**Language/framework foundation skills** (others build on these):
-- `java-dev` — all Java development extends this
+**Language dev skills** (auto-trigger on file type):
+- `java-dev` — Java/Quarkus development
+- `ts-dev` — TypeScript development
+- `python-dev` — Python development
+- `quarkus-flow` — Quarkus Flow patterns
 
-**Skill manager:**
-- `cc-praxis-ui` — visual web UI for managing skills; launched via `/cc-praxis-ui` or `cc-praxis` in terminal; powered by `scripts/web_installer.py`
-
-**Workflow integrators** (chain multiple skills):
-- `git-commit` — entry point for all commits; routes by project type; offers issue-workflow setup on first use
-- `java-git-commit` — Java commits with DESIGN.md sync via `java-update-design`. type: java only
-- `blog-git-commit` — blog commits with content-type conventions (post/edit/draft/asset/config) and filename validation. type: blog only
-- `custom-git-commit` — user-configured commits with primary doc sync. type: custom only
-- `java-code-review` — triggers `java-security-audit` for security-critical code
-- `issue-workflow` — full-lifecycle GitHub issue tracking: Phase 0 setup (labels, CLAUDE.md), Phase 1 pre-implementation planning (epics + child issues), Phase 2 task intake (proactive issue creation + epic placement + cross-cutting detection), Phase 3 pre-commit safety net (issue linkage + split detection). Invoked automatically when Work Tracking is enabled
-- `retro-issues` — on-demand retrospective mapping of git history to epics and issues; analyses git log + ADRs + blog entries; proposes structure in `docs/retro-issues.md` for review before creating anything on GitHub; never auto-triggered
-- `docs/development/skill-validation.md` workflow — blocks `git-commit` if CRITICAL findings exist (not a portable skill; lives at repo root)
-
-**Specialized skills** (domain-specific):
-- `quarkus-flow-dev` — builds on `java-dev`, extended by `quarkus-flow-testing`
-- `java-security-audit` — OWASP Top 10 for Java/Quarkus, triggered by `java-code-review`
-- `maven-dependency-update` — Maven BOM management, builds on `dependency-management-principles`
-- `quarkus-observability` — Quarkus observability config, builds on `observability-principles`
-- `update-primary-doc` — generic table-driven primary doc sync, invoked by `custom-git-commit`
-- `java-update-design` — DESIGN.md sync, invoked by `java-git-commit`
+**Workflow integrators:**
+- `git-commit` — entry point for all commits; routes by project type
+- `issue-workflow` — GitHub issue tracking; invoked automatically when Work Tracking is enabled
+- `retro-issues` — on-demand retrospective mapping of git history to epics and issues
 - `update-claude-md` — CLAUDE.md sync, invoked by all commit skills
 - `docs/development/readme-sync.md` — README.md sync, invoked by `git-commit` for type: skills only
 - `adr` — Architecture Decision Records in MADR format

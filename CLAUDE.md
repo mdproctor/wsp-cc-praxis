@@ -158,7 +158,6 @@ Skills follow a hierarchical naming pattern:
 - `java-dev` — Java/Quarkus development
 - `ts-dev` — TypeScript development
 - `python-dev` — Python development
-- `quarkus-flow` — Quarkus Flow patterns
 
 **Why this matters:** Language content lives in `.md` files inside the router skill's directory, not in separate skills. A Java developer only loads Java content — Python/TS content files are never read. When adding a new language to an existing router, add a content file (e.g. `code-review/go.md`) and update the dispatch table in `SKILL.md`.
 
@@ -180,7 +179,7 @@ Skills explicitly reference each other to create workflows. The README documents
 
 1. **Add cross-references in "Skill Chaining" sections** (capitalized, not "Skill chaining")
 2. **Make references bidirectional** when appropriate (e.g., `security-audit` ↔ `code-review`)
-3. **Use Prerequisites sections** for layered skills (e.g., quarkus-flow-testing builds on java-dev and quarkus-flow-dev)
+3. **Use Prerequisites sections** for layered skills — skills that extend a foundation reference it explicitly
 4. **Generic principles skills are never invoked directly** — they're referenced via Prerequisites by language/framework-specific skills
 
 Example chaining patterns:
@@ -479,7 +478,7 @@ When modifying existing skills:
 2. **Update cross-references** — if you add chaining, update both skills (source and target)
 3. **Preserve CSO descriptions** — don't add workflow summaries to frontmatter
 4. **Test flowcharts** — invalid dot syntax breaks skill loading
-5. **Maintain Prerequisites** — layered skills (quarkus-flow-*) must reference their foundations
+5. **Maintain Prerequisites** — layered skills must reference their foundations
 
 ## Pre-Commit Checklist for Skills
 
@@ -625,7 +624,6 @@ Full design: `docs/superpowers/specs/2026-04-09-workspace-model-design.md`
 - `java-dev` — Java/Quarkus development
 - `ts-dev` — TypeScript development
 - `python-dev` — Python development
-- `quarkus-flow` — Quarkus Flow patterns
 
 **Workflow integrators:**
 - `git-commit` — entry point for all commits; routes by project type

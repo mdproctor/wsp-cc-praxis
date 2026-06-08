@@ -1,0 +1,9 @@
+branch: issue-124-symlinks-and-stack
+project-sha: af050ab32507d092faf1b04c15fb903334db20ad
+date: 2026-06-08
+issue: 124
+issue-repo: mdproctor/cc-praxis
+covers: 124,125
+flyway-next-v: none
+design-repo: workspace
+design-section-hashes:

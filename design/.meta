@@ -1,0 +1,9 @@
+branch: issue-127-work-end-closing-summary
+project-sha: b94a6eaf4642254258617591b4b30e5131d439b6
+date: 2026-06-11
+issue: 127
+issue-repo: mdproctor/cc-praxis
+covers: 127
+flyway-next-v: none
+design-repo: workspace
+design-section-hashes: 

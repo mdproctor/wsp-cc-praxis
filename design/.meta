@@ -1,0 +1,9 @@
+branch: issue-123-externalise-bash-blocks
+project-sha: 3bef031607a377e269cf5c7fbfab8282eac910a2
+date: 2026-06-17
+issue: 123
+issue-repo: mdproctor/cc-praxis
+covers: 123
+flyway-next-v: none
+design-repo: project
+design-section-hashes: 

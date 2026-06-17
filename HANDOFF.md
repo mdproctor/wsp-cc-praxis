@@ -1,33 +1,47 @@
-# HANDOFF — 2026-06-06
+# HANDOFF — 2026-06-17
 
 ## Last Session
 
-Fixed `work-pause`: stack=1 used to auto-resume silently, making pause pointless for context
-switching. Now shows a picker (resume / new) for all stack depths. Deleted the quarkus-flow
-stub skill (content had moved to the garden long ago) and removed sync-local from marketplace.json
-(dev-only). 29 skills. Colleague install issues resolved: uninstall-all then sync-local --all.
+Long session: fixed a large number of cc-praxis bugs and improvements (work-pause routing,
+ctx.py path resolution, workspace symlink creation, note label consistency, blog series linking,
+handover auto-resume, work-end closing summary). Also started — but did not finish — the README +
+landing page brainstorm. Design document written to capture everything.
 
 ## Immediate Next Step
 
-Resume the README / landing page brainstorm — visual companion server was running at
-http://localhost:61560, three narrative approaches were shown (B was recommended: lead with
-`work` and `wrap` directly, no before/after preamble). User chose C (both README and landing
-page). Next: ask what the end-to-end workflow stages look like in practice.
+Read `specs/2026-06-17-readme-landing-page-design.md` before anything else. It has all decisions
+made, the workspace copy options still to pick, the lifecycle diagram, and the new strategic
+question: **should cc-praxis merge into hortora?** That question needs to be resolved before the
+README/landing page design can be finalised — it affects what we're naming and where it lives.
+
+Start by deciding: merge or standalone?
+
+## Strategic question (new — added this session)
+
+cc-praxis + hortora together = "how I do casehub development at scale". Too many things to install
+and explain for casehub onboarding (casehub + hortora + cc-praxis). Proposal: merge cc-praxis into
+hortora so there's one install story. cc-praxis skills become the "development workflow" module
+within hortora. If this happens, the landing page we were designing may move to hortora.
 
 ## What's Left
 
-- **`issue-108-remove-empty-command-dirs`** workspace branch — open, last commit 5 days ago.
-  Watch for stale threshold (7 days) · XS · Low
-- **`issue-96` workspace branch** — closed, scheduled for deletion 2026-06-06 · XS · Low
+- **README + landing page design** — brainstorm in progress, design doc at `specs/2026-06-17-readme-landing-page-design.md` · M · Low
+- **Notes cleanup script** — `cleanup_notes.py` at `/tmp/cleanup_notes.py`, dry-run approved (203 files), not yet applied · XS · Low
+- **marketplace.json auto-generation** — still manual · S · Low
+- **Externalisation audit #123** — 18 bash blocks remaining across 7 skills · L · Med
 
 ## What's Next
 
 | # | Description | Scale | Complexity | Notes |
 |---|-------------|-------|------------|-------|
-| — | README + landing page redesign (workflow-first narrative) | M | Low | Brainstorm in progress — surface C chosen |
-| — | marketplace.json auto-generation | S | Low | Currently manual |
+| — | Resolve: merge cc-praxis into hortora? | S | High | Blocks landing page design |
+| — | README + landing page (workflow-first) | M | Low | Design doc ready, pick workspace copy option |
+| — | Apply notes cleanup script | XS | Low | `/tmp/cleanup_notes.py --apply` |
+| #123 | Externalise remaining bash blocks | L | Med | 18 remaining, audit in issue |
 
 ## References
 
+- **Design doc:** `specs/2026-06-17-readme-landing-page-design.md`
+- **Notes cleanup:** `/tmp/cleanup_notes.py` (203 files, dry-run confirmed correct)
+- **Lifecycle mockup:** `.superpowers/brainstorm/33730-*/content/page-structure-v2.html`
 - Blog: `blog/2026-06-05-mdp02-pause-means-nothing-if-you-cant-go-somewhere.md`
-- Garden: `tools/GE-20260605-51b347.md` (pytest string assertions match SKILL.md frontmatter)

@@ -1,0 +1,16 @@
+version: 1
+
+destinations:
+  hortora-diary:
+    type: git
+    path: ~/claude/hortora/hortora.github.io/
+    subdir: _posts/
+
+defaults:
+  destinations: [hortora-diary]
+
+rules:
+  - match:
+      entry_type: note
+      subtype: diary
+    destinations: [hortora-diary]

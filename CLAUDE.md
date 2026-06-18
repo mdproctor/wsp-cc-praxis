@@ -1,12 +1,12 @@
-# cc-praxis Workspace
+# soredium Workspace
 
-**Name:** cc-praxis
-**Project repo:** /Users/mdproctor/claude/cc-praxis
+**Name:** soredium
+**Project repo:** /Users/mdproctor/claude/hortora/soredium
 **Workspace type:** public
 
 ## Session Start
 
-Run `add-dir /Users/mdproctor/claude/cc-praxis` before any other work.
+Run `add-dir /Users/mdproctor/claude/hortora/soredium` before any other work.
 
 ## Artifact Locations
 
@@ -35,12 +35,12 @@ Run `add-dir /Users/mdproctor/claude/cc-praxis` before any other work.
 
 Two git repositories are active in every session:
 - **Workspace** (`~/claude/public/cc-praxis`) — plans, blog (staging), snapshots, handover
-- **Project repo** (`/Users/mdproctor/claude/cc-praxis`) — source code, ADRs (`docs/adr/`)
+- **Project repo** (`/Users/mdproctor/claude/hortora/soredium`) — source code, ADRs (`docs/adr/`)
 
 Never rely on CWD for git operations — the session may have started in either repo. Always use explicit paths:
 ```bash
-git -C ~/claude/public/cc-praxis add <file>          # workspace artifacts
-git -C /Users/mdproctor/claude/cc-praxis add <file>  # project artifacts
+git -C ~/claude/public/cc-praxis add <file>                    # workspace artifacts
+git -C /Users/mdproctor/claude/hortora/soredium add <file>     # project artifacts
 ```
 
 ## Rules
@@ -61,7 +61,7 @@ git -C /Users/mdproctor/claude/cc-praxis add <file>  # project artifacts
 | snapshots  | workspace   | stay in workspace permanently |
 | handover   | workspace   | |
 
-**Blog directory:** `/Users/mdproctor/claude/public/cc-praxis/blog/`
+**Blog directory:** `~/claude/hortora/hortora.github.io/_posts/`
 
 ---
 
@@ -79,9 +79,9 @@ No `Co-Authored-By: Claude`, no `Generated-by:`, no `AI-assisted:`, no mention o
 
 ## Project Identity
 
-**Name:** cc-praxis
-**GitHub:** [github.com/mdproctor/cc-praxis](https://github.com/mdproctor/cc-praxis)
-**Marketplace:** `/plugin marketplace add github.com/mdproctor/cc-praxis`
+**Name:** soredium
+**GitHub:** [github.com/Hortora/soredium](https://github.com/Hortora/soredium)
+**Marketplace:** `/plugin marketplace add github.com/Hortora/soredium`
 **Status:** Approaching v1.0 release. The collection is feature-complete for its initial scope. Active development continues on the main branch.
 
 ## Repository Purpose
@@ -209,12 +209,12 @@ are the single source of truth. CLAUDE.md fields are human documentation only.
 
 If you edit any of these skills, keep this block identical. Verify with:
 ```bash
-grep -l "readlink -f proj" ~/claude/cc-praxis/*/SKILL.md
+grep -l "readlink -f proj" ~/claude/hortora/soredium/*/SKILL.md
 ```
 
-There is no include mechanism in cc-praxis — this duplication is intentional and the block
+There is no include mechanism in soredium — this duplication is intentional and the block
 is short enough to audit by eye. If a shared-snippet mechanism is ever added, this is the
-first candidate. (Tracked in cc-praxis#35 or similar.)
+first candidate. (Tracked in Hortora/soredium#35 or similar.)
 
 ### Supporting Files
 
@@ -401,7 +401,7 @@ Some skills in this repository are **developer-only** — they require a cloned 
 
 **Blog directory:** `docs/_posts/`
 
-Blog posts are Jekyll posts published at `mdproctor.github.io/cc-praxis/blog/`. Each post needs frontmatter: `layout: post`, `title`, `date`, `type`.
+Blog posts are Jekyll posts published at `hortora.github.io/`. Each post needs frontmatter: `layout: post`, `title`, `date`, `type`.
 
 ## Writing Style Guide — Mandatory for Blog Content
 
@@ -427,7 +427,7 @@ python3 scripts/claude-skill sync-local --all -y
 
 # Launch the web skill manager UI
 python3 scripts/web_installer.py          # opens http://localhost:8765
-# (or: cc-praxis, if bin/ is on PATH via plugin install)
+# (or: soredium, if bin/ is on PATH via plugin install)
 
 # Regenerate web app data after chaining changes
 python3 scripts/generate_web_app_data.py
@@ -516,7 +516,7 @@ The `issue-workflow` skill handles setup of this configuration and the pre-commi
 ### Skill edits always go to this project first
 
 **NEVER write skill edits directly to `~/.claude/skills/`.** Always edit in this
-repository (`~/claude/cc-praxis/`), then run `sync-local` to propagate. This keeps
+repository (`~/claude/hortora/soredium/`), then run `sync-local` to propagate. This keeps
 git history, validation, and marketplace metadata in sync.
 
 ### When Adding a New Project Type
@@ -595,7 +595,7 @@ When you identify a problem and prepare a solution, STOP and consider:
 Skills write methodology artifacts to a companion workspace, not the project repo.
 Full design: `docs/superpowers/specs/2026-04-09-workspace-model-design.md`
 
-- **cc-praxis workspace:** `~/claude/public/cc-praxis/` → GitHub: `mdproctor/wsp-cc-praxis`
+- **soredium workspace:** `~/claude/public/cc-praxis/` → GitHub: `mdproctor/wsp-cc-praxis`
 - Claude opens in the workspace; project loaded via `add-dir` in workspace CLAUDE.md
 - Navigation: `proj/` in workspace → project; `wksp/` in project → workspace
 
@@ -753,7 +753,7 @@ Local validation is optional but recommended — pre-commit validation runs auto
 ## Work Tracking
 
 **Issue tracking:** enabled
-**GitHub repo:** mdproctor/cc-praxis
+**GitHub repo:** Hortora/soredium
 **Changelog:** GitHub Releases (run `gh release create --generate-notes` at milestones)
 
 **Automatic behaviours (Claude follows these at all times in this project):**

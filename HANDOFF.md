@@ -2,44 +2,43 @@
 
 ## Last Session
 
-Superpowers fork integration into soredium — epic #68. Completed steps 1-9 of 14.
+Superpowers fork integration into soredium — epic #68. **All 14 steps
+complete.** All 13 skills committed as first-party soredium citizens.
 
 ## What Was Done
 
-**Steps 1-4 (session 1, 34febb8):** Analysis, design review, first 4 rewrites.
-**Step 5 (session 2, 920e103, Refs #69):** Debugging toolkit.
-**Step 6 (session 2, db8e470, Refs #70):** Design pipeline.
-**Step 7 (session 2, 0820e1c, Refs #71):** Execution pipeline.
-**Step 8 (session 2, 664ac74, Refs #72):** Quality layer.
-**Step 9 (session 2, 1501a60, Refs #73):** using-git-worktrees + writing-skills.
+**Session 1 (34febb8):** Analysis, design review, first 4 rewrites.
 
-Key changes:
-- using-git-worktrees: workspace-init distinction table, work-start
-  integration, detection-first preserved, Skill Chaining
-- writing-skills: 690→277 lines by removing CLAUDE.md duplicates. Focused
-  on TDD-for-skills methodology, pressure scenarios, bulletproofing,
-  matching guidance to failure type. validation infrastructure reference.
-  Dot-era files (graphviz-conventions.dot, render-graphs.js) not committed.
+**Session 2 (6 commits):**
+- `920e103` Refs #69 — debugging toolkit (systematic-debugging + dispatching-parallel-agents)
+- `db8e470` Refs #70 — design pipeline (brainstorming + writing-plans)
+- `0820e1c` Refs #71 — execution pipeline (subagent-driven-development + executing-plans)
+- `664ac74` Refs #72 — quality layer (requesting-code-review + receiving-code-review)
+- `1501a60` Refs #73 — worktrees + writing-skills (using-git-worktrees + writing-skills)
+- `b6d55e7` Refs #74 — soredium-native cross-refs + artifacts
 
-## Immediate Next Step
+## Summary of Integration
 
-Continue epic #68 — step 10: #74 (audit work-end + soredium-native
-cross-refs + artifacts). This is the final step — all 13 skills are
-committed. What remains:
+**13 skills rewritten from scratch:**
+brainstorming, writing-plans, subagent-driven-development, executing-plans,
+verification-before-completion, test-driven-development, systematic-debugging,
+dispatching-parallel-agents, requesting-code-review, receiving-code-review,
+using-git-worktrees, writing-skills, using-superpowers, ide-tooling
 
-1. Audit work-end against finishing-a-development-branch for gaps
-2. Update soredium-native skills: code-review (Skill Chaining for
-   requesting-code-review distinction), fix-ci (debugging toolkit
-   back-refs, strip hortora:), java-dev/ts-dev/python-dev (TDD
-   process layer + ide-tooling refs)
-3. CLAUDE.md: update Third-Party Skill Exclusion section
-4. ARC42STORIES.MD: update skill counts
-5. marketplace.json: add 13 new skills
-6. Four-phase pipeline spec: update note about superpowers integration
-7. Comment on #66 re: requesting-code-review integration
+**Soredium-native skills updated:**
+code-review (Skill Chaining), fix-ci (debugging toolkit + stripped hortora:),
+java-dev/ts-dev/python-dev (TDD process layer)
 
-## Files to Read First
+**Artifacts updated:**
+CLAUDE.md, marketplace.json (30→43), ARC42STORIES.MD (33→46),
+four-phase pipeline spec, comment on #66
 
-1. `docs/specs/2026-07-04-superpowers-fork-integration.md` — spec §12 + Impact
-2. Current CLAUDE.md — Third-Party Skill Exclusion section
-3. Current marketplace.json
+**work-end audit:** No gaps. All finishing-a-development-branch
+requirements covered by work-end's 12-step process.
+
+**Scripts note:** SDD scripts (review-package, task-brief, sdd-workspace)
+are bash, not Python as spec assumed. Protocol doesn't apply.
+
+## What's Next
+
+Close issues #69-#74 and epic #68. Push to origin. Run sync-local.

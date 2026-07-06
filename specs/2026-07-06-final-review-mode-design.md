@@ -37,6 +37,17 @@ instructs the reviewer to:
 The `--spec` flag is ignored for final-review mode. If passed, log a warning and
 continue without using it.
 
+**Diff base resolution:**
+
+Final-review needs a base ref for `git diff <base>..HEAD`. Resolution order:
+
+1. Explicit `--diff-base` flag → use it
+2. `.diff-base` file in workspace (persisted from initial setup) → use it
+3. Neither specified → auto-detect via `git merge-base HEAD main`
+
+The `--diff-base` help text is updated from "for code-review mode" to "for
+code-review and final-review modes."
+
 ## Decision summary
 
 | Question | Answer |
@@ -61,13 +72,22 @@ and complement each other:
 `requesting-code-review` is the only skill being deprecated — its branch-level
 independent-subagent review is replaced by final-review's adversarial model.
 
+**Issue #66 text corrections needed before close:**
+
+1. Remove "split into main code (4a) and test code (4b) sub-phases" — resolved
+   as prompt-level structure only (open question #4)
+2. Remove "Replaces: `code-review` skill" — code-review stays for per-commit
+   checklist review; only `requesting-code-review` is replaced
+3. Remove "Update `git-commit` workflow to reference final-review" — git-commit
+   is unchanged (it doesn't invoke review)
+
 ## §1 Depth system
 
 ### §1.1 Depth presets
 
 | Depth | max_rounds | min_rounds | budget | Sub-phase treatment |
 |-------|-----------|-----------|--------|---------------------|
-| light | 1 | 1 | $1.50 | Combined — single pass, no 4a/4b split |
+| light | 1 | 1 | $1.50 | Combined — single pass, non-adversarial. Reviewer-only: no implementor response, no debate. |
 | standard | 3 | 2 | $5.00 | Structured — reviewer brief has main + test sections |
 | deep | 5 | 3 | $8.00 | Full — both sections, expanded scope |
 
@@ -94,7 +114,7 @@ The `--depth` flag overrides auto-detection in all cases.
 
 | Depth | Reviewer focus |
 |-------|---------------|
-| **light** | Correctness risks and security only. "Quick sanity check — anything obviously wrong or unsafe?" |
+| **light** | Non-adversarial single pass. Correctness risks and security only. "Quick sanity check — anything obviously wrong or unsafe?" Reviewer findings are the final output — no implementor round. |
 | **standard** | Full scope: architecture, correctness, edge cases, error handling, performance, concurrency, security, naming, structure, layer compliance. Test code: coverage completeness, assertion quality, missing scenarios. |
 | **deep** | All standard concerns plus: cross-module impact, design drift from spec, concurrency under load, backward compatibility, test isolation, property-based testing gaps. |
 
@@ -121,6 +141,20 @@ if args.depth and args.mode != "final-review":
 Warn and continue — not an error. The user may have a shell alias or script that
 passes `--depth` generically. Silent ignore would be confusing; hard error would
 break workflows.
+
+**MCP requirement:**
+
+IntelliJ MCP is a **hard requirement** for final-review. Code navigation without
+semantic indexing produces shallow reviews. The shared constraints (`_INTELLIJ_OPEN`)
+already instruct agents to abort if MCP is unavailable. At the PM level:
+
+- If the reviewer agent outputs "ABORTED: IntelliJ MCP not available", the PM
+  treats this as a review failure (not a normal round) — logs the failure, notifies
+  the user, and pauses for a decision.
+- No bash grep/find fallback — the review is either MCP-assisted or not run.
+
+This is consistent with the existing MCP constraint behavior but makes the PM's
+response explicit.
 
 **Depth resolution order:**
 1. Explicit `--depth` flag → use it
@@ -204,11 +238,15 @@ text blocks assembled via `_assemble_constraints()`):
   areas: coverage completeness, assertion quality, missing scenarios, test
   isolation, fixture patterns.
 
-**Naming rationale:** The four-phase pipeline spec uses `_FINAL_REVIEW_STARTING_POINTS`
-as a single block. This spec splits it into `_FINAL_REVIEW_MAIN_CODE_FOCUS` and
-`_FINAL_REVIEW_TEST_CODE_FOCUS` because the Decision Summary chose "prompt-level
-only" for sub-phases — the reviewer brief structures both concerns within a
-single phase, and separate focus blocks make that structure explicit.
+**Naming convention:** Following the established `_<MODE>_STARTING_POINTS` pattern,
+the entry-point block is `_FINAL_REVIEW_STARTING_POINTS`. This block references
+the two detailed focus blocks (`_FINAL_REVIEW_MAIN_CODE_FOCUS` and
+`_FINAL_REVIEW_TEST_CODE_FOCUS`) — keeping the naming pattern consistent while
+structuring both concerns within a single phase.
+
+Assembly: `_FINAL_REVIEW_STARTING_POINTS` is included in the reviewer's constraint
+list and internally references both focus blocks. The split is implementation detail
+of the starting points, not a pattern break.
 
 **Generator functions:**
 
@@ -221,6 +259,15 @@ level (available in context) controls which blocks are included:
 - **standard**: all blocks including both focus sections.
 - **deep**: all blocks plus `_CROSS_MODULE_IMPACT` (new block for deep-only
   cross-cutting analysis).
+
+**`_CROSS_MODULE_IMPACT` content:**
+
+Instructs the reviewer to check for cross-cutting effects of the branch changes:
+- Changes to shared interfaces/types used by other modules
+- Behavioral changes observable from callers in other packages
+- Transaction boundary changes that affect coordinating services
+- Configuration changes that alter deployment or runtime behavior
+- Test isolation — whether changes could cause flaky tests in unrelated modules
 
 ### §2.3 prompts.py changes
 
@@ -258,7 +305,76 @@ The `depth` parameter shapes the prompt text:
 - **deep**: standard brief plus cross-module analysis, design-drift
   detection (if spec available), and backward compatibility checks.
 
-### §2.4 Depth parameter threading
+### §2.4 review.py loop changes for code-modifying modes
+
+The review loop at `review.py:484-525` currently assumes the implementor modifies
+a single spec file. For final-review (and code-review mode), the implementor
+modifies source code instead. The loop needs mode-conditional logic:
+
+**Post-implementor commit (lines 487-492):**
+
+```python
+if mode in ("spec-review", "pre-review"):
+    # Existing: commit spec file changes to project repo
+    spec_dir = Path(spec_path).parent
+    spec_name = Path(spec_path).name
+    subprocess.run(["git", "add", spec_name], cwd=spec_dir, ...)
+    subprocess.run(["git", "commit", "-m", f"docs: spec revised — review round {round_num}", ...], ...)
+elif mode in ("final-review", "code-review"):
+    # New: commit all source directory changes
+    for sd in source_dirs:
+        subprocess.run(["git", "add", "-A"], cwd=sd, ...)
+    # Commit from the first source dir (primary project repo)
+    subprocess.run(["git", "commit", "-m",
+        f"review: code fixes — final-review round {round_num}", "--allow-empty"],
+        cwd=source_dirs[0], ...)
+```
+
+**Verification (lines 502-518):**
+
+```python
+if mode in ("spec-review", "pre-review"):
+    # Existing: verify spec section changed
+    diff = _get_git_diff(spec_path)
+    vr = verify_against_diff(diff, resp.section_ref)
+elif mode in ("final-review", "code-review"):
+    # New: verify code was modified (any file in source dirs)
+    diff = _get_source_diff(source_dirs)
+    vr = verify_code_changed(diff)
+    # Section ref verification is skipped — code changes don't have §N.N refs
+```
+
+**New helper functions:**
+
+```python
+def _get_source_diff(source_dirs: list[str]) -> str:
+    """Get combined diff across all source directories."""
+    diffs = []
+    for sd in source_dirs:
+        result = subprocess.run(["git", "diff", "HEAD~1"], cwd=sd, ...)
+        diffs.append(result.stdout)
+    return "\n".join(diffs)
+
+def verify_code_changed(diff: str) -> VerifyResult:
+    """Check whether any code was modified (for FIXED items in code-modifying modes)."""
+    return VerifyResult(section_changed=bool(diff.strip()))
+```
+
+**`spec_path` in final-review mode:**
+
+`--spec` is optional for final-review. When omitted:
+- `spec_path` is set to an empty string
+- `.spec-path` file is not written
+- All code paths that reference `spec_path` are guarded by mode checks
+- Summary and progress log show "Source dirs: ..." instead of "Spec: ..."
+
+**Test additions for §5.1:**
+- `test_final_review_commits_source_changes`: verify git add/commit runs on source dirs
+- `test_final_review_skips_spec_commit`: verify spec-file commit logic is skipped
+- `test_verify_code_changed_with_diff`: verify non-empty diff → section_changed=True
+- `test_verify_code_changed_empty`: verify empty diff → section_changed=False
+
+### §2.5 Depth parameter threading
 
 The `depth` value must flow through the existing call chain. Affected
 function signatures gain a `depth: str | None` parameter (None for
@@ -302,20 +418,62 @@ The classification uses diff stats and simple content heuristics (grep for
 need semantic analysis — false positives (running adversarial review on a
 body-only change) are harmless, just slower.
 
-Edge case: user can force final-review on a body-only branch if the changes
-are algorithmically complex. work-end should surface the classification:
+**User confirmation:**
 
+work-end always prompts before invoking final-review, showing the classification
+and cost estimate:
+
+For structural changes:
+> "Branch diff is structural (N files, M lines, K new files).
+>  Recommended: final-review --depth {auto-detected} (~${estimated_cost}).
+>  Run final-review? [y]es / [c]ode-review instead / [s]kip review"
+
+For body-only changes:
 > "Branch diff is body-only (N files, M lines). Running code-review checklist.
 >  Override with final-review? (y/n)"
+
+The prompt prevents cost surprises — final-review's multi-round adversarial model
+costs significantly more than the single-pass code-review checklist.
 
 ### §3.2 subagent-driven-development
 
 Current: final whole-branch review uses `requesting-code-review`'s
-`code-reviewer.md` template.
+`code-reviewer.md` template — dispatches a single subagent and reads output
+inline.
 
 Change: switch to `design-review --mode final-review --depth standard`.
-The subagent-driven-development skill invokes design-review directly
-instead of dispatching its own reviewer subagent.
+
+**Invocation mechanism:**
+
+SDD invokes `review.py` as a **foreground subprocess** via the Bash tool, the
+same way the `design-review` SKILL.md invokes it:
+
+```bash
+python3 ~/.claude/skills/design-review/review.py \
+  --mode final-review --depth standard \
+  --title "{branch-name}" \
+  --source-dirs /path/to/project \
+  --diff-base origin/main
+```
+
+The SDD session blocks until the review completes (2-3 rounds at `standard`
+depth, typically 10-15 minutes).
+
+**After completion:**
+
+1. SDD reads `tracker.md` from the review workspace
+2. If all issues are VERIFIED/ACCEPTED → review passed, continue to work-end
+3. If unresolved issues remain → SDD dispatches fix subagents for each, then
+   re-runs final-review
+
+**Difference from current pattern:**
+
+| | Current (requesting-code-review) | New (final-review) |
+|---|---|---|
+| Invocation | Agent tool → single subagent | Bash tool → review.py subprocess |
+| Rounds | 1 (single-pass) | 2-3 (adversarial) |
+| Output | Subagent text response | tracker.md + response files |
+| Fix cycle | SDD reads response inline | SDD reads tracker, dispatches fixes |
 
 ### §3.3 requesting-code-review — deprecation
 
@@ -372,7 +530,8 @@ with code-review (complementary, not replacement).
 - `git-commit` — no changes (doesn't invoke review)
 - `executing-plans` — stays with code-review (per-task scope)
 - Phases 1-3 of the pipeline — untouched
-- review.py loop structure — no sub-phase state, no new infrastructure
+- review.py loop structure — no sub-phase state. Mode-conditional commit and
+  verification logic added (§2.4) but the loop skeleton is unchanged.
 - tracker.py — no changes (convergence protection works as-is)
 - parser.py — no changes
 - **Workspace structure** — final-review uses the existing flat workspace format,
@@ -430,7 +589,7 @@ with code-review (complementary, not replacement).
 
 | File | Change type | Description |
 |------|------------|-------------|
-| `design-review/review.py` | Modify | Add `--depth` flag, `DEPTH_PRESETS`, auto-detection function, depth file persistence |
+| `design-review/review.py` | Modify | Add `--depth` flag, `DEPTH_PRESETS`, auto-detection function, depth file persistence, mode-conditional commit/verify logic (§2.4), diff-base auto-detection, MCP abort handling |
 | `design-review/setup.py` | Modify | Add `_MODE_GENERATORS["final-review"]`, constraint constants, generator functions |
 | `design-review/prompts.py` | Modify | Add `_build_final_review_*_prompt()`, dispatch branches, depth-scaled content |
 | `design-review/SKILL.md` | Modify | Phase 4 active, `--depth` flag documented |

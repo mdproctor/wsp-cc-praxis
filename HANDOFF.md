@@ -1,125 +1,89 @@
-# HANDOFF — 2026-07-05
+# HANDOFF — 2026-07-06
 
 ## Last Session
 
-Superpowers fork integration — epic #68 complete, all issues closed.
-Follow-up verification filed as epic #75 with three child issues.
+ADR four-phase pipeline — closed #60, #61, #62, #64, #65. Two branches
+across one session. Epic #63 has one remaining issue (#66).
 
 ## What Was Done
 
-### Epic #68 — Superpowers fork integration (CLOSED)
+### Branch 1: issue-60-design-review-fixes (landed as 7814ea4)
 
-Rewrote all 14 original obra/superpowers skills as first-class soredium
-citizens. Two sessions, 7 commits:
+Batched bugfix + test coverage for the adversarial design-review skill.
+Closed 4 issues:
 
-| Commit | Issue | Skills |
-|--------|-------|--------|
-| `34febb8` | #68 | ide-tooling, using-superpowers, verification-before-completion, test-driven-development |
-| `920e103` | #69 | systematic-debugging, dispatching-parallel-agents |
-| `db8e470` | #70 | brainstorming, writing-plans |
-| `0820e1c` | #71 | subagent-driven-development, executing-plans |
-| `664ac74` | #72 | requesting-code-review, receiving-code-review |
-| `1501a60` | #73 | using-git-worktrees, writing-skills |
-| `b6d55e7` | #74 | cross-refs, CLAUDE.md, marketplace.json, ARC42STORIES.MD |
+| Issue | What | Status at branch start |
+|-------|------|----------------------|
+| #60 | `record_round()` cumulative vs delta counts | Already fixed — `_previous_snapshot` delta computation in place. Closed with evidence. |
+| #61 | Decision file missing issue ID + recursive retry | Issue ID: `_handle_decision_needed` now auto-extracts from signal description via regex. Recursive retry: already a `while True` loop. |
+| #62 | `--arch-files` CLI flag | Added to `parse_args()`, persisted in `.arch-files`, injected into `context.md` as "Architectural Files" section. |
+| #64 | Pre-review mode test coverage | Implementation was complete. Added 8 tests covering prompts, templates, mode generators. |
 
-Soredium-native skills also updated: code-review, fix-ci, java-dev,
-ts-dev, python-dev. work-end audited against finishing-a-development-branch
-(no gaps). Four-phase pipeline spec updated. Comment filed on #66.
+### Branch 2: issue-65-code-review-mode (landed as a6b401f)
 
-### What wasn't done
+Phase 3 of the four-phase review pipeline — code review against spec.
+Verifies implementation matches the reviewed design. Added:
 
-- No automated tests for the new skills (structural validators pass,
-  but no functional or consistency tests)
-- No fit-gap analysis against original obra/superpowers
-- No alignment audit to find competing/overlapping areas
-- README.md still describes superpowers as separate external tools
-- Stale `superpowers:` references remain in test fixtures
-- SDD scripts (review-package, task-brief, sdd-workspace) are bash, not
-  Python as spec assumed — externalised-scripts protocol doesn't apply
-- Local commits not yet pushed to origin
+- **setup.py**: 4 constraint constants (`_CODE_REVIEW_APPROACH_REVIEWER`,
+  `_CODE_REVIEW_STARTING_POINTS`, `_CODE_REVIEW_APPROACH_IMPLEMENTOR`,
+  `_CODE_REVIEW_IMPLEMENTOR_SKEPTICISM`) + 2 generator functions +
+  `_MODE_GENERATORS["code-review"]` registration
+- **prompts.py**: `_build_code_review_reviewer_prompt()` and
+  `_build_code_review_implementor_prompt()` + mode dispatch branches
+- **review.py**: `--diff-base` parameter (stored in `.diff-base`, loaded on resume)
+- **SKILL.md**: phase 3 marked active, optional flags table updated
+- **tests**: 12 new tests (TestCodeReviewPrompts, TestCodeReviewTemplates, TestDiffBase)
 
-## Immediate Next — Epic #75
+Infrastructure was already wired — `REVIEW_MODES` and `MODE_DEFAULTS` already
+included `code-review` with defaults (max=4, min=2, budget=$5).
 
-Post-integration verification. Three issues, in this order:
+## What Wasn't Done
 
-### 1. #76 — Functional testing + consistency checks
+- `--diff-base` is stored and loaded but not yet injected into prompt text.
+  Agents discover code via `--source-dirs` and IntelliJ. A future enhancement
+  could inject `git diff <diff-base>..HEAD` into the prompt for focused review.
+- No end-to-end test of `--mode code-review` running against a real spec + code.
+  All tests are unit-level (prompt content, template content, CLI parsing).
 
-Do this first — it catches mechanical errors before deeper analysis.
+## Immediate Next — #66
 
-- **Cross-reference consistency test** (`tests/test_skill_chaining.py`):
-  parse every SKILL.md's Skill Chaining section, verify bidirectionality.
-  If A says "Complements: B", B must mention A.
-- **Marketplace completeness test** (`tests/test_marketplace.py`):
-  every committed non-DEV-ONLY skill has a marketplace.json entry and
-  vice versa.
-- **sync-local smoke test**: run sync-local, verify all 13 new skills
-  appear in `~/.claude/skills/`, invoke each in a fresh session.
-- **Stale fixture cleanup**: `tests/regression/issue-001-cso-violation.json`
-  references `superpowers:executing-plans`, `tests/test_validate_naming.py:93`
-  tests `superpowers:brainstorming` — update both.
-- **README.md update**: the Superpowers Integration table still frames
-  these as separate external tools. Rewrite to integrate into the main
-  skill tables.
+**Issue:** Phase 4: Final code review — replace code-review skill and superpowers review
 
-### 2. #77 — Fit-gap analysis against original obra/superpowers
+**Parent epic:** #63 (ADR four-phase review pipeline)
 
-Do this second — it catches dropped content.
+**Scope (from issue):**
+- Add `--mode final-review` with sub-phase support (4a main code, 4b test code)
+- New reviewer templates for main and test review briefs
+- **Deprecation:** replace `code-review` skill and `requesting-code-review`
+- Update `git-commit` workflow to reference final-review instead of code-review
 
-For each of the 13 skills:
-1. Read the original obra/superpowers version (untracked files before
-   the integration commits — check git stash or the state before
-   `34febb8`)
-2. Read the soredium rewrite
-3. Compare section by section: methodology preserved? Content dropped?
-   Behavioral intent changed?
-4. Classify each gap: intentional removal (spec said to), intentional
-   simplification (folded into CLAUDE.md), or unintentional drop
+**Why this needs its own brainstorming session:**
+The deprecation is the hard part. `code-review` is invoked by `work-end` (Step 3c,
+mandatory gate), `git-commit` (when no review done), and multiple dev skills. Replacing
+it means updating all those integration points. `requesting-code-review` dispatches a
+fresh subagent — different mechanism from the adversarial multi-round approach. The
+migration path needs design before implementation.
 
-Also check supporting files: technique docs, prompt templates, scripts,
-examples. A table per skill is the deliverable.
+**Key questions for brainstorming:**
+1. Does final-review fully replace code-review, or do they coexist? The current
+   code-review is a single-pass checklist. Final-review is multi-round adversarial.
+   Different weight classes.
+2. Does the sub-phase (4a/4b) run as two sequential `--mode` invocations or as
+   a single run with an internal phase switch?
+3. What happens to `work-end` Step 3c? Does it invoke final-review (heavy) or
+   keep code-review (lightweight)?
 
-### 3. #78 — Alignment and unification audit
+## Key Context
 
-Do this last — it requires understanding both layers to see the seams.
+**Epic #63 status:** 3 of 4 phases complete.
+- Phase 1 (pre-review): done — `--mode pre-review`
+- Phase 2 (spec-review): done — `--mode spec-review` (original)
+- Phase 3 (code-review): done — `--mode code-review` (this session)
+- Phase 4 (final-review): #66, not started
 
-Seven areas to examine:
+**Test count:** 98 tests across `test_adr_tracker.py` and `test_adr_review.py`, all passing.
 
-1. **Review pipeline overlap** — code-review vs requesting-code-review
-   vs design-review. Three review mechanisms. Clear to a user? Could
-   any merge?
-2. **Execution pipeline vs work lifecycle** — does work-start know
-   about SDD? Is the handoff from writing-plans to SDD smooth?
-3. **Debugging toolkit vs fix-ci** — clear routing? Does fix-ci
-   duplicate systematic-debugging for CI-specific cases?
-4. **Testing discipline layering** — TDD (process) vs language skills
-   (framework) vs garden testing.md (principles). Is the layering
-   clear or does content duplicate?
-5. **Verification gate count** — a single SDD task passes through 5
-   gates (TDD + self-review + task-review + VBC + final-review). Is
-   this proportionate or redundant?
-6. **Knowledge integration** — should more skills search the garden?
-   Is the forage/protocol split clear?
-7. **Workspace concepts** — four isolation-related concepts
-   (workspace-init, using-git-worktrees, work-start, EnterWorktree).
-   Can any merge?
+**Skill sync:** `sync-local` was run after each commit. `~/.claude/skills/design-review/`
+has the latest version.
 
-Deliverable: current state, friction points, unification opportunities,
-recommendation per area. Opportunities that survive scrutiny become
-child issues.
-
-## Key Context for Next Session
-
-**Spec:** `docs/specs/2026-07-04-superpowers-fork-integration.md` —
-the authoritative guide for what was done and why.
-
-**ADR project CLAUDE.md:** `~/adr/CLAUDE.md` — has the agent constraint
-design lessons (8 iterations, documented in detail) that apply to any
-future multi-agent review work.
-
-**Soredium repo state:** main branch, ahead of origin by ~7 commits
-(not pushed). All 8 validators pass. 2077 tests pass (10 UI test
-failures are pre-existing, unrelated).
-
-**The rewrite conventions** (bare skill names, Mermaid flowcharts,
-ide-tooling reference, focal issue, Skill Chaining format) are now
-the standard for all soredium skills — not just the 13 new ones.
+**Repo state:** main branch, up to date with origin. Clean working tree.

@@ -305,7 +305,57 @@ The `depth` parameter shapes the prompt text:
 - **deep**: standard brief plus cross-module analysis, design-drift
   detection (if spec available), and backward compatibility checks.
 
-### §2.4 review.py loop changes for code-modifying modes
+### §2.4 review.py loop changes
+
+Two categories of loop changes: (1) `light` depth skips the implementor, and
+(2) code-modifying modes commit to source directories instead of a spec file.
+
+**`light` depth — skip implementor (lines 403-435):**
+
+```python
+# --- Step 3: Implementor ---
+if depth == "light":
+    # light depth is non-adversarial: reviewer-only, no implementor round.
+    # Record reviewer findings as OPEN issues and terminate.
+    _log("  Light depth — skipping implementor (reviewer-only mode)")
+else:
+    focus = tracker.get_focus_items()
+    implementor_prompt = build_implementor_prompt(...)
+    # ... existing implementor logic ...
+```
+
+For `light`, after the reviewer round:
+1. The PM parses the reviewer's output and records findings as OPEN issues
+2. The tracker is written with all findings in OPEN state
+3. The review terminates — no implementor, no further rounds
+4. The caller (SDD or user) reads the tracker to see what the reviewer found
+
+The reviewer's findings are the final output. The user or calling skill decides
+whether to act on them.
+
+**`_detect_last_round` handling:**
+
+The current `_detect_last_round` returns `(round, reviewer_only=True)` when a
+reviewer file exists without a matching implementor file, and the resume logic
+at line 130 interprets this as "resume at implementor step." For `light` depth,
+this is wrong — reviewer-only is the expected terminal state.
+
+Fix: `_detect_last_round` gains a `depth` parameter (read from `.depth` file):
+
+```python
+def _detect_last_round(ws: Path, depth: str | None = None) -> tuple[int, bool]:
+    # ... existing logic ...
+    if max_reviewer not in implementor_rounds:
+        if depth == "light":
+            return max_reviewer, False  # complete, not partial
+        return max_reviewer, True  # partial round — implementor needed
+```
+
+On resume with `light` depth and a reviewer-only final round, the review is
+already done — resume logic recognises this and reports completion instead of
+spawning an implementor.
+
+**Code-modifying modes — commit and verification:**
 
 The review loop at `review.py:484-525` currently assumes the implementor modifies
 a single spec file. For final-review (and code-review mode), the implementor
@@ -321,13 +371,12 @@ if mode in ("spec-review", "pre-review"):
     subprocess.run(["git", "add", spec_name], cwd=spec_dir, ...)
     subprocess.run(["git", "commit", "-m", f"docs: spec revised — review round {round_num}", ...], ...)
 elif mode in ("final-review", "code-review"):
-    # New: commit all source directory changes
+    # New: commit per source directory (each may be a separate git repo)
     for sd in source_dirs:
         subprocess.run(["git", "add", "-A"], cwd=sd, ...)
-    # Commit from the first source dir (primary project repo)
-    subprocess.run(["git", "commit", "-m",
-        f"review: code fixes — final-review round {round_num}", "--allow-empty"],
-        cwd=source_dirs[0], ...)
+        subprocess.run(["git", "commit", "-m",
+            f"review: code fixes — {mode} round {round_num}",
+            "--allow-empty"], cwd=sd, ...)
 ```
 
 **Verification (lines 502-518):**
@@ -358,6 +407,31 @@ def _get_source_diff(source_dirs: list[str]) -> str:
 def verify_code_changed(diff: str) -> VerifyResult:
     """Check whether any code was modified (for FIXED items in code-modifying modes)."""
     return VerifyResult(section_changed=bool(diff.strip()))
+```
+
+**Accepted limitation — coarse verification:**
+
+`verify_code_changed()` checks whether *any* code changed, not whether the
+*specific* code referenced by a FIXED item changed. If the implementor changes
+file A, all FIXED items pass verification — even ones claiming to fix file B.
+
+This is an accepted limitation for two reasons:
+
+1. **Spec-review verification is also heuristic.** `verify_against_diff()` matches
+   section headers (`§N.N`) in the diff text — a string search, not semantic
+   analysis. It can false-positive (section header appears in a comment) or
+   false-negative (implementor restructures sections). Code-mode verification is
+   coarser but the same category of backstop.
+
+2. **The adversarial rounds are the primary quality gate.** Verification is a
+   sanity check, not the review mechanism. If the implementor claims FIXED but
+   didn't actually fix the code, the reviewer catches this in the next round when
+   they re-examine the finding. For `light` depth (no implementor), verification
+   doesn't apply at all.
+
+Per-file verification (matching file names in FIXED responses against the diff)
+is feasible but deferred — it requires structured file references in the
+implementor's response format, which is a parser.py change.
 ```
 
 **`spec_path` in final-review mode:**
@@ -445,8 +519,8 @@ Change: switch to `design-review --mode final-review --depth standard`.
 
 **Invocation mechanism:**
 
-SDD invokes `review.py` as a **foreground subprocess** via the Bash tool, the
-same way the `design-review` SKILL.md invokes it:
+SDD invokes `review.py` as a **background subprocess** via the Bash tool with
+`run_in_background: true`:
 
 ```bash
 python3 ~/.claude/skills/design-review/review.py \
@@ -456,21 +530,35 @@ python3 ~/.claude/skills/design-review/review.py \
   --diff-base origin/main
 ```
 
-The SDD session blocks until the review completes (2-3 rounds at `standard`
-depth, typically 10-15 minutes).
+The Bash tool's default timeout (120s) and max (600s) are both shorter than a
+typical final-review run (10-15 minutes). Running in the background avoids
+timeout issues — SDD receives a notification when the subprocess completes.
+
+**Timeout interaction:**
+
+`review.py` has its own timeout system (600s soft / 1800s hard) independent of
+the calling session. If the SDD session itself times out while the review runs:
+- `review.py` continues independently (it's a separate process)
+- `review.py`'s SIGTERM handler writes `REVIEW PAUSED`
+- On resume, the review workspace is available for `--workspace` resume
 
 **After completion:**
 
 1. SDD reads `tracker.md` from the review workspace
 2. If all issues are VERIFIED/ACCEPTED → review passed, continue to work-end
-3. If unresolved issues remain → SDD dispatches fix subagents for each, then
-   re-runs final-review
+3. If unresolved issues remain → SDD presents the tracker summary and asks the
+   user whether to (a) dispatch fix subagents and re-run, or (b) proceed
+   to work-end with findings noted
+
+The fix → re-review cycle is not automatic. A failed review + fix + re-review
+could take 30-45 minutes. SDD surfaces the decision to the user rather than
+committing to a potentially expensive retry loop.
 
 **Difference from current pattern:**
 
 | | Current (requesting-code-review) | New (final-review) |
 |---|---|---|
-| Invocation | Agent tool → single subagent | Bash tool → review.py subprocess |
+| Invocation | Agent tool → single subagent | Bash tool (background) → review.py subprocess |
 | Rounds | 1 (single-pass) | 2-3 (adversarial) |
 | Output | Subagent text response | tracker.md + response files |
 | Fix cycle | SDD reads response inline | SDD reads tracker, dispatches fixes |
@@ -530,8 +618,10 @@ with code-review (complementary, not replacement).
 - `git-commit` — no changes (doesn't invoke review)
 - `executing-plans` — stays with code-review (per-task scope)
 - Phases 1-3 of the pipeline — untouched
-- review.py loop structure — no sub-phase state. Mode-conditional commit and
-  verification logic added (§2.4) but the loop skeleton is unchanged.
+- review.py loop structure — no sub-phase state. Two changes: (1) `light` depth
+  skips the implementor step entirely, and (2) code-modifying modes use per-source-dir
+  commit/verify logic. See §2.4. The loop skeleton (round iteration, signal parsing,
+  tracker updates) is unchanged.
 - tracker.py — no changes (convergence protection works as-is)
 - parser.py — no changes
 - **Workspace structure** — final-review uses the existing flat workspace format,
@@ -577,6 +667,20 @@ with code-review (complementary, not replacement).
 - `test_config_file_triggers_structural`: `pom.xml`, `application.properties` → structural
 - `test_imports_only_is_body_only`: only import statements changed → body-only
 - `test_mixed_changes_is_structural`: any structural signal → structural (conservative)
+
+**Loop behavior (new test class: `TestFinalReviewLoop`):**
+- `test_light_depth_skips_implementor`: with depth=light, only reviewer-1.md is
+  produced; no implementor-1.md exists
+- `test_light_depth_detect_last_round`: `_detect_last_round` with depth=light
+  returns `(1, False)` (complete) when reviewer-1.md exists without implementor-1.md
+- `test_standard_depth_runs_implementor`: with depth=standard, both reviewer-1.md
+  and implementor-1.md are produced
+- `test_multi_source_dir_commit`: with two source dirs (separate git repos),
+  each gets its own `git commit` call
+- `test_mcp_abort_detection`: reviewer output containing "ABORTED: IntelliJ MCP
+  not available" triggers review failure handling
+- `test_empty_spec_path_no_crash`: loop handles `spec_path=""` without errors
+  in final-review mode
 
 ### §5.2 Integration touchpoints (manual verification)
 

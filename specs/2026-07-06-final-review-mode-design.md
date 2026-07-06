@@ -13,13 +13,37 @@ branch-level code quality gate. Complements the existing `code-review` skill
 (which stays for per-commit checklist review). Deprecates `requesting-code-review`
 (whose branch-level role is absorbed by final-review).
 
+## Artifact under review
+
+Final-review reviews the **branch diff** — all code changes from the base branch
+to HEAD. This is a standalone production-readiness check, not a spec-compliance
+check. Unlike code-review mode (Phase 3), final-review does not require or
+reference a companion spec.
+
+| Mode | Artifact | Spec required? |
+|------|----------|----------------|
+| pre-review | Brainstorming output / outline | No |
+| spec-review | Design spec | Yes — the spec is the artifact |
+| code-review | Code + reviewed spec | Yes — checks implementation against spec |
+| final-review | Branch diff (code only) | No — standalone production readiness |
+
+The reviewer receives the branch diff via the source directories. The prompt
+instructs the reviewer to:
+
+1. Compute the branch diff: `git diff <base>..HEAD`
+2. Read each changed file in the source directories
+3. Apply production readiness criteria to the changes
+
+The `--spec` flag is ignored for final-review mode. If passed, log a warning and
+continue without using it.
+
 ## Decision summary
 
 | Question | Answer |
 |----------|--------|
 | Replace code-review skill? | No — code-review stays for per-commit checklist review |
 | Replace requesting-code-review? | Yes — deprecated, branch-level role absorbed by final-review |
-| Sub-phases (4a/4b)? | Prompt-level only — reviewer brief structures both concerns, no infrastructure changes |
+| Sub-phases (4a/4b)? | Prompt-level only — reviewer brief structures both concerns, no infrastructure changes. Resolves open question #4 from the four-phase pipeline spec. Issue #66 text to be updated when this spec lands. |
 | Degree system? | `--depth light\|standard\|deep` with auto-detection default and manual override |
 | Work-end Step 3c? | Conditional — final-review for structural changes, code-review for body-only edits |
 
@@ -85,7 +109,18 @@ The `--depth` flag overrides auto-detection in all cases.
 ```
 
 Added to the argparse parser alongside `--mode`. Only applies when
-`--mode final-review`. Ignored for other modes (they have fixed defaults).
+`--mode final-review`.
+
+**Behavior with non-final-review modes:**
+
+```python
+if args.depth and args.mode != "final-review":
+    _log(f"WARNING: --depth is only supported for final-review mode, ignored for {args.mode}")
+```
+
+Warn and continue — not an error. The user may have a shell alias or script that
+passes `--depth` generically. Silent ignore would be confusing; hard error would
+break workflows.
 
 **Depth resolution order:**
 1. Explicit `--depth` flag → use it
@@ -117,6 +152,29 @@ When mode is `final-review` and depth is resolved, `DEPTH_PRESETS[depth]`
 overrides `MODE_DEFAULTS["final-review"]` for that run. The `.depth` file
 in the workspace persists the resolved depth for resume.
 
+**Resume behavior with `.depth` file:**
+
+1. **Explicit `--depth` on resume** — always overrides stored depth. The user
+   knows better; they may want to re-run at a different depth.
+2. **No `--depth` on resume, `.depth` exists** — use stored depth. Do not
+   re-detect from diff stats (the diff may have changed, but the review should
+   complete at the depth it started).
+3. **No `--depth` on resume, `.depth` missing** — re-detect from diff stats.
+   This handles resuming a legacy workspace created before `.depth` was added.
+
+**Budget semantics:**
+
+The `budget_per_session` in `DEPTH_PRESETS` uses the same semantics as
+`MODE_DEFAULTS` — it is a per-agent-invocation limit passed to
+`claude -p ... --max-turns`. When the budget is exhausted:
+
+1. The agent's turn ends (Claude Code's built-in budget enforcement)
+2. The PM receives whatever output was generated
+3. The round continues to the next agent (or ends if this was the implementor)
+
+This is not a hard stop — it's a soft cap per agent call. The total review
+cost may exceed the preset if many rounds are needed.
+
 ### §2.2 setup.py changes
 
 **New mode generator registration:**
@@ -137,13 +195,20 @@ text blocks assembled via `_assemble_constraints()`):
   depth level.
 - `_FINAL_REVIEW_APPROACH_IMPLEMENTOR` — implementor constraints. Includes:
   defend implementation decisions with evidence; acknowledge genuine issues;
-  do not capitulate on correct code.
+  do not capitulate on correct code. **Implementor fixes code directly**
+  (in the source directories) rather than updating a spec.
 - `_FINAL_REVIEW_MAIN_CODE_FOCUS` — structured section for main code review
   areas: architecture, correctness, edge cases, error handling, performance,
   concurrency, security, naming, structure, layer compliance.
 - `_FINAL_REVIEW_TEST_CODE_FOCUS` — structured section for test code review
   areas: coverage completeness, assertion quality, missing scenarios, test
   isolation, fixture patterns.
+
+**Naming rationale:** The four-phase pipeline spec uses `_FINAL_REVIEW_STARTING_POINTS`
+as a single block. This spec splits it into `_FINAL_REVIEW_MAIN_CODE_FOCUS` and
+`_FINAL_REVIEW_TEST_CODE_FOCUS` because the Decision Summary chose "prompt-level
+only" for sub-phases — the reviewer brief structures both concerns within a
+single phase, and separate focus blocks make that structure explicit.
 
 **Generator functions:**
 
@@ -220,9 +285,13 @@ New logic:
 1. Get branch diff: git diff <base>..HEAD --stat
 2. Classify changes:
    - New files added? → structural
+   - Files deleted? → structural (API surface may have changed)
+   - Files renamed? → structural (package/namespace may have changed)
    - New classes/interfaces in diff? → structural
    - Method signature changes? → structural
    - Only method body changes? → body-only
+   - Config files changed (pom.xml, application.properties, etc.)? → structural
+   - Imports-only changes → body-only (dependency usage, not contract)
 3. If structural → invoke design-review --mode final-review
    (depth auto-detected, --depth override available)
 4. If body-only → invoke code-review (checklist, as today)
@@ -258,8 +327,16 @@ Add deprecation notice to SKILL.md:
 > This skill remains for backward compatibility but will not receive updates.
 ```
 
-The skill is not deleted — other projects may reference it. The
-`code-reviewer.md` subagent template remains as reference material.
+**Artifact disposition:**
+
+| Artifact | Action |
+|----------|--------|
+| `requesting-code-review/SKILL.md` | Keep with deprecation notice |
+| `requesting-code-review/code-reviewer.md` | Keep as historical reference — not moved to design-review since final-review uses the composable constraint system instead |
+
+The skill directory is not deleted. Existing scripts and other projects may
+reference it. Deletion would be a breaking change with no benefit — deprecation
+is sufficient.
 
 ### §3.4 Skill Chaining updates
 
@@ -267,9 +344,21 @@ The skill is not deleted — other projects may reference it. The
 |-------|---------|--------|
 | `design-review` | Skill Chaining, phase table | Add Phase 4 as active |
 | `work-end` | Step 3c, Skill Chaining | Conditional gate logic, add final-review reference |
-| `subagent-driven-development` | Final review step, Skill Chaining | Switch to final-review |
+| `subagent-driven-development` | Final review step, Skill Chaining | Switch from `requesting-code-review/code-reviewer.md` to `design-review --mode final-review --depth standard` |
 | `requesting-code-review` | Full SKILL.md | Deprecation notice |
-| `code-review` | Complements section | Add note about final-review for branch-level |
+| `code-review` | Complements section | Add: "For branch-level adversarial review, use `design-review --mode final-review`" |
+
+**Specific file changes in `subagent-driven-development/SKILL.md`:**
+
+1. Line 315-316: Replace reference to `requesting-code-review/code-reviewer.md`
+   with invocation of `design-review --mode final-review --depth standard`
+2. Line 366: Update Skill Chaining to reference `design-review` instead of
+   `requesting-code-review`
+
+**Specific file changes in `code-review/SKILL.md`:**
+
+1. Complements section: Add entry for `design-review --mode final-review` with
+   scope differentiation (per-commit vs branch-level)
 
 ### §3.5 design-review SKILL.md
 
@@ -286,6 +375,11 @@ with code-review (complementary, not replacement).
 - review.py loop structure — no sub-phase state, no new infrastructure
 - tracker.py — no changes (convergence protection works as-is)
 - parser.py — no changes
+- **Workspace structure** — final-review uses the existing flat workspace format,
+  not the hierarchical structure from the four-phase pipeline spec. The
+  hierarchical structure will be implemented by pre-review (#64) which requires
+  the full phase orchestration infrastructure. Final-review is a single mode
+  addition that fits the existing flat structure.
 
 ## §5 Test plan
 
@@ -314,6 +408,16 @@ with code-review (complementary, not replacement).
 - `_MODE_GENERATORS["final-review"]` registered
 - Reviewer CLAUDE.md includes correct constraint blocks for each depth
 - Implementor CLAUDE.md includes correct constraint blocks for each depth
+
+**Classification heuristic (new test class: `TestClassifyBranchDiff`):**
+- `test_new_file_triggers_structural`: `A src/NewClass.java | 50 ++` → structural
+- `test_deleted_file_triggers_structural`: `D src/OldClass.java | 100 -` → structural
+- `test_renamed_file_triggers_structural`: `R src/Old.java → src/New.java` → structural
+- `test_body_only_change`: method body edits only → body-only
+- `test_signature_change_triggers_structural`: method signature change → structural
+- `test_config_file_triggers_structural`: `pom.xml`, `application.properties` → structural
+- `test_imports_only_is_body_only`: only import statements changed → body-only
+- `test_mixed_changes_is_structural`: any structural signal → structural (conservative)
 
 ### §5.2 Integration touchpoints (manual verification)
 

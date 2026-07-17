@@ -215,14 +215,29 @@ The parent calls `rebase_exec.py` directly. Invoking the full `/git-squash`
 skill would re-classify all commits, re-present a plan, and duplicate the
 subagent's work. The execution path:
 
-1. Build a rebase todo file from the approved groups (one `pick` or `squash`
-   line per commit, matching git-rebase's interactive format)
+1. Build a rebase todo file from the approved groups. For each group:
+   - One `pick` line for the KEEP commit, then `fixup` lines for absorbed commits
+   - If the group has a non-null `proposed_message`: append an
+     `exec git commit --amend -m "<proposed_message>"` line after the group's
+     last `fixup`. At this point in the rebase, HEAD is the group's KEEP
+     commit, so `--amend` targets the correct commit.
+   - For the last group: if `refs_not_in_covers` is non-empty, append the
+     `Closes #N` trailers to that group's `exec` message.
+   Example todo for 3 groups:
+   ```
+   pick abc1234 feat: group 1
+   fixup aaa1111 absorbed commit
+   exec git commit --amend -m "feat(#82): group 1 proposed message"
+   pick def5678 feat: group 2
+   fixup bbb2222 absorbed commit
+   exec git commit --amend -m "feat(#83): group 2 proposed message"
+   pick ghi9012 docs: group 3
+   fixup ccc3333 absorbed commit
+   exec git commit --amend -m "docs: group 3 proposed message\n\nCloses #84"
+   ```
 2. Call `rebase_exec.py multi <PROJECT> base=<base-sha> todo-file=<path>` —
    on failure, the script auto-aborts and restores pre-squash state
-3. For each group with a non-null `proposed_message`: call
-   `rebase_exec.py amend-message <PROJECT> message=<proposed_message>`
-4. Append any `refs_not_in_covers` as `Closes #N` trailers via `amend-message`
-5. Run post-squash interval tree verification (5 evenly-spaced samples,
+3. Run post-squash interval tree verification (5 evenly-spaced samples,
    same procedure as git-squash Step 6)
 
 Working branch is not needed in the two-repo case — the Step 8j rebase

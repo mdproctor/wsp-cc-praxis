@@ -1,6 +1,6 @@
 # Delegate Mechanical work-end Steps to Subagents
 
-**Issue:** #82
+**Issue:** Hortora/soredium#82
 **Date:** 2026-07-17
 **Status:** Approved
 
@@ -16,9 +16,9 @@ loses the context needed for remaining steps.
 
 Replace three groups of read-heavy mechanical steps with subagent dispatches.
 Each subagent runs in an isolated context, absorbs all intermediate output,
-and returns a compact structured JSON result. The parent context only sees
-the dispatch call (~150–200 tokens) and the return value (~200–300 tokens),
-instead of the full raw output (700–3000 tokens per group).
+and returns a compact structured JSON result. The parent context sees the
+dispatch prompt (~350–550 tokens) and the return value (~200–350 tokens),
+instead of the full raw output (500–3500 tokens per group).
 
 ## Scope
 
@@ -26,30 +26,56 @@ instead of the full raw output (700–3000 tokens per group).
 **Out of scope:** handover (#83), work-start, git-commit. Handover follows
 once the pattern is proven.
 
+### Not Delegated (with rationale)
+
+Issue Hortora/soredium#82 lists five work-end delegation candidates. Three are
+addressed below. Two are intentionally not delegated:
+
+- **Pre-conditions check** (.pause-stack, .meta, working tree, remote state):
+  Each failure requires immediate human interaction — hard stops, choice prompts,
+  branch switching offers. The check itself is cheap (~100 tokens of status output);
+  the value is the interactive response to each failure, which must stay in the
+  parent. Delegating saves nothing and adds latency.
+
+- **Routing resolution** (read routing cascade, detect capabilities, resolve
+  DESIGN_REPO): Requires user confirmation of the resolved routing table before
+  proceeding. The resolution logic is a few config reads and a table display
+  (~150 tokens). The interaction makes delegation awkward — the subagent would
+  return a table, the parent would display it, the user would confirm, then the
+  parent would proceed. No token savings justify the round-trip.
+
 ## Delegation Points
 
-### 1. Branch Reconnaissance (replaces Steps 1 + 4 + 5)
+### 1. Branch Reconnaissance (replaces Steps 1 + 5)
 
-**When:** After path resolution, before pre-close sweep (Step 3b).
+**When:** After path resolution and routing resolution (Step 3), before
+pre-close sweep (Step 3b). Step 3 must complete first because it resolves
+DESIGN_REPO, which this subagent needs for journal validation.
 
 **What the subagent does:**
 - Fetches issue title(s) from GitHub for all COVERS issues
 - Runs `git log --oneline` for branch commits
 - Runs `git diff --shortstat` for change summary
-- Lists workspace artifact directories (adr/, blog/, specs/, snapshots/, plans/)
-- Reads JOURNAL.md
+- Reads JOURNAL.md and counts entries
 - Computes current ARC42STORIES.MD section hashes via `section_hashes.py`
 - Compares against baseline hashes from .meta
 - Counts anchored vs unanchored journal entries
 
-**Prompt parameters (from ctx.py):**
+**Step 4 (artifact inventory) remains inline.** The pre-close sweep (Step 3b)
+creates artifacts — blog entries, ADRs, specs. Step 4 must run after 3b to
+inventory the complete set. It is cheap (~5 `ls` commands, ~100 tokens) and
+does not benefit from delegation.
+
+**Prompt parameters (from ctx.py and Step 3 resolution):**
 - WORKSPACE, PROJECT, BRANCH_NAME, BASE_BRANCH
 - ISSUE_N, COVERS, ISSUE_REPO (for GitHub API)
 - PROJECT_SHA (for diff range)
 - META_SECTION_HASHES (pipe-separated baseline hashes from ctx.py output)
-- DESIGN_REPO_KEY (workspace / project / cross-repo:name — determines where ARC42STORIES.MD lives)
+- DESIGN_REPO (resolved filesystem path from Step 3 — not the key)
+- SECTION_HASHES_SCRIPT (`~/.claude/skills/project/section_hashes.py`)
+- SINGLE_REPO_MODE (yes/no — when yes, WORKSPACE == PROJECT)
 
-**Return format:**
+**Return format (all fields required; arrays may be empty):**
 ```json
 {
   "issues": [{"number": 82, "title": "...", "state": "OPEN"}],
@@ -57,13 +83,6 @@ once the pattern is proven.
   "commit_count": 5,
   "diff_stats": "4 files changed, 120 insertions, 30 deletions",
   "journal_entry_count": 3,
-  "artifacts": {
-    "adrs": ["0005-subagent-delegation.md"],
-    "blogs": [],
-    "specs": ["2026-07-17-subagent-design.md"],
-    "snapshots": [],
-    "plans": ["implementation-plan.md"]
-  },
   "journal_validation": {
     "arc42_exists": true,
     "section_drift": [{"section": "## S5", "stored_hash": "abc", "current_hash": "def"}],
@@ -76,18 +95,20 @@ once the pattern is proven.
 ```
 
 **Downstream consumers:**
-- Step 7 (close plan) uses `commits`, `diff_stats`, `artifacts`, `journal_entry_count`
+- Step 7 (close plan) uses `commits`, `diff_stats`, `journal_entry_count`
+- Step 7 also uses `artifacts` from inline Step 4 (not from this subagent)
 - Step 5 decisions use `journal_validation` (drift → offer fix/skip/abort)
-- Step 8h (final report) uses `artifacts` for the artifact summary
+- Step 8h (final report) uses `artifacts` from inline Step 4
 
 **Error handling:** If the subagent returns empty or malformed JSON, warn
-the user and fall back to running Steps 1, 4, 5 inline. This is graceful
+the user and fall back to running Steps 1, 5 inline. This is graceful
 degradation — the skill works exactly as before, just without the context
 savings.
 
-**Model:** Sonnet (mechanical — file listing, git commands, hash comparison).
+**Model:** Sonnet (mechanical — git commands, hash comparison, GitHub API).
 
-**Estimated savings:** 700–1800 tokens of raw output → ~350 tokens (prompt + return).
+**Estimated savings:** 500–1400 tokens of raw output → ~550 tokens
+(prompt ~350 + return ~200). Net savings: ~150–850 tokens.
 
 ---
 
@@ -96,12 +117,19 @@ savings.
 **When:** After rebase onto base branch, before squash execution.
 
 **What the subagent does:**
-- Reads the commit range (`blessed-remote/base..HEAD`)
-- Self-reads `~/.claude/skills/git-squash/squash-policy.md` for classification rules
-- Runs squash-policy.md's strategy detection (merge-commit PRs → reconstruction, else scope clustering or flat)
-- Classifies each commit (SQUASH / KEEP / REVERT_PAIR)
-- Proposes groups with draft squash messages
-- Collects sub-issue references (`Closes #N`, `Fixes #N`, `Resolves #N`) from branch commits
+- Runs `commit_gather.py` to collect structured per-commit data (sha, subject,
+  body, author, date, files, insertions, deletions, issue_refs, patch_id)
+- Self-reads `squash-policy.md` for classification rules
+- Self-reads git-squash `SKILL.md` Steps 3a–3i for the full classification
+  procedure (same-issue clustering, CI arc detection, proximity-grouped
+  resolution, temporal scrutiny, file-overlap MERGE, cross-author check,
+  cherry-pick detection)
+- Runs strategy detection (merge-commit PRs → reconstruction, else scope
+  clustering or flat)
+- Classifies each commit: KEEP / SQUASH / MERGE / DROP
+- Proposes groups with draft squash messages and per-commit/per-group annotations
+- Collects sub-issue references (`Closes #N`, `Fixes #N`, `Resolves #N`) from
+  branch commits
 - Cross-references against COVERS to identify refs that would be lost in squash
 
 **Prompt parameters:**
@@ -109,9 +137,12 @@ savings.
 - BASE_BRANCH, BRANCH_NAME
 - COVERS (comma-separated issue numbers)
 - Blessed remote name (upstream or origin)
-- Path to squash-policy.md (subagent reads it itself)
+- Path to squash-policy.md
+- Path to git-squash SKILL.md
+- Path to commit_gather.py
+- SINGLE_REPO_MODE (yes/no)
 
-**Return format:**
+**Return format (all fields required; arrays may be empty):**
 ```json
 {
   "total_commits": 8,
@@ -121,26 +152,55 @@ savings.
       "label": "feat(#82): delegate lifecycle steps to subagents",
       "action": "KEEP",
       "commits": [
-        {"sha": "abc1234", "message": "feat: ...", "classification": "KEEP"}
+        {
+          "sha": "abc1234",
+          "message": "feat: ...",
+          "classification": "KEEP",
+          "flags": []
+        }
       ],
-      "proposed_message": "feat(#82): delegate mechanical work-end steps to subagents\n\nRefs #82"
+      "proposed_message": "feat(#82): delegate mechanical work-end steps to subagents\n\nRefs #82",
+      "annotations": []
     },
     {
       "label": "squash: fixups and docs",
       "action": "SQUASH",
       "commits": [
-        {"sha": "def5678", "message": "fix: typo", "classification": "SQUASH"},
-        {"sha": "ghi9012", "message": "docs: update readme", "classification": "SQUASH"}
+        {
+          "sha": "def5678",
+          "message": "fix: typo",
+          "classification": "SQUASH",
+          "flags": ["proximity-grouped"]
+        },
+        {
+          "sha": "ghi9012",
+          "message": "docs: update readme",
+          "classification": "SQUASH",
+          "flags": []
+        }
       ],
-      "proposed_message": null
+      "proposed_message": null,
+      "annotations": ["proximity-grouped: no semantic overlap with KEEP target"]
     }
   ],
   "sub_issue_refs": ["#83"],
-  "refs_not_in_covers": ["#83"]
+  "refs_not_in_covers": ["#83"],
+  "warnings": [],
+  "blocking_flags": []
 }
 ```
 
+Per-commit `flags` carry annotations that the parent surfaces in the plan
+display (e.g. `proximity-grouped`, `temporal:18min`, `cross-author`,
+`cherry-pick:release/2.1`, `file-overlap:group-3`). Per-group `annotations`
+carry group-level context (title fitness warnings, handover-survived-filter,
+net-no-op pairs). `warnings` are informational messages for the user.
+`blocking_flags` are issues that must be resolved before execution (e.g.
+duplicate `Closes #N`).
+
 **Downstream consumers:**
+- Parent formats groups into the plan display, presenting per-commit flags and
+  group annotations alongside classifications and proposed messages
 - Parent presents the plan for user approval (accept / edit / reject)
 - On approval, parent executes the squash using git-squash with the approved groups
 - `refs_not_in_covers` are appended as `Closes #N` trailers to the squash message
@@ -149,10 +209,16 @@ savings.
 and offer: (a) invoke `/git-squash` manually, (b) skip squash entirely
 (user takes responsibility for noisy history).
 
-**Model:** Sonnet (commit classification is pattern matching, not reasoning).
+**Model:** Opus. The classification procedure involves reasoning-intensive
+passes: same-issue clustering across non-adjacent commits, CI development arc
+detection, proximity-grouped resolution with semantic scanning, title fitness
+assessment, and cross-author policy application. These are judgment tasks,
+not pattern matching.
 
-**Estimated savings:** 1000–3000 tokens → ~500 tokens (prompt + return). This
-is the single highest-value delegation point.
+**Estimated savings:** 1500–3500 tokens of inline output (commit_gather data,
+classification reasoning, policy reads) → ~900 tokens (prompt ~550 + return
+~350). Net savings: ~600–2600 tokens. This is the single highest-value
+delegation point.
 
 ---
 
@@ -174,8 +240,11 @@ is the single highest-value delegation point.
 - WORKSPACE, PROJECT, BRANCH_NAME
 - Blog destination path (from routing resolution in Step 3)
 - Whether Flyway was used on this branch (from .meta)
+- SINGLE_REPO_MODE (yes/no — when yes, workspace branches and project branches
+  are the same repo; the "corresponding project branch" check for unstamped
+  branches checks the same branch, not a separate repo)
 
-**Return format:**
+**Return format (all fields required; arrays may be empty):**
 ```json
 {
   "unpublished_blogs": ["2026-07-15-entry.md"],
@@ -194,7 +263,9 @@ is the single highest-value delegation point.
 ```
 
 **Downstream consumers:**
-- `unpublished_blogs` non-empty → parent blocks and returns to 8g
+- `unpublished_blogs` non-empty → parent blocks and returns to 8g (max 2 attempts;
+  after second failure, present user with options: fix routing manually, skip with
+  warning, or abort close — do not loop indefinitely)
 - `unrecovered_artifacts` → parent offers cherry-pick per item (user confirms each)
 - `unstamped_branches` → parent offers to stamp per branch (user confirms each)
 - `stale_branches` → parent reports (informational only)
@@ -207,7 +278,8 @@ blogs DO block.
 
 **Model:** Sonnet (file comparisons, git branch scanning).
 
-**Estimated savings:** 500–2000 tokens → ~350 tokens (prompt + return).
+**Estimated savings:** 500–2000 tokens of raw output → ~550 tokens
+(prompt ~350 + return ~200). Net savings: ~150–1450 tokens.
 
 ---
 
@@ -218,8 +290,8 @@ All three delegation points follow the same pattern in work-end's SKILL.md:
 ```markdown
 ### Step N — [Name] (delegated to subagent)
 
-Dispatch a read-only Sonnet subagent. The subagent's execution stays in
-its own context — only the JSON return enters the parent window.
+Dispatch a read-only subagent. The subagent's execution stays in its own
+context — only the JSON return enters the parent window.
 
 **Dispatch:**
 
@@ -247,44 +319,51 @@ convention duplication.
 
 ### Lines removed from work-end SKILL.md
 - Step 1 branch summary block (~30 lines)
-- Step 4 artifact inventory block (~20 lines)
 - Step 5 journal validation block (~30 lines)
 - Step 8i hygiene scan block (~60 lines)
 - Step 8j analysis interleaved with execution (~50 lines of analysis logic)
-- **Total: ~190 lines removed**
+- **Total: ~170 lines removed**
 
 ### Lines added
-- Branch reconnaissance dispatch block (~40 lines)
-- Squash analysis dispatch block (~35 lines)
+- Branch reconnaissance dispatch block (~35 lines)
+- Squash analysis dispatch block (~40 lines)
 - Hygiene scan dispatch block (~30 lines)
 - **Total: ~105 lines added**
 
-### Net: skill shrinks by ~85 lines
+### Net: skill shrinks by ~65 lines
 
 ### Steps unchanged
 - Path resolution (ctx.py) — already cheap
-- Pre-conditions — already cheap
+- Pre-conditions — already cheap, interactive (not delegated — see Scope)
 - Flyway re-scan (Step 2) — one script call
-- Routing resolution (Step 3) — cheap + interactive
+- Routing resolution (Step 3) — cheap + interactive (not delegated — see Scope)
 - Pre-close sweep (Step 3b) — interactive (user toggles)
 - Code review (Step 3c) — interactive, invokes another skill
+- Step 4 (artifact inventory) — remains inline after 3b; cheap (~100 tokens)
 - Spec selection (Step 6) — interactive
-- Close plan (Step 7) — synthesis, now from compact JSON
+- Close plan (Step 7) — synthesis, now from compact JSON + inline Step 4
 - Execution steps 8a–8h — destructive, need user confirmation
 - Steps 9–12 — interactive or synthesis
 
 ## Total Context Savings
 
-| Delegation | Before (tokens) | After (tokens) | Savings |
-|-----------|----------------|----------------|---------|
-| Branch reconnaissance | 700–1800 | ~350 | 350–1450 |
-| Squash analysis | 1000–3000 | ~500 | 500–2500 |
-| Hygiene scan | 500–2000 | ~350 | 150–1650 |
-| **Total** | **2200–6800** | **~1200** | **1000–5600** |
+Estimates include both the prompt template and return value in the "After"
+column. Prompt templates contain inline instructions plus substituted
+parameter values; they are not negligible.
 
-The parent context window reclaims 1000–5600 tokens that previously
-accumulated from intermediate tool output. This is the difference between
-work-end completing in one session vs suggesting "let's continue later."
+| Delegation | Before (tokens) | After (prompt + return) | Net savings |
+|-----------|----------------|------------------------|-------------|
+| Branch reconnaissance | 500–1400 | ~550 | 150–850 |
+| Squash analysis | 1500–3500 | ~900 | 600–2600 |
+| Hygiene scan | 500–2000 | ~550 | 150–1450 |
+| **Total** | **2500–6900** | **~2000** | **900–4900** |
+
+The parent context window reclaims 900–4900 tokens that previously
+accumulated from intermediate tool output. The lower bound represents
+small branches (few commits, few artifacts); the upper bound represents
+complex branches with many commits and multiple artifact types. Both
+ends are meaningful — even the lower bound keeps the context below the
+threshold where Claude suggests continuing in a new session.
 
 ## Constraints
 

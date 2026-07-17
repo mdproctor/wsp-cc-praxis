@@ -221,8 +221,10 @@ subagent's work. The execution path:
      `exec git commit --amend -m "<proposed_message>"` line after the group's
      last `fixup`. At this point in the rebase, HEAD is the group's KEEP
      commit, so `--amend` targets the correct commit.
-   - For the last group: if `refs_not_in_covers` is non-empty, append the
-     `Closes #N` trailers to that group's `exec` message.
+   - For the last group: if `refs_not_in_covers` is non-empty, add the
+     `Closes #N` trailers via a separate `-m` flag (git separates each
+     `-m` argument with a blank line — `\n` inside double quotes produces
+     literal backslash-n in `sh -c`, not a newline).
    Example todo for 3 groups:
    ```
    pick abc1234 feat: group 1
@@ -233,7 +235,7 @@ subagent's work. The execution path:
    exec git commit --amend -m "feat(#83): group 2 proposed message"
    pick ghi9012 docs: group 3
    fixup ccc3333 absorbed commit
-   exec git commit --amend -m "docs: group 3 proposed message\n\nCloses #84"
+   exec git commit --amend -m "docs: group 3 proposed message" -m "Closes #84"
    ```
 2. Call `rebase_exec.py multi <PROJECT> base=<base-sha> todo-file=<path>` —
    on failure, the script auto-aborts and restores pre-squash state

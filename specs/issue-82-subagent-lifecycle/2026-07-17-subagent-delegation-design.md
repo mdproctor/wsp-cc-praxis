@@ -120,10 +120,14 @@ savings.
 - Runs `commit_gather.py` to collect structured per-commit data (sha, subject,
   body, author, date, files, insertions, deletions, issue_refs, patch_id)
 - Self-reads `squash-policy.md` for classification rules
-- Self-reads git-squash `SKILL.md` Steps 3a–3i for the full classification
+- Self-reads git-squash `SKILL.md` — the prompt directs it to Step 3
+  ("Classify commits") and its sub-steps 3a–3i for the full classification
   procedure (same-issue clustering, CI arc detection, proximity-grouped
   resolution, temporal scrutiny, file-overlap MERGE, cross-author check,
-  cherry-pick detection)
+  cherry-pick detection). The prompt explicitly tells the subagent to
+  ignore Steps 0–2 (working branch, filter-repo, range resolution) and
+  Steps 4–9 (plan display, execution, review gate, swap). The SKILL.md
+  has clear `###` step headers making section navigation reliable.
 - Runs strategy detection (merge-commit PRs → reconstruction, else scope
   clustering or flat)
 - Classifies each commit: KEEP / SQUASH / MERGE / DROP
@@ -202,8 +206,51 @@ duplicate `Closes #N`).
 - Parent formats groups into the plan display, presenting per-commit flags and
   group annotations alongside classifications and proposed messages
 - Parent presents the plan for user approval (accept / edit / reject)
-- On approval, parent executes the squash using git-squash with the approved groups
+- On approval, parent executes the squash via `rebase_exec.py` (see below)
 - `refs_not_in_covers` are appended as `Closes #N` trailers to the squash message
+
+**Execution after approval (parent — not the full git-squash skill):**
+
+The parent calls `rebase_exec.py` directly. Invoking the full `/git-squash`
+skill would re-classify all commits, re-present a plan, and duplicate the
+subagent's work. The execution path:
+
+1. Build a rebase todo file from the approved groups (one `pick` or `squash`
+   line per commit, matching git-rebase's interactive format)
+2. Call `rebase_exec.py multi <PROJECT> base=<base-sha> todo-file=<path>` —
+   on failure, the script auto-aborts and restores pre-squash state
+3. For each group with a non-null `proposed_message`: call
+   `rebase_exec.py amend-message <PROJECT> message=<proposed_message>`
+4. Append any `refs_not_in_covers` as `Closes #N` trailers via `amend-message`
+5. Run post-squash interval tree verification (5 evenly-spaced samples,
+   same procedure as git-squash Step 6)
+
+Working branch is not needed in the two-repo case — the Step 8j rebase
+already brought commits onto the base branch, `rebase_exec.py` auto-aborts
+on failure, and the original feature branch ref provides a safety net.
+
+**Single-repo filter-repo:** In single-repo mode, the Step 8j rebase
+brings scaffold commits (`.meta`, `JOURNAL.md`, `design/` directory) onto
+the base branch alongside real commits. In two-repo mode these files live
+in the workspace repo and never enter the project squash range.
+
+Before dispatching the subagent in single-repo mode, the parent must:
+1. Create a temporary working branch from the base branch
+2. Run `filter-repo` on it to strip scaffold paths (`.meta`, `JOURNAL.md`,
+   `design/`) with `--prune-empty always`
+3. Dispatch the subagent to classify on the post-filter-repo branch
+4. Execute the squash on the working branch
+5. Swap the working branch with the base branch via `branch_swap.py`
+
+The scaffold paths are deterministic (always the same files), so no Q&A
+is needed — the parent knows what to strip. Step 8j-cleanup (which removes
+scaffold from main after squash) is still needed to clean the working tree,
+but filter-repo ensures scaffold commits don't pollute the squash groups.
+
+**Sub-issue reference collection:** The subagent's `sub_issue_refs` and
+`refs_not_in_covers` replace the inline "Collect sub-issue references
+before squash" section in work-end Step 8j. The inline collection is
+removed — the subagent does this as part of its classification pass.
 
 **Error handling:** If the subagent returns empty or malformed JSON, warn
 and offer: (a) invoke `/git-squash` manually, (b) skip squash entirely
@@ -298,7 +345,7 @@ context — only the JSON return enters the parent window.
 Agent(
   description: "[short label]",
   prompt: "[inline template with {PLACEHOLDER} values substituted from ctx.py]",
-  model: "sonnet"
+  model: "[sonnet or opus — see each delegation point's Model section]"
 )
 
 **Return format:**
@@ -321,7 +368,8 @@ convention duplication.
 - Step 1 branch summary block (~30 lines)
 - Step 5 journal validation block (~30 lines)
 - Step 8i hygiene scan block (~60 lines)
-- Step 8j analysis interleaved with execution (~50 lines of analysis logic)
+- Step 8j analysis interleaved with execution (~50 lines of analysis logic,
+  including inline sub-issue reference collection — replaced by subagent)
 - **Total: ~170 lines removed**
 
 ### Lines added

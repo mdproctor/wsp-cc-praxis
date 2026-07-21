@@ -105,19 +105,25 @@ For every original repo involved across all selected slots:
 
 For each selected slot, in order:
 
-> **Phase B correspondence:** Steps 5a–5e implement the same operations as
-> work-end Phase B (B1–B7) but invoked externally from the main repo. The
-> shared scripts (`artifact_promote.py`, `blog_dest.py`) provide the single
-> point of truth for each operation. If Phase B gains new steps, they must
-> be reflected here — the correspondence is:
+> **Phase B correspondence:** Steps 5a–5f implement the same operations as
+> work-end Phase B (B1–B7) plus Step 9 (EPIC-CLOSED.md), invoked externally
+> from the main repo. The shared scripts (`artifact_promote.py`,
+> `blog_dest.py`, `branch_cleanup.py`) provide the single point of truth
+> for each operation. If Phase B gains new steps, they must be reflected
+> here — the correspondence is:
 >
-> | Step | Phase B | Operation |
-> |------|---------|-----------|
+> | Step | Phase B / work-end | Operation |
+> |------|--------------------|-----------|
 > | 5a | B1 | Rebase branches onto current main |
 > | 5b | B2 | Fast-forward and push |
 > | 5c | B3–B5 | Close issues, promote artifacts, clean up specs, publish blog |
 > | 5d | B6 | Stamp branches as closed |
-> | 5e | B7 | Cleanup / archive |
+> | 5e | Step 9 | Mark closed (EPIC-CLOSED.md) |
+> | 5f | B7 | Cleanup / archive |
+>
+> Not carried over from B8: build verification (8k — slot has no build
+> context), ARC42 stale scan (Step 11 — not critical for merge), HANDOFF.md
+> (Step 12 — session-specific).
 
 **5a. Rebase** — call `slot_manager.py merge-slot <family-root>
 slot=<N>`. The script rebases all project repo branches onto current
@@ -149,14 +155,43 @@ Corresponds to Phase B steps B3–B5:
 - Publish blog: via `blog_dest.py` targeting the ORIGINAL workspace
 
 **5d. Stamp branches** — empty commits on branches in the slot worktrees.
-Stamp BOTH project repo branches and workspace worktree branches
-(corresponds to Phase B step B6):
+Stamp BOTH project repo branches and ALL workspace worktree branches
+(corresponds to Phase B step B6).
+
+Workspace worktree names are NOT fixed — `resolve_workspace_source()`
+returns `"work"` (shared workspace) or `"work-{name}"` (external
+workspace), and a slot can have multiple. Discover workspace worktrees
+dynamically: scan the slot directory for directories whose name starts
+with `work` and contain a `.git` file.
+
 ```bash
+# Project repos
 git -C <slot>/<repo> commit --allow-empty -m "chore: branch closed — landed as <SHA> on main"
-git -C <slot>/work commit --allow-empty -m "chore: branch closed — landed as <SHA> on main"
+# ALL workspace worktrees (work, work-iot, work-pages, etc.)
+for each <ws-dir> in <slot>/work* where <ws-dir>/.git exists:
+  git -C <ws-dir> commit --allow-empty -m "chore: branch closed — landed as <SHA> on main"
 ```
 
-**5e. Archive** — call `slot_manager.py archive-slot <family-root>
+**5e. Mark closed** — commit `design/EPIC-CLOSED.md` on the workspace
+branch in the primary workspace worktree (the first `work*` directory in
+the slot). This is the canonical marker that the hygiene scan (work-end
+8i) uses to classify branches — without it, merged branches are flagged as
+stale after 7 days, and unrecovered-artifact and unstamped-branch checks
+are silently skipped.
+
+```bash
+python3 ~/.claude/skills/work-end/branch_cleanup.py create-epic-closed \
+  <slot>/<primary-workspace> branch=<BRANCH_NAME> \
+  date=$(date +%Y-%m-%d) issues=<COVERS> single-repo=no
+```
+
+The workspace worktree is already on the branch (created with
+`git worktree add -b`), so `single-repo=no` is correct — no branch
+checkout needed.
+
+This must run BEFORE archive (5f) because archive removes the worktrees.
+
+**5f. Archive** — call `slot_manager.py archive-slot <family-root>
 slot=<N>`. The script runs `git worktree remove` for each repo and
 workspace worktree, then moves `worktrees/<N>/` to `worktrees/attic/<N>/`.
 SLOT.md, `.phase-a-complete`, `.landed`, and other metadata survive in
@@ -169,7 +204,7 @@ main. The slot stays in `landed` state. Report the manual cleanup command:
 `mv worktrees/<N> worktrees/attic/<N>`.
 
 If "all" was selected and slot N fails at 5a (conflict), slots N+1 onward
-are not attempted. Slots before N are already landed and archived. This is
+are not attempted. Slots before N are already landed and archived (5f). This is
 intentional: each slot rebases against the current main, which advances
 after each successful merge. Slot N+1's rebase target depends on slot N's
 outcome — continuing would require rebasing against either the pre-slot-N
@@ -356,8 +391,14 @@ Update `list_slots()` to:
 ### Workspace worktree handling
 - Workspace worktrees excluded from merge-slot rebase/push
 - Artifact promotion targets the original workspace, not the slot workspace
-- Branch stamping covers both project and workspace worktree branches
+- Branch stamping discovers all workspace worktrees dynamically (work,
+  work-iot, etc.), not just hardcoded "work"
 - Spec cleanup runs during Step 5c post-merge actions
+
+### Lifecycle markers
+- EPIC-CLOSED.md created on workspace branch before archive (Step 5e)
+- Subsequent work-end hygiene scan does NOT flag the merged branch as stale
+- Unrecovered artifact and unstamped branch checks work on the merged branch
 
 ### Listing
 - `list-slots --all` — verify archived slots appear with repo info from

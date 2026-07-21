@@ -19,7 +19,7 @@ them, and executes the full Phase B + archival sequence.
 
 ## Slot Lifecycle States
 
-Five states, tracked by filesystem markers in the slot directory:
+Four states, tracked by filesystem markers in the slot directory:
 
 | State | Marker | Meaning |
 |-------|--------|---------|
@@ -41,7 +41,11 @@ fails between push and archive.
 
 Walk up from CWD looking for a directory that is not itself a git repo and
 contains child directories with `wksp` symlinks. Same logic as `work-slot
-create` Step 2. If the walk-up fails, ask the user.
+create` Step 2, with an additional guard: for each candidate, verify that
+its child repos have `.git` directories (not files). Worktree checkouts
+have `.git` files containing `gitdir:` pointers — if any child matches
+this pattern, the candidate is a slot directory, not the family root. Skip
+it and continue walking up. If the walk-up fails, ask the user.
 
 ### Step 2 — Scan and present
 
@@ -82,32 +86,75 @@ slot-number order.
 
 ### Step 4 — Pre-check
 
-For every original repo involved across all selected slots: verify it has
-main checked out. If any repo is on a different branch, stop and report
-which repo is on the wrong branch.
+For every original repo involved across all selected slots:
+
+1. Verify it has main checked out. If any repo is on a different branch,
+   stop and report which repo is on the wrong branch.
+2. Verify the working tree is clean (`git -C <repo> status --short` is
+   empty). If any repo has uncommitted changes, stop and report.
+3. Verify local main has no unpushed commits: `git -C <repo> log
+   origin/main..main --oneline` must be empty. If any repo has unpushed
+   commits, stop and report — unpushed local commits cause Stage 2's
+   `merge --ff-only` to fail because the branch is rebased onto
+   `origin/main`, not onto the diverged local main.
+4. Fetch origin and check if remote is ahead of local: `git -C <repo> log
+   main..origin/main --oneline`. If ahead, warn (non-blocking) — Stage 2
+   handles the rebase.
 
 ### Step 5 — Sequential merge
 
 For each selected slot, in order:
 
-**5a. Dry-run rebase** — call `slot_manager.py merge-slot <family-root>
-slot=<N>`. The script rebases all repo branches onto current `origin/main`
-in the slot worktrees. If any repo conflicts, the script outputs
-`ERROR=conflict repo=<name>` and stops. No repos have been pushed.
+> **Phase B correspondence:** Steps 5a–5e implement the same operations as
+> work-end Phase B (B1–B7) but invoked externally from the main repo. The
+> shared scripts (`artifact_promote.py`, `blog_dest.py`) provide the single
+> point of truth for each operation. If Phase B gains new steps, they must
+> be reflected here — the correspondence is:
+>
+> | Step | Phase B | Operation |
+> |------|---------|-----------|
+> | 5a | B1 | Rebase branches onto current main |
+> | 5b | B2 | Fast-forward and push |
+> | 5c | B3–B5 | Close issues, promote artifacts, clean up specs, publish blog |
+> | 5d | B6 | Stamp branches as closed |
+> | 5e | B7 | Cleanup / archive |
 
-**5b. Fast-forward and push** — if dry-run passes, the same `merge-slot`
-call continues: for each repo in the original checkout, fetch origin main,
-rebase origin/main, merge --ff-only the branch, push origin main. Returns
-`LANDED_SHAS=<repo:sha,repo:sha>`. Writes `.landed` marker with timestamp
-and SHAs.
+**5a. Rebase** — call `slot_manager.py merge-slot <family-root>
+slot=<N>`. The script rebases all project repo branches onto current
+`origin/main` in the slot worktrees. If any repo conflicts, the script
+outputs `ERROR=conflict repo=<name>` and stops. No repos have been pushed.
 
-**5c. Post-merge actions** — the skill handles these (not the script):
+**5b. Fast-forward and push** — if rebase passes, the same `merge-slot`
+call continues: for each project repo in the original checkout, fetch
+origin main, rebase origin/main, merge --ff-only the branch, push origin
+main. Returns `LANDED_SHAS=<repo:sha,repo:sha>`. Writes `.landed` marker
+with timestamp and SHAs.
+
+If `merge --ff-only` or push fails (concurrent push advanced origin/main),
+the script retries from Stage 1 — max 3 attempts. After 3 failures, output
+`ERROR=retry_exhausted` and exit non-zero with manual instructions.
+
+If push fails after some repos have already pushed (partial push), the
+script writes a `.merge-progress` marker in the slot directory with
+per-repo push status. On re-run, merge-slot reads `.merge-progress` and
+skips already-pushed repos in Stage 2. See §merge-slot for details.
+
+**5c. Post-merge actions** — the skill handles these (not the script).
+Corresponds to Phase B steps B3–B5:
 - Close issues: all in COVERS via `artifact_promote.py close-issues`
-- Promote artifacts: from slot workspace worktree via `artifact_promote.py`
-- Publish blog: via `blog_dest.py`
+- Promote artifacts: from slot workspace worktree to the ORIGINAL workspace
+  (which has main checked out) via `artifact_promote.py to-workspace-main`
+- Clean up specs: via `artifact_promote.py cleanup-specs` in the slot
+  workspace worktree (corresponds to Phase B deferred 8c)
+- Publish blog: via `blog_dest.py` targeting the ORIGINAL workspace
 
-**5d. Stamp branches** — empty commits on branches in the slot worktrees:
-`chore: branch closed — landed as <SHA> on main`
+**5d. Stamp branches** — empty commits on branches in the slot worktrees.
+Stamp BOTH project repo branches and workspace worktree branches
+(corresponds to Phase B step B6):
+```bash
+git -C <slot>/<repo> commit --allow-empty -m "chore: branch closed — landed as <SHA> on main"
+git -C <slot>/work commit --allow-empty -m "chore: branch closed — landed as <SHA> on main"
+```
 
 **5e. Archive** — call `slot_manager.py archive-slot <family-root>
 slot=<N>`. The script runs `git worktree remove` for each repo and
@@ -115,10 +162,27 @@ workspace worktree, then moves `worktrees/<N>/` to `worktrees/attic/<N>/`.
 SLOT.md, `.phase-a-complete`, `.landed`, and other metadata survive in
 the attic.
 
+If archive-slot fails (e.g., a process holds a file lock in the worktree),
+report the error but do NOT roll back the merge — the code is already on
+main. The slot stays in `landed` state. Report the manual cleanup command:
+`git worktree remove --force <path>` followed by
+`mv worktrees/<N> worktrees/attic/<N>`.
+
 If "all" was selected and slot N fails at 5a (conflict), slots N+1 onward
-are not attempted. Slots before N are already landed and archived.
+are not attempted. Slots before N are already landed and archived. This is
+intentional: each slot rebases against the current main, which advances
+after each successful merge. Slot N+1's rebase target depends on slot N's
+outcome — continuing would require rebasing against either the pre-slot-N
+main (stale) or the expected post-slot-N main (unknown, since slot N
+didn't merge).
 
 ## Script Changes: `slot_manager.py`
+
+**Slot number allocation fix:** `allocate_slot_number()` must scan both
+`worktrees/*/` and `worktrees/attic/*/` when computing the next number.
+Without this, archiving all active slots resets the counter to 1, and
+archiving a new slot 1 overwrites the original slot 1's metadata in the
+attic.
 
 Three new subcommands:
 
@@ -152,9 +216,14 @@ Returns JSON:
 
 ### `merge-slot <family-root> slot=<N>`
 
-Executes in two stages with progress output:
+Executes in two stages with progress output. Retry loop wraps both stages
+— max 3 attempts total.
 
-**Stage 1 — Dry-run rebase.** For each repo in the slot:
+Only project repos are processed (workspace worktrees are excluded — filter
+as `not name.startswith("work")` and `name != ".m2"`, matching the
+`list_slots()` filter).
+
+**Stage 1 — Rebase.** For each project repo in the slot:
 ```bash
 git -C <slot>/<repo> fetch origin main
 git -C <slot>/<repo> rebase origin/main
@@ -162,18 +231,32 @@ git -C <slot>/<repo> rebase origin/main
 If any rebase fails: abort that rebase, output `ERROR=conflict
 repo=<name>`, exit non-zero. No push has happened.
 
-Output: `STAGE=dry-run STATUS=pass` or `STAGE=dry-run STATUS=fail`
+Output: `STAGE=rebase STATUS=pass` or `STAGE=rebase STATUS=fail`
 
-**Stage 2 — Fast-forward and push.** For each repo (in original checkout):
+**Stage 2 — Fast-forward and push.** For each project repo (in original
+checkout):
 ```bash
 git -C <original>/<repo> fetch origin main
 git -C <original>/<repo> rebase origin/main
 git -C <original>/<repo> merge --ff-only <branch>
 git -C <original>/<repo> push origin main
 ```
-If any push fails: output `ERROR=push_failed repo=<name>`, exit non-zero.
 
-On success: write `.landed` marker:
+As each repo pushes successfully, append to `.merge-progress` in the slot
+directory: `<repo>=pushed:<sha>`. This enables partial push recovery.
+
+If `merge --ff-only` or `push` fails: retry from Stage 1 (re-rebase all
+repos, re-attempt push for unpushed repos). Max 3 attempts total. After 3
+failures: output `ERROR=retry_exhausted repo=<name>`, exit non-zero.
+
+**Partial push recovery.** On re-run (or retry), if `.merge-progress`
+exists, read it and skip Stage 2 push for repos already listed as
+`pushed`. Stage 1 re-rebases all repos (safe — git detects
+already-applied patches by patch-id and skips them). This handles the case
+where repo A pushed but repo B failed, leaving the family in an
+inconsistent state.
+
+On full success: remove `.merge-progress`, write `.landed` marker:
 ```
 branch=<BRANCH_NAME>
 repos=<comma-separated>
@@ -209,9 +292,12 @@ Update `list_slots()` to:
 - Show the lifecycle state using all markers (active / ready to land /
   landed)
 - Accept a `--all` flag that also scans `worktrees/attic/` for archived
-  slots
+  slots. For archived slots, read repo information from SLOT.md (the
+  `## Repos` section), not from `.git` files — after `git worktree
+  remove`, the `.git` files in attic repo directories point to dead
+  worktree gitdirs and are unreliable.
 - Include per-repo commit count and diff stats for active and ready-to-land
-  slots
+  slots (not for archived — worktrees no longer exist)
 
 ## Files Changed
 
@@ -234,6 +320,7 @@ Update `list_slots()` to:
 
 ## Testing
 
+### Core flow
 - Create a multi-repo slot, run Phase A, verify `scan-ready` returns
   correct data
 - `merge-slot` with clean rebase — verify ff-only merge and push succeed
@@ -244,5 +331,34 @@ Update `list_slots()` to:
   against updated main
 - "all" with conflict on slot 2 — verify slot 1 is landed/archived, slot 2
   stops cleanly
+
+### Pre-check
 - Pre-check failure — verify error when original repo not on main
-- `list-slots --all` — verify archived slots appear
+- Pre-check with uncommitted changes — verify error reports dirty repo
+- Pre-check with unpushed commits on local main — verify error reports
+  diverged repo
+
+### Failure modes and recovery
+- Slot number allocation with existing attic entries — verify new slot
+  number is max of active + archived + 1
+- Partial push failure (repo A pushed, repo B failed) — verify
+  `.merge-progress` written, re-run skips repo A and retries repo B
+- Retry on ff-only failure — verify Stage 1 re-rebase + Stage 2 retry
+  succeeds when concurrent push caused the initial failure
+- Archive failure after merge success — verify slot stays `landed`, error
+  reported, manual instructions provided
+
+### Family root detection
+- Family root detection from within a slot worktree CWD — verify the slot
+  directory is rejected (`.git` file guard) and the real family root is
+  found
+
+### Workspace worktree handling
+- Workspace worktrees excluded from merge-slot rebase/push
+- Artifact promotion targets the original workspace, not the slot workspace
+- Branch stamping covers both project and workspace worktree branches
+- Spec cleanup runs during Step 5c post-merge actions
+
+### Listing
+- `list-slots --all` — verify archived slots appear with repo info from
+  SLOT.md (not from dead `.git` files)

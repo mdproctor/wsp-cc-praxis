@@ -1,0 +1,9 @@
+branch: issue-87-work-end-graceful-meta
+project-sha: 2411c2acc3cc0f1728ade9b4c3c6405d18f8278e
+date: 2026-07-24
+issue: 87
+issue-repo: Hortora/soredium
+covers: 87,88
+flyway-next-v: none
+design-repo: workspace
+design-section-hashes: 

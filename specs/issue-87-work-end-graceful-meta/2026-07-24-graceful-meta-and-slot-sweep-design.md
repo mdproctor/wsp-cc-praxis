@@ -78,7 +78,8 @@ Slot mode is detected by `/worktrees/` in the `$PROJECT` path (existing logic).
 **Slot mode — new Step 3b-slot:**
 
 ```
-1. Discover repos in the slot:
+1. Discover repos in the slot (read from slot_manager.py metadata
+   or scan the worktree directory for git repos):
    - Primary repo = $PROJECT (the repo work-slot was invoked from)
    - Secondary repos = other repos checked out in the slot worktree
 

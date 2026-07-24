@@ -54,6 +54,12 @@ consistent with ctx.py's existing pattern-extraction role (it already parses
          - INFERRED_ISSUE populated (from ctx.py) →
            gh issue view INFERRED_ISSUE --repo OWNER_REPO,
            extract title and confirm with user
+         - INFERRED_ISSUE populated but gh issue view fails
+           (network error, issue not found, OWNER_REPO empty) →
+           present inferred number for manual confirmation:
+           "Branch references issue #N but verification failed —
+           confirm, enter a different number, or skip."
+           Fall through to the interactive path on failure.
          - INFERRED_ISSUE empty →
            ask user for one-line work description,
            offer to invoke issue-workflow Phase 2 to create an issue
@@ -225,9 +231,27 @@ python3 close_artifacts.py <workspace> <project> <branch> \
 Called once per workspace in the slot. The loop lives in SKILL.md instructions,
 not in the script — keeping `close_artifacts.py` composable and slot-agnostic.
 
+#### Phase B step B4 wiring
+
+In Phase B (slot mode), the original workspace is on main after B2 merge.
+Artifacts to promote are on the **slot** workspace's branch. Step B4 must
+pass `scan-workspace` when calling `close_artifacts.py`:
+
+```bash
+python3 close_artifacts.py <ORIGINAL_WORKSPACE> <PROJECT> <BRANCH_NAME> \
+  issue-repo=<ISSUE_REPO> covers=<COVERS> \
+  scan-workspace=<SLOT_WORKSPACE>
+```
+
+Without this, Phase B's `close_artifacts.py` would scan the original workspace
+(now on main) and find no branch artifacts to promote.
+
 #### What changes
 
 - **work-end/SKILL.md** Step 3b — add slot-mode branch with per-repo sweep loop
+- **work-end/SKILL.md** Phase B step B4 — pass `scan-workspace=<slot-workspace-path>`
+  to `close_artifacts.py` (artifacts are on the slot workspace branch, not the
+  original workspace which is on main after B2 merge)
 - **work-end/close_artifacts.py** — add `scan-workspace` optional parameter;
   when present, scan artifacts from that path instead of the workspace arg
 - **tests/** — new tests for `close_artifacts.py` covering `scan-workspace`

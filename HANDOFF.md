@@ -2,36 +2,42 @@
 
 ## Last Session
 
-Closed #87 and #88 on branch `issue-87-work-end-graceful-meta`.
-Landed as `fef8ed9` on main.
+Closed #89 (extract work-end subagent dispatches into scripts) and fixed #90
+(guard slot archival against active work). Both landed on main.
 
 ## What Was Done
 
-**#87 — work-end graceful .meta:** Replaced the hard gate at pre-condition 2
-with a reconstruction block. ctx.py gets `INFERRED_ISSUE` (parses `issue-(\d+)`
-from branch name when `.meta` absent). Step 3 now reads `DESIGN_REPO_KEY` from
-ctx.py instead of re-reading `.meta` directly. Steps 5 and 8d skip journal merge
-when `PROJECT_SHA` is empty.
+**#89 — work-end script extraction:** Replaced three LLM subagent dispatches
+with deterministic Python scripts: `branch_recon.py` (Step 1), `hygiene_scan.py`
+(Step 8i), `land_branch.py` (Step 8j rebase/push/stamp). Same JSON/KEY=value
+output contracts. Scripts emit `warnings[]` / `FALLBACK=yes` for edge cases —
+the skill falls back to inline LLM for flagged items. 46 tests. Garden entry
+GE-20260725-9f2e4b captures the LLM-in-the-loop pattern.
 
-**#88 — slot-mode per-repo sweep:** `close_artifacts.py` accepts
-`scan-workspace=<path>` — scans artifacts from an alternate location while
-promoting to the original workspace. Step 3b-slot adds a per-repo sweep loop
-(protocol → update-claude-md → doc-sync). Phase B step B4 passes `scan-workspace`
-so slot artifacts are found after merge.
-
-Design review: 3 rounds, 18 issues, all resolved ($12.18). Key catches: Step 3
-`.meta` re-read elimination, Phase B wiring gap, `gh issue view` failure fallback.
-
-9 new tests (5 ctx.py, 4 close_artifacts.py). Full suite: 93 passed.
+**#90 — slot archival guard:** `archive_slot()` and `remove_slot()` now check
+for `.landed` marker or `chore: branch closed` stamp before proceeding. Audit
+of casehub attic showed 9/18 archived slots had no completion marker — all
+potentially premature. Triggered by slot 32 being archived while issue-98 work
+was still in progress.
 
 ## Immediate Next
 
-No mandatory follow-on. Check open issues for next work.
+User wants a **lifecycle activity log** — a persistent log of work-starts,
+work-ends, slot creates/archives across all repos. Goal: birds-eye view of
+all current work without scanning git logs across multiple repos. Also enables
+"what should I work on?" management. Brainstorm this next session.
+
+## What's Left
+
+- Installed SKILL.md (work-end) still has old subagent dispatch text — `sync-local`
+  ran but the installed copy loads from the old skill cache. Verify next session
+  that the updated SKILL.md is what loads. · XS · Low
 
 ## What's Next
 
 | # | Description | Scale | Complexity | Notes |
 |---|-------------|-------|------------|-------|
-| #83 | Handover subagent delegation | M | Med | Same pattern as #82 |
+| — | Lifecycle activity log (cross-repo) | L | Med | User-proposed; brainstorm first |
+| #83 | Handover subagent delegation | M | Med | Same extraction pattern as #89 |
 | #80 | Programmatic blog content gate | M | Med | |
 | #75 | Post-integration verification | M | Med | |

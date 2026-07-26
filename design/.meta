@@ -1,0 +1,9 @@
+branch: issue-91-programmatic-slot-stamp
+project-sha: 441ad7ed2cf9c27e79536f15e6b08001c9df6269
+date: 2026-07-26
+issue: 91
+issue-repo: Hortora/soredium
+covers: 91
+flyway-next-v: none
+design-repo: project
+design-section-hashes: 

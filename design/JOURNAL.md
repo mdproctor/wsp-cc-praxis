@@ -1,1 +1,1 @@
-# Design Journal — issue-91-programmatic-slot-stamp
+# Design Journal — issue-epic-driven-slots

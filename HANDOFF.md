@@ -14,13 +14,15 @@
 
 `issue-epic-driven-slots` landed on main (9178720). Branch stamped and closed. Issue #96 closed. 136 tests passing.
 
+*Updated: #97 (branch divergence guard) closed — removed from backlog.*
+
 ## Immediate Next Step
 
-File issue for branch divergence safety: ctx.py should detect workspace/project branch mismatch and warn. Manual branch creation without work-start caused stale `.meta` to give wrong context during this session's work-end.
+Pick next work from What's Next — #95 (mechanize state-changing operations) is the largest impact item; #94 (close-out reports) and #92 (restore-slot) are smaller and independent.
 
 ## What's Left
 
-- Branch divergence guard in ctx.py — workspace/project mismatch detection · S · Low
+*None — previous trailing item (#97) landed as dc974d0.*
 
 ## What's Next
 

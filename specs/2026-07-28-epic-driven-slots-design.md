@@ -31,9 +31,15 @@ Epic sequencing (batch planning, issue advancement, progress tracking)
 is a distinct concern from slot infrastructure (worktree creation, `.m2`
 isolation, symlink management). The implementation separates these:
 
-- **`epic_manager.py`** — owns batch plan parsing, issue advancement,
-  progress queries, and epic body update logic. Operates on a batch plan
-  data structure independent of storage location.
+- **`epic_manager.py`** — owns batch plan parsing, epic body update
+  logic, progress queries, and issue advancement. Exposes subcommands:
+  - `plan <slot-dir>` — parse SLOT.md, return batch plan as JSON
+  - `advance <slot-dir>` — atomically advance to next issue: update
+    SLOT.md checkboxes/markers, append completed issue to `COVERS` in
+    `.meta`, optionally check GitHub epic checkbox. Returns new state.
+  - `status <slot-dir>` — return progress summary and divergence data
+  Mechanical operations live in the script; the skill handles judgment
+  (user confirmation, batch announcements, safe-exit prompts).
 - **`slot_manager.py`** — owns slot lifecycle (create, merge, archive).
   Extended to call `epic_manager.py` when creating epic slots.
 - **SLOT.md** — stores both slot metadata (repos, branch) and epic state
@@ -57,6 +63,14 @@ New command: `work-slot epic <owner/repo>#<N>` (or `work-slot epic #N`
 when repo is inferrable from context).
 
 **Steps:**
+
+0. **Guard: check for existing epic slot.** Scan active slots via
+   `list_slots()` and check each SLOT.md for `Type: epic` with the
+   same epic issue number. If found, refuse:
+   > "Slot N already tracks epic #M (branch: `<branch>`).
+   > Run `work-slot merge` to land it first, or `work-slot status`
+   > to see its progress."
+   This prevents divergent work from two slots tracking the same epic.
 
 1. Fetch the epic issue body and all child issues from GitHub (parse
    Scope checklist `- [ ] #N` entries and/or cross-references)
@@ -139,8 +153,8 @@ maintaining backward compatibility with `parse_slot_md()`:
 # Slot 38 — issue-50-weighted-profiles
 
 ## Issue
-owner/repo#50 — Epic Title
-Covers: 108,109,110,114,111
+owner/repo#50
+Covers: 108,109,110,114
 Type: epic
 Safe exit: after any completed batch
 
@@ -187,18 +201,26 @@ Last wrap: 2026-07-28, session covered batch 1 in full
 The `## Issue`, `## What to do`, and `## Repos` sections are preserved
 with their existing headings. `parse_slot_md()` correctly extracts:
 - `issue_repo` and `issue` from `## Issue` (the epic number)
-- `covers` from the `Covers:` line (accumulated completed issues)
+- `covers` from the `Covers:` line (completed issues so far)
 - `context` from `## What to do`
 - `repos` from `## Repos`
+
+**The issue line MUST use `owner/repo#N` format without a title suffix.**
+The parser at `slot_manager.py` line 301 splits on `#` and expects
+exactly two parts. A line like `owner/repo#50 — Epic Title` would
+produce `issue = "50 — Epic Title"`, breaking `gh issue view` and
+`scan_ready()` downstream. The epic title is available from the
+`## What to do` section and via GitHub API — it does not need to be
+on the issue line.
 
 The `## Batch Plan` and `## Session State` sections are new —
 `parse_slot_md()` skips them via the `if line.startswith("## "):`
 guard (lines 299-300 in `slot_manager.py`), which resets all section
-flags for unknown headings. No changes to `parse_slot_md()` are
-required for backward compatibility.
+flags for unknown headings.
 
-A `Type: epic` line in the `## Issue` section distinguishes epic slots
-from regular slots. `parse_slot_md()` is extended to detect this and
+The `Type: epic` and `Safe exit:` lines within `## Issue` are correctly
+skipped by the parser (no `#` character, not starting with `Covers:`).
+`parse_slot_md()` is extended to detect the `Type: epic` line and
 return an `is_epic` flag. Functions that iterate slots (`list_slots()`,
 `scan_ready()`) gain an optional `epic_only` filter.
 
@@ -239,17 +261,23 @@ provide a richer resume experience.
 
 User says "next" → invokes `work-slot next`.
 
-`work-slot next` does:
-1. Check off the issue in the epic's Scope section on GitHub
-   (`- [x] #N` — progress signaling only, not issue closure)
-2. Update SLOT.md: check off issue, advance `← active` marker
-3. Update `COVERS` in `.meta`: add the completed issue number to the
-   comma-separated list
-4. If last issue in batch: announce batch complete, advance to next
-   batch, note this is a safe exit point
-5. If last issue in last batch: announce epic complete, prompt for
-   work-end
-6. Print what's next for immediate LLM context
+`work-slot next` calls `epic_manager.py advance`:
+
+```bash
+python3 ~/.claude/skills/work-slot/epic_manager.py advance <slot-dir>
+```
+
+The script atomically:
+1. Checks off the issue in SLOT.md (checkbox + advance `← active` marker)
+2. Appends the completed issue to `COVERS` in `.meta`
+3. Checks the GitHub epic checkbox (`- [x] #N` — progress signaling,
+   not issue closure). Non-fatal on failure.
+4. Returns JSON: `{"completed": N, "next_issue": N, "batch_complete": bool, "epic_complete": bool, "safe_exit": bool}`
+
+The skill then handles judgment:
+- If `batch_complete`: announce batch complete, note safe exit point
+- If `epic_complete`: announce epic complete, prompt for work-end
+- Otherwise: print what's next for immediate LLM context
 
 **Issue closure is deferred to `work-end`.** Issues are NOT closed on
 GitHub during `work-slot next`. The `COVERS` field in `.meta`
@@ -258,11 +286,24 @@ runs, it reads `COVERS` and closes all listed issues — matching the
 platform's principle that issues close at branch close time, after
 code is verified and merged to main.
 
-**`COVERS` accumulation:** When the epic slot is created, `COVERS` in
-`.meta` starts with the first batch's issues. As `work-slot next`
-completes each issue and advances through batches, it appends newly
-started batch issues to `COVERS`. At any point, `COVERS` reflects all
-issues the user has worked on. `work-end` reads `COVERS` to close them.
+**`COVERS` accumulation:** `COVERS` in `.meta` starts empty at epic
+slot creation (the epic issue number is stored in `issue:`, not in
+`covers:`). Each call to `work-slot next` (via `epic_manager.py advance`)
+appends exactly one issue — the just-completed issue — to `COVERS`.
+Entire batches are NEVER pre-loaded into `COVERS`.
+
+Example progression:
+- Slot created: `covers:` (empty)
+- After #108 done: `covers: 108`
+- After #109 done: `covers: 108,109`
+- After all Batch 1: `covers: 108,109,110,114`
+- After #111 done (Batch 2): `covers: 108,109,110,114,111`
+- Safe exit + work-end: closes #108, #109, #110, #114, #111
+
+This keeps `COVERS` as a faithful record of completed work. At any
+point, `work-end` can safely close every issue in `COVERS` — they have
+all been worked on. The `Covers:` line in SLOT.md mirrors `.meta` for
+`parse_slot_md()` compatibility.
 
 **Error recovery for `work-slot next`:**
 
@@ -365,7 +406,9 @@ additional context after the standard resume completes.
 
 1. State 2 fires: `.meta` exists, branches aligned → resume path
 2. Resume path runs Steps 0, 2, 3, 3b, 11
-3. After standard resume steps, check for SLOT.md:
+3. After standard resume steps, check for slot context:
+   - Guard: `$PROJECT` path must contain `/worktrees/` (same check
+     as work-end Slot Mode Detection). Skip if not in a slot.
    - Path: `$PROJECT/../SLOT.md` (one directory up from repo worktree)
    - If exists and contains `Type: epic` in the `## Issue` section:
      a. Read `## Session State` for current batch/issue
@@ -381,8 +424,10 @@ Handover detects epic slot context via the same SLOT.md path:
 
 1. Resolve `$PROJECT` via ctx.py (already done in handover's Path
    Resolution)
-2. Check `$PROJECT/../SLOT.md` exists
-3. If exists and contains `Type: epic`:
+2. Guard: `$PROJECT` path must contain `/worktrees/`. Skip if not
+   in a slot.
+3. Check `$PROJECT/../SLOT.md` exists
+4. If exists and contains `Type: epic`:
    - Read current batch, active issue, and progress from SLOT.md
    - Include an "Epic Progress" section in HANDOFF.md:
      ```
@@ -393,7 +438,7 @@ Handover detects epic slot context via the same SLOT.md path:
      Next: #112 → then Batch 3 (#115)
      ```
    - Placement: after "## Last Session", before "## What's Left"
-4. When not in an epic slot (no SLOT.md or no `Type: epic`), this
+5. When not in an epic slot (no SLOT.md or no `Type: epic`), this
    section is omitted entirely.
 
 ### Worklog Integration

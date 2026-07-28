@@ -71,7 +71,10 @@ Shared with `.slot`:
 New verb in `work/SKILL.md` Step 1 routing table.
 
 1. Fetch epic issue from GitHub, parse child issues from `## Scope`
-   checklist (`- [ ] #N` entries)
+   checklist (`- [ ] #N` entries). For each child, check issue state
+   via `gh issue view` — skip children that are already CLOSED (handles
+   re-running `work epic` on a partially-complete epic after mid-epic
+   work-end). Only open children enter the batch plan.
 2. Fetch title/labels/body for each child
 3. If 5+ children → batch planning (LLM-driven grouping using the same
    criteria as `work-slot epic` Step 4: domain affinity, shared API
@@ -249,8 +252,9 @@ def write_epic_file(epic_path: Path, heading: str, repos: list[str] | None,
                     context: str) -> None:
 
 # New convenience — single-repo (no Repos section, no slot number)
-def write_epic(workspace: Path, issue: str, issue_repo: str,
-               batches: list[dict], context: str) -> None:
+def write_epic(workspace: Path, issue: str, slug: str,
+               issue_repo: str, batches: list[dict],
+               context: str) -> None:
     epic_path = workspace / "design" / ".epic"
     heading = f"# Epic #{issue} — {slug}"
     write_epic_file(epic_path, heading, repos=None, ...)
@@ -282,7 +286,10 @@ The only difference is the file heading (`# Slot N — branch` vs
 When `.epic` exists:
 - All batches complete → epic issue already in COVERS (added by `work next`
   step 4 on final advance), close it alongside children
-- Mid-epic exit → only close completed children, epic stays open
+- Mid-epic exit → only close completed children, epic stays open.
+  To resume remaining children: run `work epic #N` again. Step 1
+  detects already-closed children and plans only the open remainder.
+  This makes `work epic` idempotent on partially-complete epics.
 
 Cleanup (single-repo only, in 8j-cleanup):
 - `branch_cleanup.py cleanup-scaffold` already removes `.meta` and

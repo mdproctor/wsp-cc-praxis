@@ -1,43 +1,41 @@
-# HANDOFF — 2026-07-25
+# Handover — 2026-07-28
 
-## Last Session
+**Previous handover:** `git show HEAD~1:HANDOFF.md` | diff: `git diff HEAD~1 HEAD -- HANDOFF.md`
 
-Closed #89 (extract work-end subagent dispatches into scripts) and fixed #90
-(guard slot archival against active work). Both landed on main.
+## What Changed This Session
 
-## What Was Done
+- Built epic-driven slot iteration (#96): `work-slot epic`, `work-slot next`, `work-slot status` commands
+- Created `epic_manager.py` and `work_router.py` — deterministic routing fixes resume-on-branch confusion
+- Extended `parse_slot_md()` with `is_epic` flag; updated 5 skills
+- Ran adversarial design review (4 rounds, 25 issues, all resolved)
+- Garden entry: GE-20260728-f0c9ec (deterministic LLM routing technique)
 
-**#89 — work-end script extraction:** Replaced three LLM subagent dispatches
-with deterministic Python scripts: `branch_recon.py` (Step 1), `hygiene_scan.py`
-(Step 8i), `land_branch.py` (Step 8j rebase/push/stamp). Same JSON/KEY=value
-output contracts. Scripts emit `warnings[]` / `FALLBACK=yes` for edge cases —
-the skill falls back to inline LLM for flagged items. 46 tests. Garden entry
-GE-20260725-9f2e4b captures the LLM-in-the-loop pattern.
+## State Right Now
 
-**#90 — slot archival guard:** `archive_slot()` and `remove_slot()` now check
-for `.landed` marker or `chore: branch closed` stamp before proceeding. Audit
-of casehub attic showed 9/18 archived slots had no completion marker — all
-potentially premature. Triggered by slot 32 being archived while issue-98 work
-was still in progress.
+`issue-epic-driven-slots` landed on main (9178720). Branch stamped and closed. Issue #96 closed. 136 tests passing.
 
-## Immediate Next
+## Immediate Next Step
 
-User wants a **lifecycle activity log** — a persistent log of work-starts,
-work-ends, slot creates/archives across all repos. Goal: birds-eye view of
-all current work without scanning git logs across multiple repos. Also enables
-"what should I work on?" management. Brainstorm this next session.
+File issue for branch divergence safety: ctx.py should detect workspace/project branch mismatch and warn. Manual branch creation without work-start caused stale `.meta` to give wrong context during this session's work-end.
 
 ## What's Left
 
-- Installed SKILL.md (work-end) still has old subagent dispatch text — `sync-local`
-  ran but the installed copy loads from the old skill cache. Verify next session
-  that the updated SKILL.md is what loads. · XS · Low
+- Branch divergence guard in ctx.py — workspace/project mismatch detection · S · Low
 
 ## What's Next
 
 | # | Description | Scale | Complexity | Notes |
 |---|-------------|-------|------------|-------|
-| — | Lifecycle activity log (cross-repo) | L | Med | User-proposed; brainstorm first |
-| #83 | Handover subagent delegation | M | Med | Same extraction pattern as #89 |
-| #80 | Programmatic blog content gate | M | Med | |
-| #75 | Post-integration verification | M | Med | |
+| #95 | Mechanize LLM-executed state-changing operations across skills | L | Med | — |
+| #94 | Mechanical close-out report for work-end and slot merge | M | Med | — |
+| #92 | Add restore-slot command and enforce workspace worktree parity | M | Med | — |
+| — | Single-repo epic support (without slot infrastructure) | M | Med | Future in spec |
+| — | Validate epic-driven slots on a real multi-issue epic | S | Low | First real use |
+
+## References
+
+| Context | Where | Retrieve with |
+|---------|-------|---------------|
+| Design spec | `specs/2026-07-28-epic-driven-slots-design.md` | `cat` that file |
+| Blog entry | `blog/2026-07-28-mdp01-one-slot-one-epic-many-sessions.md` | `cat` that file |
+| Design review | `~/adr/hortora-soredium/epic-driven-slots-*/tracker.md` | `cat` that file |

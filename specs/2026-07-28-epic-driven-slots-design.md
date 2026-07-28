@@ -276,8 +276,25 @@ The script atomically:
 
 The skill then handles judgment:
 - If `batch_complete`: announce batch complete, note safe exit point
-- If `epic_complete`: announce epic complete, prompt for work-end
+- If `epic_complete`: run `epic_manager.py status <slot-dir>` to check
+  for divergence. If no divergence (all epic children accounted for in
+  the batch plan), add the epic issue number itself to `COVERS` in
+  `.meta` so that `work-end` closes it alongside the children. If
+  divergence is detected (children added after batching that are still
+  open), warn and leave the epic open — the user addresses the
+  remaining children first. Then announce epic complete and prompt for
+  work-end.
 - Otherwise: print what's next for immediate LLM context
+
+**Epic issue closure:** The epic issue (#N) is added to `COVERS` only
+when `epic_complete` is true AND no divergence is detected. This
+ensures:
+- Safe exit mid-epic never closes the epic prematurely (it's not in
+  COVERS until the last issue in the last batch completes)
+- Re-entry across multiple slots is safe (each slot's COVERS contains
+  only its own completed children; only the final slot adds the epic)
+- If children were added to the epic after batching, the epic stays
+  open until the user handles them
 
 **Issue closure is deferred to `work-end`.** Issues are NOT closed on
 GitHub during `work-slot next`. The `COVERS` field in `.meta`

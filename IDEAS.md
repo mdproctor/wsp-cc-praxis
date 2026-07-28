@@ -8,7 +8,7 @@ Promote to an ADR when ready to decide; discard when no longer relevant.
 ## 2026-07-28 — Tiered epic workflow with scaled review depth
 
 **Priority:** high
-**Status:** active
+**Status:** promoted
 
 Three strategies offered at epic slot creation, based on issue scale/complexity mix:
 
@@ -22,7 +22,7 @@ The slot creation prompt recommends a strategy based on the issue mix. Batch pla
 
 **Context:** Emerged from two observations: (1) building epic-driven slots (#96) — designed for issue-by-issue iteration, (2) a separate Claude session naturally produced an epic-level spec+plan for a Jungian personality framework epic in eidos, which worked well but couldn't handle sub-issues complex enough for their own design review. The tiered model synthesises both approaches.
 
-**Promoted to:**
+**Promoted to:** Hortora/soredium#98
 
 ---
 

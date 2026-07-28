@@ -83,7 +83,15 @@ New verb in `work/SKILL.md` Step 1 routing table.
 4. Sync main before branch creation — equivalent to work-start Step 4d.
    Fetch from origin/upstream, rebase local main, push to fork if
    applicable. This prevents the epic branch starting behind main.
-5. Create branch: `issue-N-<slug>`
+5. Create or reset branch (target name: `issue-N-<slug>`):
+   - If branch does not exist → `git checkout -b issue-N-<slug>`
+   - If branch exists with closure stamp (`chore: branch closed` as
+     latest commit subject) → mid-epic resume. Reset the branch to
+     current HEAD: `git checkout -B issue-N-<slug>`. The old branch
+     content is already on main (the stamp guarantees this).
+   - If branch exists without closure stamp → error: "Epic branch
+     `issue-N-<slug>` already exists and is active. Use `work` to
+     resume."
 6. Scaffold `.meta` and `JOURNAL.md` via existing `scaffold.py`
 7. Write `workspace/design/.epic` with batch plan
 8. Activate issues on project board — equivalent to work-start Step 4c.

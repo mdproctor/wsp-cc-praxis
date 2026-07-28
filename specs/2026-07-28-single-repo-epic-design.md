@@ -18,7 +18,7 @@ epic's child issues sequentially have no equivalent.
 - **`.epic` dotfile** in `workspace/design/` for state tracking (consistent
   with `.meta`, `.slot`, `.phase-a-complete`)
 - **Optional batching** — flat list for small epics, batch planning for 5+
-  children (reuses existing epic_manager.py grouping logic)
+  children (LLM-driven grouping, same approach as `work-slot epic` Step 4)
 - **Entry via `work epic #N`** — new verb in the `work` router
 - **Iteration via `work next`** — new verb in the `work` router, context-aware
   (detects slot vs single-repo)
@@ -73,13 +73,19 @@ New verb in `work/SKILL.md` Step 1 routing table.
 1. Fetch epic issue from GitHub, parse child issues from `## Scope`
    checklist (`- [ ] #N` entries)
 2. Fetch title/labels/body for each child
-3. If 5+ children → batch planning (reuse epic_manager.py grouping).
-   Otherwise flat ordered list as a single batch.
-4. Create branch: `issue-N-<slug>`
-5. Scaffold `.meta` and `JOURNAL.md` via existing `scaffold.py`
-6. Write `workspace/design/.epic` with batch plan
-7. Set `type: epic` in `.meta`
-8. Report and instruct to run work-start
+3. If 5+ children → batch planning (LLM-driven grouping using the same
+   criteria as `work-slot epic` Step 4: domain affinity, shared API
+   surface, scale fit, dependency ordering). Otherwise flat ordered list
+   as a single batch.
+4. Sync main before branch creation — equivalent to work-start Step 4d.
+   Fetch from origin/upstream, rebase local main, push to fork if
+   applicable. This prevents the epic branch starting behind main.
+5. Create branch: `issue-N-<slug>`
+6. Scaffold `.meta` and `JOURNAL.md` via existing `scaffold.py`
+7. Write `workspace/design/.epic` with batch plan
+8. Activate issues on project board — equivalent to work-start Step 4c.
+   If `GITHUB_PROJECT` configured, activate all child issues (non-fatal).
+9. Report and instruct to run work-start
 
 ## Iteration: `work next`
 
@@ -177,14 +183,22 @@ def parse_batch_plan(epic_path: Path) -> dict:
     # epic_path is full path to .slot or .epic
 ```
 
-`advance()` already accepts `meta_path`; change first parameter:
+`advance()` already accepts `meta_path`; change first parameter and
+propagate `epic_number` / `epic_repo` from `parse_batch_plan()` into
+the return dict (needed by `work next` step 4 to add the epic issue
+to COVERS on completion):
 
 ```python
 # Before
 def advance(slot_dir: Path, meta_path: Path | None = None) -> dict:
+    # returns: completed, next_issue, next_issue_title,
+    #          batch_complete, epic_complete, safe_exit
 
 # After
 def advance(epic_path: Path, meta_path: Path | None = None) -> dict:
+    # returns: all of the above PLUS epic_number, epic_repo
+    # (propagated from parse_batch_plan() — always present,
+    #  not just when epic_complete)
 ```
 
 Internal functions follow the same pattern:
@@ -292,9 +306,10 @@ Cleanup (single-repo only, in 8j-cleanup):
 | `handover/SKILL.md` | Detect `.epic` alongside `.slot` for Epic Progress section |
 | `tests/test_epic_manager.py` | Update for path params; add `.epic` tests |
 | `tests/test_work_router.py` | Add `.epic` detection tests |
+| `tests/test_ctx.py` | Add `.epic` detection tests for `EPIC_PATH` and `IS_EPIC` output keys |
 
 ## Not In Scope
 
-- Batch planning UX changes (reuses existing grouping logic)
+- Batch planning UX changes (same LLM-driven criteria as work-slot epic)
 - Historical specs (left unchanged)
 - `work-slot` creation flow (unchanged — still creates `.slot`)

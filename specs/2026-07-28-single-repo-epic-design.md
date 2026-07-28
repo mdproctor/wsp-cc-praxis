@@ -1,7 +1,7 @@
 # Single-Repo Epic Support
 
 **Issue:** Hortora/soredium#100
-**Also closes:** #101 (validation), #103 (start vs resume)
+**Also closes:** #103 (start vs resume)
 **Date:** 2026-07-28
 **Status:** Approved
 
@@ -34,6 +34,7 @@ Lives at `workspace/design/.epic`, committed to the workspace repo.
 Hortora/soredium#100
 Covers:
 Type: epic
+Safe exit: after any completed batch
 
 ## What to do
 Single-repo epic support — sequential child issue iteration.
@@ -41,8 +42,8 @@ Current: Batch 1 — Infrastructure
 
 ## Batch Plan
 
-### Batch 1 — Infrastructure <- current
-- [ ] #102 — Rename SLOT.md to .slot <- active
+### Batch 1 — Infrastructure ← current
+- [ ] #102 — Rename SLOT.MD to .slot ← active
 - [ ] #103 — Router start vs resume fix
 
 ### Batch 2 — Integration
@@ -58,8 +59,12 @@ Last wrap: epic created
 Differences from `.slot`:
 - No `## Repos` section
 - No `## Created` with slot number
-- No `Safe exit:` line (batch boundaries still serve as natural exit points)
 - Heading: `# Epic #N — slug` instead of `# Slot N — branch`
+
+Shared with `.slot`:
+- `Safe exit: after any completed batch` (same machine-readable line)
+- `Type: epic` in `## Issue` section
+- `← current` / `← active` markers (Unicode left arrow, not ASCII `<-`)
 
 ## Entry Point: `work epic #N`
 
@@ -85,13 +90,17 @@ New verb in `work/SKILL.md`. Detects context automatically:
 
 Steps:
 
-1. Close current child issue on GitHub: `gh issue close <N>`
-2. Check off in `.epic`: `- [ ]` → `- [x]`, remove `<- active`
-3. Add to `Covers:` in `.meta`
-4. Move `<- active` to next issue, update `Current issue:` and `Current:`
-5. If batch boundary → log "Batch N complete"
-6. If epic complete → "All children done. Run work-end to close."
-7. Report new active issue
+1. Call `epic_manager.py advance <epic-path> <meta-path>`. The script
+   atomically checks off the current issue, appends it to COVERS in
+   `.meta`, moves `← active` to the next issue, and updates Session State.
+2. Check off the completed issue's checkbox on the GitHub epic body
+   (progress signaling, not issue closure — issues remain open until
+   `work-end` closes them via COVERS, consistent with `work-slot next`).
+3. If `batch_complete` and not `epic_complete` → log "Batch N complete.
+   Safe exit point — run work-end to merge, or continue."
+4. If `epic_complete` → add the epic issue number itself to `Covers:` in
+   `.meta`, then report "All children done. Run work-end to close."
+5. Report new active issue, set `Refs #<next-issue>` for commit linkage.
 
 ## Router Fix (#103): Start vs Resume
 
@@ -131,9 +140,32 @@ New output key: `EPIC_PATH` (for single-repo). Existing `SLOT_PATH`
 remains for slot context. `IS_EPIC`, `EPIC_BATCH`, `EPIC_ACTIVE_ISSUE`
 work identically for both.
 
+## ctx.py Changes
+
+Detect `.epic` in single-repo mode and expose epic context for downstream
+skills (work-end, handover, work-pause, work-resume):
+
+```python
+epic_path = Path(workspace) / "design" / ".epic"
+is_epic = False
+if epic_path.exists():
+    epic_content = epic_path.read_text()
+    if "Type: epic" in epic_content:
+        is_epic = True
+```
+
+New output keys:
+- `EPIC_PATH` — full path to `.epic` file (empty if not present)
+- `IS_EPIC` — `yes` / `no`
+
+These parallel `work_router.py`'s output but are sourced from ctx.py so
+that skills that don't call work_router (e.g. work-end Step 0, handover)
+can detect epic state directly.
+
 ## epic_manager.py Generalisation
 
-All functions accept explicit paths instead of deriving from `slot_dir`:
+All public and internal functions accept explicit file paths instead of
+deriving from `slot_dir`:
 
 ```python
 # Before
@@ -145,38 +177,105 @@ def parse_batch_plan(epic_path: Path) -> dict:
     # epic_path is full path to .slot or .epic
 ```
 
-`advance()` gets a `meta_path` parameter:
+`advance()` already accepts `meta_path`; change first parameter:
 
 ```python
-def advance(epic_path: Path, meta_path: Path) -> dict:
+# Before
+def advance(slot_dir: Path, meta_path: Path | None = None) -> dict:
+
+# After
+def advance(epic_path: Path, meta_path: Path | None = None) -> dict:
+```
+
+Internal functions follow the same pattern:
+
+```python
+# Before
+def _rewrite_slot_md(slot_dir: Path, ...) -> None:
+    slot_md = slot_dir / ".slot"
+
+# After — renamed to match generalisation
+def _rewrite_epic_file(epic_path: Path, ...) -> None:
+    content = epic_path.read_text()
+
+# Before
+def status(slot_dir: Path) -> dict:
+    plan = parse_batch_plan(slot_dir)
+
+# After
+def status(epic_path: Path) -> dict:
+    plan = parse_batch_plan(epic_path)
+```
+
+CLI dispatch changes:
+
+```python
+# Before
+slot_dir = Path(sys.argv[2])
+result = parse_batch_plan(slot_dir)
+
+# After — accepts file path directly
+epic_path = Path(sys.argv[2])
+result = parse_batch_plan(epic_path)
 ```
 
 Callers:
 - Slot: `advance(slot_dir / ".slot", slot_dir / repo / "design" / ".meta")`
 - Single-repo: `advance(wksp / "design" / ".epic", wksp / "design" / ".meta")`
 
-`write_epic_slot_md()` → `write_epic_file()` with explicit output path.
-New convenience: `write_epic()` for single-repo (no Repos section, no
-slot number).
+Write functions:
+
+```python
+# Before
+def write_epic_slot_md(slot_dir, slot_number, repos, branch, issue, ...)
+
+# After — explicit output path, no slot assumptions
+def write_epic_file(epic_path: Path, heading: str, repos: list[str] | None,
+                    issue: str, issue_repo: str, batches: list[dict],
+                    context: str) -> None:
+
+# New convenience — single-repo (no Repos section, no slot number)
+def write_epic(workspace: Path, issue: str, issue_repo: str,
+               batches: list[dict], context: str) -> None:
+    epic_path = workspace / "design" / ".epic"
+    heading = f"# Epic #{issue} — {slug}"
+    write_epic_file(epic_path, heading, repos=None, ...)
+```
 
 ## work-start Epic Overlay
 
-Generalise the overlay trigger:
+Generalise the overlay trigger to detect both slot and single-repo epics:
 
 ```
-Before: only fires when /worktrees/ in $PROJECT path
-After:  also fires when workspace/design/.epic exists
+If /worktrees/ in $PROJECT:
+    epic_file = $PROJECT/../.slot
+Elif workspace/design/.epic exists:
+    epic_file = workspace/design/.epic
+Else:
+    skip overlay
 ```
 
-Same display for both contexts — batch progress, active issue, commit
-linkage (`Refs #<active-issue>`).
+Guard: `epic_file` must exist and contain `Type: epic` in `## Issue`.
+
+Both `.slot` and `.epic` share the same `## Batch Plan` and
+`## Session State` format, so the overlay display code is identical:
+batch progress, active issue, commit linkage (`Refs #<active-issue>`).
+The only difference is the file heading (`# Slot N — branch` vs
+`# Epic #N — slug`), which the overlay does not display.
 
 ## work-end Epic Closure
 
 When `.epic` exists:
-- All batches complete → include epic issue in COVERS, close it
+- All batches complete → epic issue already in COVERS (added by `work next`
+  step 4 on final advance), close it alongside children
 - Mid-epic exit → only close completed children, epic stays open
-- `.epic` stays on disk for audit (consistent with `.slot` surviving in attic)
+
+Cleanup (single-repo only, in 8j-cleanup):
+- `branch_cleanup.py cleanup-scaffold` already removes `.meta` and
+  `JOURNAL.md` from main after rebase. Extend it to also remove `.epic`.
+- `.epic` survives on the epic branch (branches are kept, not deleted)
+  for audit — analogous to `.slot` surviving in the attic in slot mode.
+- `EPIC-CLOSED.md` is committed to the epic branch (Step 9), not main.
 
 ## Change Set
 
@@ -184,10 +283,13 @@ When `.epic` exists:
 |------|--------|
 | `work/SKILL.md` | Add `work epic`, `work next` verbs; fix Step 4 (#103) |
 | `work/work_router.py` | Detect `.epic`, output `EPIC_PATH` |
-| `work-slot/epic_manager.py` | Generalise to accept paths; rename write function |
-| `work-start/SKILL.md` | Generalise epic overlay trigger |
-| `work-end/SKILL.md` | Epic-aware closure |
+| `work-slot/epic_manager.py` | Generalise to accept paths; rename write function; rename internal functions |
+| `work-start/SKILL.md` | Generalise epic overlay trigger with dual-path detection |
+| `work-end/SKILL.md` | Epic-aware closure; `.epic` in 8j-cleanup scaffold list |
+| `work-end/branch_cleanup.py` | Add `.epic` to cleanup-scaffold removal list |
 | `work-slot/SKILL.md` | Update `work-slot next` to pass explicit paths |
+| `project/ctx.py` | Detect `workspace/design/.epic`, output `EPIC_PATH` and `IS_EPIC` |
+| `handover/SKILL.md` | Detect `.epic` alongside `.slot` for Epic Progress section |
 | `tests/test_epic_manager.py` | Update for path params; add `.epic` tests |
 | `tests/test_work_router.py` | Add `.epic` detection tests |
 

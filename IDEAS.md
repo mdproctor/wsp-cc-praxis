@@ -5,6 +5,27 @@ Promote to an ADR when ready to decide; discard when no longer relevant.
 
 ---
 
+## 2026-07-28 — Tiered epic workflow with scaled review depth
+
+**Priority:** high
+**Status:** active
+
+Three strategies offered at epic slot creation, based on issue scale/complexity mix:
+
+1. **Issue-by-issue** — batch plan, iterate through issues individually. Each gets its own TDD cycle. Best when issues are independently reviewable and the domain is understood.
+2. **Epic-level** — one spec and one plan covering the whole epic, executed as a unit. Best for cohesive features where the pieces only make sense together.
+3. **Tiered** — epic-level spec covering overall design, with sub-specs and design-reviews for complex child issues. Simple issues implement directly with code review only.
+
+Design-review gains an **architecture mode** (2-3 rounds, ~$5-8) — validates decomposition, boundaries, and dependencies at the epic level. Not checking implementation detail because there isn't any yet. Full design review (4-10 rounds) stays for sub-specs where the implementation design matters. Conformance review (`--mode code-review` in design-review) is not used in practice — the language-specific code-review checklist is sufficient.
+
+The slot creation prompt recommends a strategy based on the issue mix. Batch planning moves into the architecture review phase for the tiered strategy — the review validates the grouping and dependency ordering alongside the design.
+
+**Context:** Emerged from two observations: (1) building epic-driven slots (#96) — designed for issue-by-issue iteration, (2) a separate Claude session naturally produced an epic-level spec+plan for a Jungian personality framework epic in eidos, which worked well but couldn't handle sub-issues complex enough for their own design review. The tiered model synthesises both approaches.
+
+**Promoted to:**
+
+---
+
 ## 2026-05-27 — Hortora: framework registry for LLM-accelerated development
 
 **Priority:** high

@@ -2,23 +2,23 @@
 
 ## Issue
 Hortora/soredium#111
-Covers:
+Covers: 107,108,109,106
 Type: epic
 Safe exit: after any completed batch
 
 ## What to do
 Epic #111 — Epic workflow fixes from #101 validation + cross-repo gate
-Current: Batch 1 — Epic workflow fixes
+Current: Epic complete
 
 ## Batch Plan
 
-### Batch 1 — Epic workflow fixes ← current
-- [ ] #107 — Epic manager: expose write_epic as CLI subcommand ← active
-- [ ] #108 — Scaffold commit should include .epic file
-- [ ] #109 — land_branch.py stamp blocked by issue-ref pre-commit hook
-- [ ] #106 — work-slot: pre-push gate should verify cross-repo dependencies have landed
+### Batch 1 — Epic workflow fixes
+- [x] #107 — Epic manager: expose write_epic as CLI subcommand
+- [x] #108 — Scaffold commit should include .epic file
+- [x] #109 — land_branch.py stamp blocked by issue-ref pre-commit hook
+- [x] #106 — work-slot: pre-push gate should verify cross-repo dependencies have landed
 
 ## Session State
-Current batch: 1
-Current issue: #107 — Epic manager: expose write_epic as CLI subcommand
+Current batch: 0
+Current issue:
 Last wrap: epic created

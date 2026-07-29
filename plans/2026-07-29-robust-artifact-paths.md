@@ -494,6 +494,8 @@ Remove the `specs_cleaned` tracking from `main()` — delete the entire cleanup-
 
 Remove `specs_cleaned` from `write_stamp()`.
 
+Update the module docstring — remove `SPECS_CLEANED=<count>` from the Output section.
+
 Replace the independent blog scan with a check against the already-scanned data:
 
 ```python
@@ -534,6 +536,25 @@ class TestScanWorkspaceParameter:
             capture_output=True, text=True,
         )
         assert result.returncode != 1
+
+    def test_scan_workspace_omitted_scans_workspace(self, tmp_path):
+        """Without scan-workspace, scan_artifacts uses workspace."""
+        workspace = tmp_path / "workspace"
+        project = tmp_path / "project"
+        self._init_git(workspace)
+        self._init_git(project)
+        (workspace / "design").mkdir()
+
+        (workspace / "specs").mkdir()
+        (workspace / "specs" / "spec.md").write_text("# Spec\n")
+
+        result = subprocess.run(
+            [sys.executable, str(self.SCRIPT),
+             str(workspace), str(project), "any-branch"],
+            capture_output=True, text=True,
+        )
+        assert result.returncode != 1
+        assert "PROJECT_PROMOTED=" in result.stdout or "WORKSPACE_PROMOTED=" in result.stdout
 
     def test_scan_workspace_unit_scan_artifacts(self, tmp_path):
         slot = tmp_path / "slot"
@@ -581,7 +602,7 @@ Refs #112"
 - [ ] **Step 1: Write failing test — cleanup-specs subcommand rejected**
 
 ```python
-def test_cleanup_specs_subcommand_removed(self, tmp_path):
+def test_cleanup_specs_subcommand_removed(tmp_path):
     """cleanup-specs is no longer a valid subcommand."""
     script = Path(__file__).parent.parent / "work-end" / "artifact_promote.py"
     result = subprocess.run(

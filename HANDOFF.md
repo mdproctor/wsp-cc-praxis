@@ -30,7 +30,7 @@ Pick next work from What's Next. #110 (nested epics) is the highest-complexity i
 | #110 | Support nested epics (parent with sub-epic children) | M | High | Filed last session |
 | #95 | Mechanize LLM-executed state-changing operations across skills | L | Med | — |
 | #92 | Add restore-slot command and enforce workspace worktree parity | M | Med | — |
-| #83 | Delegate handover mechanical steps to subagents | M | Med | Blocked by #82 |
+| #83 | Delegate handover mechanical steps to subagents | M | Med | #82 closed — unblocked |
 
 ## References
 

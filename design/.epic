@@ -1,0 +1,23 @@
+# Epic #105 — skill-infra-epic
+
+## Issue
+Hortora/soredium#105
+Covers: 104,84,94
+Type: epic
+Safe exit: after any completed batch
+
+## What to do
+Epic #105 — Skill infrastructure improvements (validation epic for #101)
+Current: Epic complete
+
+## Batch Plan
+
+### Batch 1 — Skill infrastructure
+- [x] #104 — Document epic workflow commands and scripts in README
+- [x] #84 — Extract git-squash classification procedure into standalone reference file
+- [x] #94 — Mechanical close-out report for work-end and slot merge
+
+## Session State
+Current batch: 0
+Current issue:
+Last wrap: epic created

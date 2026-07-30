@@ -4,13 +4,14 @@
 
 ## What Changed This Session
 
-- Completed #119: slot-aware pause/resume. When pausing from a slot clone, the stack entry is written to the original workspace's pause stack with a `slot` field. On resume, work-resume reads the field and redirects to the slot directory. Stack entry format extended with optional `slot` field.
-- Code review fix: checked return values in `_migrate_worktree_to_clone` (worktree remove) and pause_exec slot path (original workspace checkout/pull).
-- Merged #119 to main — 7 commits after squash (ctx.py fix+test merged). Issue closed.
+- Fixed #138: `archive_slot()` and `remove_slot()` were deleting repo worktrees before moving slots to attic, destroying the recovery safety net. Removed repo-deletion from `archive_slot()` entirely; moved it inside `force_delete` branch of `remove_slot()`. Added regression tests.
+- Added 3 investigation scripts (`audit_attic.py`, `audit_workspace.py`, `verify_warnings.py`) used to diagnose the stripped-repos problem across archived slots.
+- Code review fix: cleaned up unused imports in audit scripts.
+- Merged #138 to main — 3 commits after squash. Issue closed.
 
 ## State Right Now
 
-On main. #119 closed (landed as 2ee5dae). Two open slots on hortora (slot 1: #117 work UI, slot 2: #120 trellis).
+On main. #138 closed (landed as bd9217c). Two open slots on hortora (slot 1: #117 work UI, slot 2: #120 trellis).
 
 ## Immediate Next Step
 
@@ -18,12 +19,13 @@ Pick next work from What's Next.
 
 ## What's Left
 
-*None from #119.*
+*None from #138.*
 
-Remaining from prior handover not in #119 scope:
+Remaining from prior handovers:
 - Handover skill: update to write `HANDOFF-{project_name}.md` using PROJECT_NAME from ctx.py · S · Low
 - work-end: per-repo evidence gate (mechanical verification all repos swept) · M · Med
 - work-end: record slot-merge event in worklog when closing via Phase B · S · Low
+- work-end: `close_artifacts.py` fails with `commit_failed` when no project-side artifacts exist (empty commit) · S · Low
 
 ## What's Next
 

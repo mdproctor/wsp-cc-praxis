@@ -1,3 +1,5 @@
+*Updated: #117 closed — removed from backlog.*
+
 # Handover — 2026-07-30
 
 **Previous handover:** `git show HEAD~1:HANDOFF.md` | diff: `git diff HEAD~1 HEAD -- HANDOFF.md`
@@ -11,7 +13,7 @@
 
 ## State Right Now
 
-On main. #138 closed (landed as bd9217c). Two open slots on hortora (slot 1: #117 work UI, slot 2: #120 trellis).
+On main. #138 closed (landed as bd9217c). #117 also closed.
 
 ## Immediate Next Step
 
@@ -31,7 +33,6 @@ Remaining from prior handovers:
 
 | # | Description | Scale | Complexity | Notes |
 |---|-------------|-------|------------|-------|
-| #117 | UI for work lifecycle management | M | Med | Slot 1 open |
 | #110 | Support nested epics | M | High | — |
 | #95 | Mechanize LLM-executed state-changing operations | L | Med | — |
 | #92 | Add restore-slot command | M | Med | — |

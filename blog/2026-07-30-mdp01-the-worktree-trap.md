@@ -7,6 +7,7 @@ entry_type: note
 subtype: diary
 projects: [soredium]
 tags: [git, worktrees, slots, architecture]
+series: issue-119-slot-clone-shared
 ---
 
 Every slot operation that touched workspace main — handover, pause, work-end — was silently failing. The root cause was a fundamental property of git worktrees I hadn't thought through: two worktrees of the same repo cannot have the same branch checked out. The slot's workspace worktree couldn't `git checkout main` because the original repo already had main checked out.

@@ -8,3 +8,6 @@
 | [2026-07-07-mdp01-two-tools-one-grid.md](2026-07-07-mdp01-two-tools-one-grid.md) | 2026-07-07 | Final-review mode completes the four-phase pipeline; depth-scaled adversarial review complements per-commit code-review |
 | [2026-07-24-mdp01-the-gate-that-shouldnt-have-been.md](2026-07-24-mdp01-the-gate-that-shouldnt-have-been.md) | 2026-07-24 | Mechanical close-out operations extracted from LLM skill to Python scripts |
 | [2026-07-28-mdp01-one-slot-one-epic-many-sessions.md](2026-07-28-mdp01-one-slot-one-epic-many-sessions.md) | 2026-07-28 | Epic-driven slots: batch planning, cross-session state tracking, deterministic work routing |
+| [2026-07-29-mdp01-dogfooding-the-epic-workflow.md](2026-07-29-mdp01-dogfooding-the-epic-workflow.md) | 2026-07-29 | Dogfooding the epic workflow |
+| [2026-07-30-mdp01-the-worktree-trap.md](2026-07-30-mdp01-the-worktree-trap.md) | 2026-07-30 | Four layers of silent failure behind the worktree branch lock |
+| [2026-07-30-mdp02-the-pause-stack-problem.md](2026-07-30-mdp02-the-pause-stack-problem.md) | 2026-07-30 | Slot-aware pause writes stack entries to the original workspace |

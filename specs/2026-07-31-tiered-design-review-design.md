@@ -35,44 +35,68 @@ The current phase selector (pre-review / spec-review / code-review / final-revie
 
 ### Review Prompt Flow
 
-After a spec or plan is produced (from brainstorming or writing-plans), the agent runs a two-step Q&A prompt.
+After a spec or plan is produced (from brainstorming or writing-plans), the agent runs a three-part prompt: recommendation text, then two AskUserQuestion selectors.
 
-**Step 1 — Type selection (or Skip):**
+**Part 1 — Full recommendation (text, before any Q&A):**
 
-The agent reads the spec, identifies complexity signals, and recommends a type. Skip is a valid recommendation for purely mechanical work.
-
-```
-Review this spec?
-
-  Type:
-  [x] Skip           <- Recommended
-  [ ] Coherence
-  [ ] Structure
-  [ ] Robustness
-
-  Why: No new abstractions, no boundary changes, straightforward config wiring.
-  Tip: if unsure, Coherence/Light costs ~1 min and will flag if deeper review is needed.
-```
-
-The recommendation must include reasoning — what signals in the spec led to this recommendation. One sentence, specific to this spec.
-
-**Step 2 — Degree selection (if not Skip):**
+The agent reads the spec, identifies complexity signals, and presents the complete recommendation with reasoning as a text block. The user sees the full picture before making any selection.
 
 ```
-  Degree:
-  [x] Light       ~1 min    <- Recommended
-  [ ] Standard    ~5 min
-  [ ] Adversarial ~12 min
-  [ ] Deep        ~25 min   (ultrathink)
-
-  Why: Requirements are unambiguous, domain is well-understood.
+Recommendation: Coherence / Light
+This spec introduces new module boundaries between the scanner and
+lifecycle manager, but the interaction model is straightforward
+request-response with no concurrency. A coherence check catches
+completeness gaps. If the coherence check finds structural concerns,
+it will recommend escalation.
 ```
 
-Same pattern — recommendation with reasoning.
+Or for Skip:
+```
+Recommendation: Skip
+Mechanical config change — no new abstractions, no boundary changes,
+straightforward wiring. If unsure, Coherence/Light costs ~1 min and
+will flag if deeper review is needed.
+```
 
-**Step 3 — Run the review** at selected type x degree.
+The recommendation must be specific to this spec — not generic. Name the actual signals found.
 
-**Step 4 — Escalation report:**
+**Part 2 — Type selection (AskUserQuestion):**
+
+Uses the `AskUserQuestion` tool. The recommended option is listed first with "(Recommended)" suffix. Option descriptions are brief — the full reasoning was already presented in Part 1.
+
+```python
+AskUserQuestion(questions=[{
+    "question": "Review this spec?",
+    "header": "Review type",
+    "options": [
+        {"label": "Skip (Recommended)", "description": "No review needed"},
+        {"label": "Coherence", "description": "Completeness, consistency, gaps"},
+        {"label": "Structure", "description": "Decomposition, boundaries, dependencies"},
+        {"label": "Robustness", "description": "Failure modes, edge cases, error paths"},
+    ],
+    "multiSelect": false,
+}])
+```
+
+**Part 3 — Degree selection (AskUserQuestion, if not Skip):**
+
+```python
+AskUserQuestion(questions=[{
+    "question": "Review degree?",
+    "header": "Depth",
+    "options": [
+        {"label": "Light (Recommended)", "description": "~1 min — quick pass, flags if deeper needed"},
+        {"label": "Standard", "description": "~5 min — thorough examination"},
+        {"label": "Adversarial", "description": "~12 min — actively tries to break the design"},
+        {"label": "Deep", "description": "~25 min — exhaustive, ultrathink enabled"},
+    ],
+    "multiSelect": false,
+}])
+```
+
+**Part 4 — Run the review** at selected type x degree.
+
+**Part 5 — Escalation report:**
 
 Every review at Light or Standard degree includes an explicit escalation assessment as the final output. The reviewer is briefed to assess whether the spec warrants deeper scrutiny.
 
@@ -89,7 +113,7 @@ manager with concurrency implications that a light coherence check cannot
 fully validate.
 ```
 
-The agent presents this to the user and asks whether to proceed with the escalated review.
+The agent presents this to the user and asks (via AskUserQuestion) whether to proceed with the escalated review or skip.
 
 ### Recommendation Engine
 

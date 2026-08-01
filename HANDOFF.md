@@ -1,31 +1,36 @@
-# Handover — 2026-07-31
+# Handover — 2026-08-01
 
 **Previous handover:** `git show HEAD~1:HANDOFF.md` | diff: `git diff HEAD~1 HEAD -- HANDOFF.md`
 
 ## What Changed This Session
 
-- Migrated 18 Trellis issues (#120–#137) from Hortora/soredium to Hortora/trellis. Cross-references rewritten, originals closed with pointers.
-- Fixed #139: silent artifact promotion failures. Three compound bugs (bare except, PROMOTED=0 as success, push failure ignored) — TDD with 10 new tests. Also added push failure detection (PUSHED=skipped vs PUSHED=failed). Issue filed and referenced but not closed (more gaps may surface).
-- Closed #98: tiered design review. Type×degree model (coherence/structure/robustness × light/standard/adversarial/deep). AskUserQuestion UX. Integrated into brainstorming and writing-plans. 21 new tests.
-- Removed diary immutability constraint from write-content.
-- Verified slot worktree→clone migration and attic preservation are working post-#138.
-- Garden entry: GE-20260731-4d0718 — compound silent failure pattern.
+- #143 closed: slot lifecycle hardening. IDE artifact cleanup, CWD escape, double-archive guard, post-push verification, recursive artifact scanner, boundary-aware Claude project matching, workspace/repo name collision deconfliction. 39 new tests, 5 specs recovered from attic. 3 remnant slot directories cleaned.
+- #144 closed: mandatory spec loading in work-start/resume (Step 3c). Prevents working without design specs.
+- #147 closed: batch accept for forage/protocol sweeps. Single multi-select prompt replaces per-item confirmation.
+- #140 closed: work session activity log already implemented in worklog.py. docs/worklog.md reference added.
+- #146 closed: workspace_artifacts scanner bug (already fixed by #143).
+- #145 filed: record_slot_phase_a never called (XS/Low).
+- ADR-0012 proposed: unified review framework — lifecycle-driven dimensions, degree-only user choice, cross-cutting pass automatic, ~/reviews/ output path.
+- Brainstorming review depth prompt structural fix — merged Implementation section into gate to prevent LLM bypass.
+- Design-review: crosscutting type added, multi-dimension orchestration in SKILL.md, ~/adr/ → ~/reviews/.
+- Garden: 4 entries (cwd-ghost-dirs, iterdir-skip, post-push-verify, llm-bypass-paths).
 
 ## State Right Now
 
-On main. Clean tree. #98 closed, #139 open (promotion fix landed, may need follow-up for commit_failed edge case).
+On main. Clean tree. #143, #144, #146, #147, #140 closed. #145 open (XS).
 
 ## Immediate Next Step
 
-Pick next work from What's Next.
+Pick next work from What's Next. ADR-0012 implementation is complete for post-spec; post-brainstorming dimensions are a follow-up.
 
 ## What's Left
 
-- Handover skill: update to write `HANDOFF-{project_name}.md` using PROJECT_NAME from ctx.py · S · Low
+- #145: record_slot_phase_a not called · XS · Low
+- Handover skill: update to write `HANDOFF-{project_name}.md` · S · Low
 - work-end: per-repo evidence gate · M · Med
-- work-end: record slot-merge event in worklog · S · Low
-- work-end: `close_artifacts.py` commit_failed when no project-side artifacts (empty commit) · S · Low — could not reproduce from code; may be resolved by #139 error reporting
-- Hygiene scan false positives: specs inherited from main flagged as "unrecovered" on every closed branch · S · Med
+- Hygiene scan false positives: specs inherited from main · S · Med
+- ~/adr/ → ~/reviews/ migration of existing 100+ workspaces · M · Low
+- ADR-0012 follow-ups: post-brainstorming dimensions, code-review integration, pre-ship lifecycle · L · Med
 
 ## What's Next
 

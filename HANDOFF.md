@@ -1,48 +1,35 @@
-# Handover — 2026-08-02
+# HANDOFF — soredium
 
-**Previous handover:** `git show HEAD~1:HANDOFF.md` | diff: `git diff HEAD~1 HEAD -- HANDOFF.md`
+**Last session:** 2026-08-02
+**Branch closed:** issue-149-image-promotion (landed as 406520b on main)
+**Issue:** #149 — Slot promotion robustness: image handling, audit refinement, smoke test automation
 
-## What Changed This Session
+## What was done
 
-- #139, #145, #115 closed: archive_plans bare-pass fix, phase_a_complete.py, record_slot_archive metadata, blog person-reference gate.
-- #148 filed and closed: slot workspace subdirectories gitignored — root cause of months of silent artifact loss.
-  - `_unignore_subdir()` at slot creation, retroactive fix for 16 active slots (26 entries).
-  - Root cause TDD: 4 bugs in promotion (source-dir, scan_source, SameFileError). 85 tests pass.
-  - 29 artifacts recovered across 10 project repos from active slots and attic.
-  - Slot 62 audited: 5 specs recovered, 40 blogs confirmed published.
-- Trellis blog entries committed (2 entries, `trellis/blog/`). Not yet pushed.
-- Brainstorming: review depth prompt merged with user review gate (single prompt, "Review it yourself" option).
-- Garden: 3 entries (lib-copy-divergence, slot-triple-failure, source-dir-technique).
+### Image promotion (main feature)
+- Added `extract_image_refs()` to `workspace_artifacts.py` — parses `![](path)` and `<img src>` references
+- Wired into `scan()` — all markdown categories (specs, adr, blog, plans) now include referenced images
+- Wired into `blog_dest.py` — blog publishing copies images alongside entries
+- 17 new tests across 3 test files, 60/60 passing
 
-## State Right Now
+### Audit script refinement
+- Three false-positive filters: `filter_proj_symlinks`, `filter_inherited` (3+ slots), `filter_already_recovered`
+- Added `--verbose`, `--summary`, `--no-filter` modes
+- 80 raw findings → 27 after filtering (31 proj/, 22 inherited)
+- 7 new tests
 
-On main. Clean tree. #139, #145, #115, #148 all closed.
+### Blog image fixes (mdproctor.github.io)
+- Audited both blog sites (1,876 + 207 markdown files)
+- Fixed 18 broken image references: 5 sparge PNGs, 3 casehub SVGs, 2 path fixes, 1 YouTube thumb
+- Pushed directly to main on mdproctor.github.io
 
-## Immediate Next Step
+### Hook wiring
+- `blog_person_hook.sh` added to `~/.claude/settings.json` PreToolUse[Bash]
 
-Pick next work. Trellis blog entries committed locally but not pushed — push when ready. Blog hook (`blog_person_hook.sh`) not yet wired into settings.json.
+## Known issue
+- `extract_image_refs` fires on example image syntax inside code blocks in specs/plans — produces harmless warnings (file not found, skipped). Could be fixed by skipping content inside fenced code blocks.
 
-## What's Left
-
-- Trellis blogs: push to origin · XS · Low
-- Blog hook: wire `blog_person_hook.sh` into settings.json PreToolUse[Bash] · XS · Low
-- Handover skill: update to write `HANDOFF-{project_name}.md` · S · Low
-- work-end: per-repo evidence gate · M · Med
-- Hygiene scan false positives: specs inherited from main · S · Med
-- ~/adr/ → ~/reviews/ migration of existing 100+ workspaces · M · Low
-- ADR-0012 follow-ups: post-brainstorming dimensions, code-review integration, pre-ship lifecycle · L · Med
-- Superpowers → standard docs/ path migration (mass move across repos) · L · Med
-
-## What's Next
-
-| # | Description | Scale | Complexity | Notes |
-|---|-------------|-------|------------|-------|
-| #110 | Support nested epics | M | High | — |
-| #95 | Mechanize LLM-executed state-changing operations | L | Med | — |
-| #92 | Add restore-slot command | M | Med | — |
-| #83 | Delegate handover mechanical steps to subagents | M | Med | — |
-| #118 | Evaluate splitting HANDOFF.md roles | S | Med | — |
-
-## References
-
-*Unchanged — `git show HEAD~1:HANDOFF.md`*
+## What is NOT done from #149
+- [ ] Recover WackyManor plan from examples/ workspace
+- [ ] Superpowers → standard docs/ path migration (separate epic)
+- 27 genuine audit findings remain — these are real lost artifacts on archived slots worth investigating

@@ -1,0 +1,9 @@
+branch: issue-150-slot-clone-gaps
+project-sha: 06ea9616c2ba7ec49f1fd79c32ccf81974d7c104
+date: 2026-08-02
+issue: 150
+issue-repo: Hortora/soredium
+covers: 150
+flyway-next-v: none
+design-repo: workspace
+design-section-hashes: 

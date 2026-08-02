@@ -1,0 +1,9 @@
+branch: issue-151-mechanise-llm-steps
+project-sha: bcf8223e63a40e528bc6c1b38f748896d4b0a65a
+date: 2026-08-03
+issue: 151
+issue-repo: Hortora/soredium
+covers: 151
+flyway-next-v: unknown
+design-repo: project
+design-section-hashes: 

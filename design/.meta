@@ -1,0 +1,9 @@
+branch: issue-149-image-promotion
+project-sha: 2c2b249c6e0ec9765eb8a2b52eea78847def067d
+date: 2026-08-02
+issue: 149
+issue-repo: Hortora/soredium
+covers: 149
+flyway-next-v: none
+design-repo: workspace
+design-section-hashes: 

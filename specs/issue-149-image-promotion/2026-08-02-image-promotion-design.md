@@ -54,7 +54,7 @@ def extract_image_refs(md_path: Path, root: Path) -> list[str]:
 
 **Resolution:**
 - Relative paths resolved against the `.md` file's parent directory
-- Only paths where the resolved file exists on disk are returned
+- Only paths where the resolved file exists on disk are returned — log a warning for missing refs (not silent)
 - Returns paths relative to `root` (the workspace), matching the scanner's convention
 
 ## Scanner Integration
@@ -63,7 +63,7 @@ After `_scan_dir()` collects `.md` files for a category, iterate over them and c
 
 ## Blog Publishing Integration
 
-`blog_dest.py` globs `*.md` to find unpublished entries. After identifying unpublished entries, call `extract_image_refs()` on each. Copy referenced images to the blog destination alongside the markdown entries, creating parent directories as needed. `blog_publish.py` stays unaware of images — `blog_dest.py` handles the copy directly.
+`blog_dest.py` globs `*.md` to find unpublished entries. After identifying unpublished entries, call `extract_image_refs()` on each. Copy referenced images to the blog destination preserving relative structure — if `2026-08-01-entry.md` references `images/diagram.png`, the image lands at `<blog_dest>/images/diagram.png` (same relative path from the entry). Create parent directories as needed. `blog_publish.py` stays unaware of images — `blog_dest.py` handles the copy directly.
 
 ## Image Path Handling
 
@@ -79,10 +79,17 @@ Promoted images preserve relative structure. If `specs/issue-42/design.md` refer
 | `test_image_refs_extracted_from_html_img_tag` | `<img src="images/photo.png">` same |
 | `test_external_urls_excluded` | `http://` and `https://` URLs not collected |
 | `test_template_vars_excluded` | `{thumb_src}` not collected |
-| `test_missing_image_refs_skipped` | Ref in markdown but file missing on disk — skipped silently |
+| `test_missing_image_refs_warned` | Ref in markdown but file missing on disk — skipped with warning logged |
 | `test_image_refs_across_all_categories` | Images in specs, adr, blog, plans all collected |
 | `test_non_md_files_in_specs_ignored` | Update existing test — non-referenced images still excluded |
 | `test_nested_image_paths_preserved` | `images/sub/deep.png` relative structure maintained |
+
+### Unit Tests (`test_blog_dest.py`)
+
+| Test | What it verifies |
+|------|-----------------|
+| `test_blog_image_copied_to_destination` | Unpublished entry with image ref → image copied alongside entry |
+| `test_blog_image_relative_structure_preserved` | `images/photo.png` ref → lands at `<dest>/images/photo.png` |
 
 ### Integration Tests (`test_close_artifacts.py`)
 

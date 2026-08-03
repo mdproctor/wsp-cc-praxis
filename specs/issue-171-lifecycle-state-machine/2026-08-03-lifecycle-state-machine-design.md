@@ -1275,7 +1275,7 @@ class TestStaleStateRecovery:
 | Transient states never resolve (bug in auto-resolve) | Branch stuck in `scaffolded` forever | Next session re-attempts auto-resolve; hard timeout after 3 failed attempts |
 | Single-repo mode has different `.meta` location | State reads fail | ctx.py already handles single-repo — `META_STATE` output adapts |
 | Worklog DB unavailable | Events lost | Graceful degradation — warn, don't block (Section 13.3) |
-| Concurrent sessions race on `.meta` | Corrupted state | Second session detects unexpected state, hard stops (Section 14.3) |
+| Concurrent sessions race on `.meta` | Corrupted state | `commit_transition()` re-reads before writing; raises `ConcurrentModification` if state changed (§14.3) |
 
 ---
 

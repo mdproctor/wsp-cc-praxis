@@ -1,5 +1,5 @@
-# Branch Closed: issue-151-mechanise-llm-steps
+# Branch Closed: issue-163-blog-slot-escape
 
 **Date:** 2026-08-03
-**Issues:** 151
+**Issues:** 163
 **Status:** merged to main

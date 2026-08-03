@@ -20,6 +20,26 @@ Two related gaps in the work lifecycle:
 Same root cause: scripts should surface state and enforce invariants; LLMs should
 make decisions based on what scripts report.
 
+### Scope
+
+Items A, B, E, F, G, K address the mechanisation items from issue #151 (blog
+index update moved to #155).
+Items C, D, I, J1–J4 add epic lifecycle awareness — detecting and surfacing epic
+state at every transition point in the work lifecycle. Both halves share the same
+foundation (detect() in A) and are tightly coupled: mechanising slot operations
+without epic awareness would leave the highest-risk scenario (mid-batch close)
+unprotected. All items are tracked under #151.
+
+### Relationship with #141
+
+Issue #141 (issue-level lifecycle within epic slots) adds per-child-issue
+start/end events, recording when work began and ended on each issue. The data
+model here (stack entry fields `epic_batch` and `epic_active_issue`, display
+format) is forward-compatible: #141 adds richer lifecycle events but doesn't
+change how batch position or active issue are represented. If #141 later needs
+additional stack fields, they can be added without breaking the schema introduced
+here — the YAML format is additive.
+
 ---
 
 ## Layer 1 — Foundation
@@ -32,11 +52,21 @@ slot_manager.parse_slot_md (checks `.slot`). Should be one source of truth.
 
 **Change:** Add two things to `epic_manager.py`:
 
-1. `detect(path: Path) -> dict | None` — given a workspace or slot path, find
-   and parse the epic file. Returns `{"epic_path": Path, "is_epic": True, ...}`
-   or `None`. Checks both `design/.epic` (single-repo) and `.slot` with
-   `Type: epic` (slot). This replaces the ad-hoc parsing in ctx.py and
-   work_router.py.
+1. `detect(path: Path) -> dict | None` — given a workspace, project, or slot
+   path, find and parse the epic file. Wraps `parse_batch_plan()`: locates
+   the epic file first, then delegates parsing. Returns the enriched dict
+   with `epic_path` added, or `None` when no epic file is found.
+
+   Search order:
+   - `path/design/.epic` (single-repo workspace epic)
+   - `path/.slot` with `Type: epic` (slot directory)
+   - `path.parent/.slot` with `Type: epic` (project inside a slot)
+
+   Return type distinction: `detect()` returns `None` for "no epic file at
+   this path" (path-level). `parse_batch_plan()` returns `{"is_epic": False}`
+   for "file exists but is not an epic" (content-level). Both are meaningful.
+
+   This replaces the ad-hoc parsing in ctx.py and work_router.py.
 
 2. `check` CLI subcommand — calls `status()` (already exists) and outputs
    KEY=VALUE lines for consumption by work-end and merge_slot:
@@ -51,25 +81,68 @@ slot_manager.parse_slot_md (checks `.slot`). Should be one source of truth.
    TOTAL_COUNT=12
    ```
 
-`status()` already computes all of this (returns `current_batch`,
+`status()` already computes most of this (returns `current_batch`,
 `current_issue`, `batches` with completion state). The `check` subcommand
-is just a CLI wrapper.
+is a CLI wrapper.
+
+**`safe_exit` fix:** The current `status()` computes `safe_exit` as
+`completed_batches > 0` ("has any batch ever completed"). This is wrong
+for the work-end gate — it reports safe exit mid-batch when an earlier batch
+completed. Fix: "at a batch boundary" — the first incomplete issue is the
+first issue in its batch (all prior batches complete, no work started in
+current batch), AND at least one batch is complete. This matches `advance()`'s
+semantics where `safe_exit = batch_complete`.
+
+**`EPIC_COMPLETE` derivation:** `EPIC_COMPLETE` requires
+`total_issues > 0 and completed_count == total_issues`. An empty or malformed
+batch plan (zero issues) must not produce `EPIC_COMPLETE=yes` — the current
+`current_issue == 0` check has two meanings (all done vs. empty file) and the
+guard prevents the ambiguity.
+
+3. `tick` CLI subcommand — idempotent: reads the GitHub epic body, ticks
+   checkboxes for completed issues, writes back. Callable independently for
+   retry after network failure. See §G.
 
 **Tests:** Unit tests for `detect()` with both `.epic` and `.slot` epic files,
-non-epic `.slot`, and missing files. Integration test for `check` subcommand
-output format.
+non-epic `.slot`, and missing files. Test `check` subcommand: output format,
+`SAFE_EXIT=no` mid-batch even with prior completed batches, `EPIC_COMPLETE=no`
+for empty batch plan. Test `tick` idempotency.
 
 ### B. ctx.py enrichment
 
-**Change:** Replace the inline epic detection (lines 165-170) with a call to
-`epic_manager.detect()`. Add `EPIC_BATCH` and `EPIC_ACTIVE_ISSUE` to output.
-This means work-end (which already runs ctx.py) gets batch context without
-needing a separate `check` call for the simple case.
+**Change:** Replace the inline epic detection (lines 165-170, 232-233) with
+calls to `epic_manager.detect()`. Try `detect(Path(workspace))` first for
+single-repo epics; if `None` and the project is in a slot (`/worktrees/` in
+the project path), try `detect(Path(project))` — the `path.parent/.slot`
+search in detect() catches slot-based epics. Add `EPIC_BATCH` and
+`EPIC_ACTIVE_ISSUE` to output. This gives work-end batch context for both
+single-repo and slot-mode epics without a separate `check` call.
 
 The `check` subcommand (Layer 2) is still needed for `EPIC_COMPLETE` and
 `SAFE_EXIT` — ctx.py stays cheap and doesn't compute completion state.
 
-**Tests:** Update existing ctx.py tests for new output fields.
+**Tests:** Update existing ctx.py tests for new output fields, including
+slot-mode epic detection.
+
+### B2. work_router.py consolidation
+
+**Problem:** work_router.py (lines 70-137) has the largest inline epic
+parser in the codebase — separate code paths for `.slot` epics and `.epic`
+epics, each with duplicated `Type: epic` string matching, batch regex
+extraction, and current issue parsing.
+
+**Change:** Replace both code paths with calls to `epic_manager.detect()`:
+
+- Slot path (lines 70-101): `detect(project.parent)` where project is
+  inside a slot worktree
+- Workspace .epic path (lines 104-137): `detect(Path(workspace_path))`
+
+The `epic_batch` output format (`"N of M"`) is a presentation concern —
+compute it in work_router.py from the parsed batch data rather than
+embedding formatting in detect().
+
+**Tests:** Update existing work_router.py tests to verify detect() delegation
+produces identical KEY=VALUE output.
 
 ---
 
@@ -88,13 +161,22 @@ If `yes`, run:
 python3 ~/.claude/skills/work-slot/epic_manager.py check <EPIC_PATH>
 ```
 
-Three outcomes:
+Read `EPIC_PATH` from ctx.py output for the check call.
 
-| State | UX |
-|-------|----|
+**Data flow:** From check output, read `EPIC_COMPLETE`, `SAFE_EXIT`,
+`CURRENT_BATCH`, `TOTAL_BATCHES`, and `ACTIVE_ISSUE` for prompt rendering.
+
+Three outcomes, evaluated as an if/elif/else chain in this order:
+
+| Check (in order) | UX |
+|-------------------|----|
 | `EPIC_COMPLETE=yes` | Proceed silently — all children done |
-| `SAFE_EXIT=yes` | "Batch N/M complete. Safe exit point — close? (y/n)" |
-| Neither | "⚠ Mid-batch (issue #X of batch N/M). Partial close loses context. Continue? (y/confirm-partial)" — requires typing `confirm-partial`, not just `y` |
+| `SAFE_EXIT=yes` | "Batch `CURRENT_BATCH`/`TOTAL_BATCHES` complete. Safe exit point — close? (y/n)" |
+| Neither | "⚠ Mid-batch (issue #`ACTIVE_ISSUE` of batch `CURRENT_BATCH`/`TOTAL_BATCHES`). Partial close loses context. Continue? (y/confirm-partial)" — requires typing `confirm-partial`, not just `y` |
+
+Note: `EPIC_COMPLETE=yes` implies `SAFE_EXIT=yes`. The if/elif ordering ensures
+only the most specific arm fires — a completed epic proceeds silently rather
+than also triggering the safe-exit prompt.
 
 The mid-batch confirmation is deliberately high-friction. Accidentally closing
 mid-batch is the bug that surfaced this issue.
@@ -104,7 +186,10 @@ mid-batch is the bug that surfaced this issue.
 ### D. merge_slot() epic check
 
 **Change:** At the top of `merge_slot()`, after the `.phase-a-complete` check,
-call `parse_slot_md()` to check `is_epic`. If epic:
+call `parse_slot_md()` to check `is_epic`. (`parse_slot_md()` is the correct
+call here — merge_slot already has the `.slot` file in hand; it doesn't need
+`detect()`'s path discovery. `detect()` finds the file; `parse_slot_md()`
+parses an already-known file.) If epic:
 - Call `epic_manager.status()` on the `.slot` file
 - Print `EPIC_STATUS=batch N/M, N completed, N remaining`
 - Informational only — not blocking (Phase A already involved user confirmation)
@@ -118,20 +203,34 @@ call `parse_slot_md()` to check `is_epic`. If epic:
 ### E. archive_slot() checkbox verification
 
 **Change:** In `archive_slot()`, before moving to attic, if the slot is an epic
-(check via `parse_slot_md`), read the `.slot` file and verify all completed
-issues have `- [x]`. If any have `- [ ]` but their GitHub issue is CLOSED,
-auto-tick them and rewrite the file. Print `CHECKBOXES_FIXED=N` if any were
-fixed.
+(check via `parse_slot_md`):
 
-This is a data consistency fix — the issues are already closed, the checkbox
-state is just stale. No user confirmation needed.
+1. **Local checkbox verification:** Read the `.slot` file and verify all
+   completed issues have `- [x]`. If any have `- [ ]` but their GitHub issue
+   is CLOSED, auto-tick them and rewrite the file. Print
+   `CHECKBOXES_FIXED=N` if any were fixed, plus
+   `WARN=stale_checkboxes issues=83,84` — the warning surfaces potential
+   workflow bugs (`advance()` not called, manual file edits).
+
+2. **GitHub epic body catch-up:** Call `tick_epic_checkboxes()` (§G) for
+   all issues in COVERS. This catches failed post-merge ticks.
+
+If GitHub is unreachable during either check: log
+`WARN=github_unreachable_for_checkbox_verify`, skip the GitHub-dependent
+operations, proceed with archival. The archive is the critical operation;
+checkbox fixes are best-effort.
 
 **Tests:** Test with `.slot` containing unticked checkboxes for closed issues.
+Test with GitHub unreachable — verify archive proceeds with warning.
 
 ### F. phase_b_gate.py (new script)
 
 **Purpose:** Replace the self-certified markdown checklist for Phase B
-completion. Reads state, returns structured pass/fail.
+completion. Reads actual filesystem and GitHub state, returns structured
+pass/fail. The primary new value is the "issues CLOSED" check — no existing
+code verifies this. The stamp and archive checks are cheap (O(1) filesystem)
+defense-in-depth that catches step-skip scenarios without trusting each
+step's self-report.
 
 **Location:** `work-end/phase_b_gate.py`
 
@@ -141,20 +240,35 @@ completion. Reads state, returns structured pass/fail.
 3. `.artifacts-promoted` stamp exists
 4. Slot directory is in `worktrees/attic/` (archived)
 
+**Why no rebase/push check:** The current SKILL.md Phase B gate (line 698) lists
+"Branches rebased and pushed" as a check. This is intentionally omitted here
+because stamp commits (check 1) are only written by `merge_slot()` AFTER
+successful push to main (slot_manager.py line 705-716). A stamp's existence
+proves the push succeeded — checking push separately would be redundant.
+
 **Output:**
 ```
 GATE=pass
 ```
-or:
+or (definite failures):
 ```
 GATE=fail
 MISSING=stamps:engine,issues:83,archive
 ```
+or (network errors — can't verify):
+```
+GATE=warn
+MISSING=issues:83,84
+REASON=github_unreachable
+```
 
 **Usage in work-end Phase B:** After B7 (archive), before B8 (post-merge),
 run the gate. If `GATE=fail`, hard stop with the missing items listed.
+If `GATE=warn`, prompt the user with context ("GitHub unreachable — issues
+may be closed but can't verify. Proceed? y/n") rather than hard-stopping.
 
 **Tests:** Tests for each check (stamps missing, issues open, no archive).
+Test GitHub unreachable produces `GATE=warn` not `GATE=fail`.
 
 ### G. merge_slot() GitHub epic checkbox tick
 
@@ -168,32 +282,23 @@ Add a helper function `tick_epic_checkboxes(issue_repo: str, epic_number: int,
 completed_issues: list[int])` to `epic_manager.py`. merge_slot calls it after
 writing `.landed`.
 
+**New dependency:** This introduces `slot_manager → epic_manager` (first time).
+The direction is correct — slot operations delegate to epic logic. Import
+`tick_epic_checkboxes` from `epic_manager` in `merge_slot()`.
+
+**Error handling:** The tick is cosmetic — the merge has already succeeded
+(`.landed` written, code on main). If `gh api` fails, print
+`WARN=epic_tick_failed` and continue. Do not fail `merge_slot()` for a
+GitHub API error. The user can re-tick manually or the next merge will
+catch up.
+
 **Tests:** Mock `gh api` calls, verify checkbox replacement regex handles
 various formats (`- [ ] #83`, `- [ ] #83 — title`, `- [ ] https://...`).
 
-### H. update_blog_index.py (new script)
+### ~~H. update_blog_index.py~~ — moved to #155
 
-**Purpose:** Append entry to `INDEX.md` after a blog file is written to disk.
-Replaces the LLM instruction "After writing, update INDEX.md."
-
-**Location:** `write-content/update_blog_index.py`
-
-**Usage:**
-```bash
-python3 ~/.claude/skills/write-content/update_blog_index.py <blog_dir> <entry_filename> <summary>
-```
-
-**Behaviour:**
-1. Read `<blog_dir>/INDEX.md` (create if absent with table header)
-2. Extract date from filename (`YYYY-MM-DD-*`)
-3. Append: `| [<filename>](<filename>) | YYYY-MM-DD | <summary> |`
-4. Write back
-
-**Skill change:** In `write-content/forms/diary.md` Step 6, replace the manual
-INDEX.md instruction with a script call.
-
-**Tests:** Test append to existing INDEX.md, creation of new INDEX.md,
-idempotency (running twice doesn't duplicate).
+Removed from this spec — structurally unrelated to epic lifecycle and
+work-end mechanisation. Filed as Hortora/soredium#155 for independent delivery.
 
 ---
 
@@ -206,6 +311,13 @@ idempotency (running twice doesn't duplicate).
   and `epic_active_issue` fields to the stack entry
 - If not epic: omit (backward compatible — existing stack entries without
   these fields are handled gracefully)
+
+**Serializer fix:** `_entries_to_text()` uses a hardcoded key tuple
+`("issue", "paused", "wip_project", "wip_workspace", "slot")` for
+serialization. Keys not in this tuple are silently dropped on write-back.
+Add `"epic_batch"` and `"epic_active_issue"` to the tuple. Without this,
+the new fields survive push (in-memory) but are lost after the next stack
+file write.
 
 Stack entry format becomes:
 ```
@@ -269,16 +381,16 @@ work-end skill for clarity.
 ## Execution Order
 
 ```
-A (epic_manager detect+check) → B (ctx.py enrichment)
+A (epic_manager detect+check+safe_exit fix) → B (ctx.py) + B2 (work_router.py)
   → C (work-end gate) + D (merge_slot check)
-  → E (archive checkbox) + F (phase_b_gate) + G (github tick) + H (blog index)
+  → E (archive checkbox) + F (phase_b_gate) + G (github tick)
   → I (stack enrichment)
   → J1-J4 (skill display changes)
   → K (audit — verify only, note in spec)
 ```
 
-A→B is the foundation everything depends on. C+D use the foundation for gates.
-E-H are independent mechanical tasks. I needs A for detection. J is
+A→B+B2 is the foundation everything depends on. C+D use the foundation for
+gates. E-G are independent mechanical tasks. I needs A for detection. J is
 documentation. K is read-only.
 
 ---
@@ -292,25 +404,28 @@ Every new script and every modified function gets unit tests per the
 |------|-----------|-------|
 | A | test_epic_manager.py | detect() with .epic, .slot, non-epic, missing |
 | A | test_epic_manager.py | check subcommand output format |
-| B | test_ctx.py (if exists) | EPIC_BATCH, EPIC_ACTIVE_ISSUE in output |
+| B | test_ctx.py | EPIC_BATCH, EPIC_ACTIVE_ISSUE in output (slot + single-repo) |
+| B2 | test_work_router.py | detect() delegation, identical KEY=VALUE output |
 | D | test_slot_manager.py | merge_slot prints EPIC_STATUS for epic slot |
 | E | test_slot_manager.py | archive_slot auto-ticks stale checkboxes |
 | F | test_phase_b_gate.py (new) | pass, fail-stamps, fail-issues, fail-archive |
 | G | test_epic_manager.py | tick_epic_checkboxes regex for various formats |
-| H | test_update_blog_index.py (new) | append, create, idempotency |
-| I | test_stack.py (or test_work_pause.py) | push/pop with epic fields, backward compat |
+| I | test_stack.py | push/pop with epic fields, _entries_to_text keys, backward compat |
+
+Items C, J1–J4, K are skill-documentation or audit-only changes — no script
+tests needed.
 
 ---
 
 ## Files Changed
 
 **Scripts (new or modified):**
-- `work-slot/epic_manager.py` — detect(), check subcommand, tick_epic_checkboxes()
+- `work-slot/epic_manager.py` — detect(), check subcommand, safe_exit fix, tick_epic_checkboxes()
 - `work-slot/slot_manager.py` — archive_slot() checkbox fix, merge_slot() epic check + tick
 - `work-end/phase_b_gate.py` — new
-- `write-content/update_blog_index.py` — new
-- `project/ctx.py` — epic enrichment
-- `work-pause/stack.py` — epic fields (if stack.py exists; else work-pause SKILL.md instruction for the script)
+- `project/ctx.py` — epic enrichment (both .epic and slot-based detection)
+- `work/work_router.py` — replace inline epic parsing with detect()
+- `project/stack.py` — epic fields + _entries_to_text key list update
 
 **Skills (documentation):**
 - `work-end/SKILL.md` — Step 0b epic gate, stamp verification note
@@ -318,10 +433,9 @@ Every new script and every modified function gets unit tests per the
 - `work-start/SKILL.md` — Epic Overlay → Step 3d
 - `work-resume/SKILL.md` — Step 9b epic context
 - `work-pause/SKILL.md` — epic state recording
-- `write-content/forms/diary.md` — INDEX.md script call
 
 **Tests (new or modified):**
 - `tests/test_epic_manager.py`
 - `tests/test_slot_manager.py`
 - `tests/test_phase_b_gate.py` (new)
-- `tests/test_update_blog_index.py` (new)
+- `tests/test_work_router.py`

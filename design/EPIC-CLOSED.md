@@ -1,5 +1,5 @@
-# Branch Closed: issue-151-mechanise-llm-steps
+# Branch Closed: issue-162-rename-worktrees-to-slots
 
 **Date:** 2026-08-03
-**Issues:** 151
+**Issues:** 162
 **Status:** merged to main

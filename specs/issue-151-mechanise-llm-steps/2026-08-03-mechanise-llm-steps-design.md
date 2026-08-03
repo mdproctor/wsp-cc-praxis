@@ -331,8 +331,18 @@ epic_batch=2/4
 epic_active_issue=83
 ```
 
+**Serialization fix:** `_entries_to_text()` currently uses a hardcoded key
+tuple `("issue", "paused", "wip_project", "wip_workspace", "slot")` that
+silently drops any other keys. Change to serialize all keys present in the
+dict — known keys first in stable order, then any additional keys
+alphabetically. This makes the serializer forward-compatible.
+
+**Output fix:** `cmd_list()` must include `ENTRY_N_EPIC_BATCH` and
+`ENTRY_N_EPIC_ACTIVE_ISSUE` in its output for the display improvements in §J
+to work.
+
 **Tests:** Test push with and without epic state, pop with missing fields
-(backward compat).
+(backward compat). Test that `_entries_to_text` round-trips unknown keys.
 
 ### J. Display improvements (skill documentation)
 

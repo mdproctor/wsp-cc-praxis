@@ -338,7 +338,7 @@ These describe conditions that must be true AFTER the transition completes — t
 | `paused` | WIP commit is HEAD on both repos | `wip_commit` effect |
 | `active` (from `paused`) | WIP commit has been reset (working tree restored) | `reset_wip` effect |
 
-### 7.3 Slot-Specific Invariants
+### 7.4 Slot-Specific Invariants
 
 | Invariant | When |
 |-----------|------|
@@ -347,7 +347,7 @@ These describe conditions that must be true AFTER the transition completes — t
 | `.slot` file exists and is parseable | `work_next` in slot context |
 | Epic active issue in `.slot` matches `.meta` active issue | `transitioning → active` in slot context |
 
-### 7.4 Untracked File Exclude Patterns
+### 7.5 Untracked File Exclude Patterns
 
 The exclude list is configurable per project type via CLAUDE.md `## Project Type`:
 
@@ -762,14 +762,14 @@ This is a single model for all transitions. The closing sequence adds a pre-tran
 
 **Gate-then-advance pattern (closing sequence):**
 
-| Event | Gate action (before `transition()`) | Effects (between `transition()` and `commit_transition()`) |
-|-------|--------------------------------------|----------------------------------------------------------|
-| `review_pass` | Code review completes | `['record_review']` |
-| `promote_pass` | `close_artifacts.py` succeeds | `['write_promotion_stamp']` |
-| `push_pass` | Squash + push branch succeeds | `[]` |
-| `merge_pass` | Rebase + push main succeeds | `['verify_content_landed']` |
-| `stamp_pass` | `verify_stamp.py` passes | `['write_stamp']` |
-| `cleanup_pass` | Cleanup operations complete | `['write_epic_closed', 'return_to_main', 'remove_meta', 'write_handoff']` |
+| Event | Gate action (before `transition()`) | Pre-commit Effects | Post-commit Effects |
+|-------|--------------------------------------|-------------------|-------------------|
+| `review_pass` | Code review completes | `['record_review']` | `[]` |
+| `promote_pass` | `close_artifacts.py` succeeds | `['write_promotion_stamp']` | `[]` |
+| `push_pass` | Squash + push branch succeeds | `[]` | `[]` |
+| `merge_pass` | Rebase + push main succeeds | `['verify_content_landed']` | `[]` |
+| `stamp_pass` | `verify_stamp.py` passes | `['write_stamp']` | `[]` |
+| `cleanup_pass` | Cleanup operations complete | `['write_epic_closed']` | `['return_to_main', 'write_handoff']` |
 
 Gate actions are NOT effects — they happen before `transition()` is called, driven by the work-end skill.
 
@@ -786,6 +786,7 @@ The `work_resume` event follows a similar pre-action pattern. Before firing `wor
 | `create_branch` | Branch exists? → skip | Prevents "branch already exists" error |
 | `write_meta` | `.meta` exists? → skip | Prevents overwriting in-progress `.meta` |
 | `write_epic` | `.epic` exists? → skip | Same |
+| `write_slot_epic` | `.slot` + `.epic` exist? → skip | Prevents overwriting slot epic |
 | `create_slot` | Slot directory exists? → skip | Same |
 | `garden_search` | _(inherently idempotent)_ | Re-runs harmlessly |
 | `load_specs` | _(inherently idempotent)_ | Re-runs harmlessly |
@@ -803,6 +804,8 @@ The `work_resume` event follows a similar pre-action pattern. Before firing `wor
 | `write_epic_closed` | File exists? → skip | Prevents duplicate marker |
 | `return_to_main` | Already on main? → no-op | Safe re-execution |
 | `write_handoff` | _(overwrites — idempotent)_ | Same data written |
+| `pre_close_sweep` | _(inherently idempotent)_ | Read-only search, re-runs harmlessly |
+| `verify_content_landed` | _(inherently idempotent)_ | Read-only git cat-file check |
 | `record_review` | _(overwrites — idempotent)_ | Same data written |
 | `write_promotion_stamp` | _(overwrites — idempotent)_ | Same data written |
 | `write_stamp` | Stamp commit exists? → skip | Prevents duplicate stamp |

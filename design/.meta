@@ -1,0 +1,9 @@
+branch: issue-168-workspace-branch-guard
+project-sha: dbef637ec91ddd34cee745ccfd7bb1b1d83fffee
+date: 2026-08-03
+issue: 168
+issue-repo: Hortora/soredium
+covers: 168,169
+flyway-next-v: unknown
+design-repo: workspace
+design-section-hashes: 

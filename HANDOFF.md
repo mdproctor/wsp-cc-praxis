@@ -20,6 +20,6 @@
 
 ## What is NOT done
 - 9 failing tests in `test_design_review.py` from #159's `depth` → `degree` rename — import error
-- Trellis worktree mismatch: ctx.py finds workspace .meta (epic branch) instead of worktree .meta when a Claude Code worktree is created without work-start scaffolding — needs investigation and TDD fix
+- #161 — ctx.py finds wrong .meta in Claude Code worktrees — workspace epic .meta bleeds into worktree context (S / Low)
 </content>
 </invoke>

@@ -22,7 +22,7 @@ Replace inference with an explicit `state:` field in `.meta`. A single Python mo
 
 ## 1. States
 
-Ten states in a single flat namespace. No nested sub-machines.
+Eleven states in a single flat namespace. No nested sub-machines.
 
 | State | Meaning | `.meta` value | Resting? |
 |-------|---------|---------------|----------|
@@ -408,7 +408,7 @@ def main():
         local_ref, local_sha, remote_ref, remote_sha = line.split()
         is_main_push = remote_ref.endswith('/main') or remote_ref.endswith(f'/{base_branch}')
         
-        if is_main_push and state not in ('closing:merged', 'closing:stamped'):
+        if is_main_push and state not in ('closing:pushed', 'closing:merged', 'closing:stamped'):
             print(f"BLOCKED: state is '{state}'. Run work-end to complete the close sequence.")
             sys.exit(1)
     
@@ -756,20 +756,20 @@ from typing import Optional
 VALID_STATES = frozenset({
     'idle', 'scaffolded', 'active', 'transitioning', 'paused',
     'closing:review', 'closing:verified', 'closing:promoted',
-    'closing:merged', 'closing:stamped',
+    'closing:pushed', 'closing:merged', 'closing:stamped',
 })
 
 TRANSIENT_STATES = frozenset({'scaffolded', 'transitioning'})
 
 CLOSING_STATES = frozenset({
     'closing:review', 'closing:verified', 'closing:promoted',
-    'closing:merged', 'closing:stamped',
+    'closing:pushed', 'closing:merged', 'closing:stamped',
 })
 
 RESTING_STATES = frozenset({
     'idle', 'active', 'paused',
     'closing:review', 'closing:verified', 'closing:promoted',
-    'closing:merged', 'closing:stamped',
+    'closing:pushed', 'closing:merged', 'closing:stamped',
 })
 
 @dataclass
@@ -851,7 +851,8 @@ TRANSITION_TABLE: dict[tuple[str, str], tuple[str, list[str]]] = {
     ('active', 'work_end'):        ('closing:review',    ['pre_close_sweep']),
     ('closing:review', 'review_pass'):    ('closing:verified',  ['record_review']),
     ('closing:verified', 'promote_pass'): ('closing:promoted',  ['write_promotion_stamp']),
-    ('closing:promoted', 'merge_pass'):   ('closing:merged',    ['verify_content_landed']),
+    ('closing:promoted', 'push_pass'):    ('closing:pushed',    []),
+    ('closing:pushed', 'merge_pass'):     ('closing:merged',    ['verify_content_landed']),
     ('closing:merged', 'stamp_pass'):     ('closing:stamped',   ['write_stamp']),
     ('closing:stamped', 'cleanup_pass'):  ('idle',              ['write_epic_closed', 'return_to_main', 'remove_meta', 'write_handoff']),
     
@@ -887,7 +888,8 @@ class TestValidTransitions:
         ("active",              "work_end",      "closing:review",    ["pre_close_sweep"]),
         ("closing:review",      "review_pass",   "closing:verified",  ["record_review"]),
         ("closing:verified",    "promote_pass",  "closing:promoted",  ["write_promotion_stamp"]),
-        ("closing:promoted",    "merge_pass",    "closing:merged",    ["verify_content_landed"]),
+        ("closing:promoted",    "push_pass",     "closing:pushed",    []),
+        ("closing:pushed",      "merge_pass",    "closing:merged",    ["verify_content_landed"]),
         ("closing:merged",      "stamp_pass",    "closing:stamped",   ["write_stamp"]),
         ("closing:stamped",     "cleanup_pass",  "idle",              ["write_epic_closed", "return_to_main", "remove_meta", "write_handoff"]),
     ])
@@ -907,7 +909,7 @@ class TestValidTransitions:
         assert result.new_state == "active"
     
     @pytest.mark.parametrize("closing_state", [
-        "closing:promoted", "closing:merged", "closing:stamped",
+        "closing:promoted", "closing:pushed", "closing:merged", "closing:stamped",
     ])
     def test_abort_blocked_from_post_artifact_closing_state(self, closing_state, tmp_meta):
         write_state(tmp_meta, closing_state)
@@ -1074,10 +1076,12 @@ class TestPrePushHook:
         ("closing:review",      True,  True),
         ("closing:verified",    True,  True),
         ("closing:promoted",    True,  True),
+        ("closing:pushed",      True,  False),
         ("closing:merged",      True,  False),
         ("closing:stamped",     True,  False),
         ("active",              False, False),  # feature branch push
         ("closing:review",      False, False),  # feature branch push
+        ("closing:pushed",      False, False),  # feature branch push
     ])
     def test_hook_enforcement(self, state, push_to_main, should_block, tmp_meta):
         write_state(tmp_meta, state)
@@ -1202,8 +1206,14 @@ Each step is independently deployable and testable. No step requires a later ste
                     │                  │ closing: │             │
                     │                  │ promoted │  (forward   │
                     │                  └────┬─────┘   only)     │
-                    │                       │                   │
-                    │                       ▼                   │
+                    │              push     │                   │
+                    │              _pass    ▼                   │
+                    │                  ┌──────────┐             │
+                    │                  │ closing: │             │
+                    │                  │ pushed   │             │
+                    │                  └────┬─────┘             │
+                    │              merge    │                   │
+                    │              _pass    ▼                   │
                     │                  ┌──────────┐             │
                     │                  │ closing: │             │
                     │                  │ merged   │             │

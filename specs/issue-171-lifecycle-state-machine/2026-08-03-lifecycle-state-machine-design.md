@@ -34,6 +34,7 @@ Ten states in a single flat namespace. No nested sub-machines.
 | `closing:review` | Close initiated, code review pending | `state: closing:review` | Yes |
 | `closing:verified` | Review passed, artifact promotion pending | `state: closing:verified` | Yes |
 | `closing:promoted` | Artifacts promoted, merge pending | `state: closing:promoted` | Yes |
+| `closing:pushed` | Branch squashed and pushed, merge to main pending | `state: closing:pushed` | Yes |
 | `closing:merged` | Merged to main, stamp pending | `state: closing:merged` | Yes |
 | `closing:stamped` | Stamped, cleanup pending | `state: closing:stamped` | Yes |
 
@@ -51,10 +52,13 @@ Each state has invariants that must be true whenever the system is in that state
 | `scaffolded` | `.meta` exists with `state: scaffolded`. Branch created in project and workspace. `.meta` has branch, issue, date fields populated. |
 | `active` | `.meta` exists with `state: active`. Project and workspace on the branch named in `.meta`. No transient context setup pending. |
 | `transitioning` | `.meta` exists with `state: transitioning`. Epic file (`.epic` or `.slot`) exists. Previous issue checked off. Next issue marked active. |
-| `paused` | `.meta` exists with `state: paused`. Entry present in `.pause-stack`. WIP commit is HEAD on both repos' branches. Project and workspace on main/base. |
+| `paused` | `.meta` exists with `state: paused` **on the branch**. Entry present in `.pause-stack` on main. WIP commit is HEAD on both repos' branches. Project and workspace on main/base. |
+
+**Paused state detection model:** The `paused` state is stored in `.meta` on the feature branch, which is not in the working tree when on main. Detection uses a two-step process: (1) the routing layer reads `.pause-stack` on main to identify paused branches, (2) after the user selects a branch and work-resume checks it out, `transition()` reads `state: paused` from the now-accessible `.meta`. The state machine never needs to read `paused` from main — the routing layer handles discovery, and `transition()` fires after checkout.
 | `closing:review` | `.meta` exists. On the branch. No uncommitted changes in project. |
 | `closing:verified` | Same as `closing:review` plus code review passed (recorded in `.meta`). |
 | `closing:promoted` | Same as `closing:verified` plus `.artifacts-promoted` stamp exists OR `close_artifacts.py` returned success. |
+| `closing:pushed` | Same as `closing:promoted` plus branch squashed to a single commit and pushed to fork/origin. |
 | `closing:merged` | Project base branch has the branch content. Rebase/squash completed. |
 | `closing:stamped` | Branch has closure stamp commit. Content verified on base branch. |
 
@@ -78,7 +82,8 @@ Events are the inputs to the state machine. Each event corresponds to a user com
 | `work_end` | User command (`work end`) | Initiate close sequence |
 | `review_pass` | System (code review completes) | Code review passed |
 | `promote_pass` | System (`close_artifacts.py` succeeds) | Artifacts promoted |
-| `merge_pass` | System (rebase + push succeeds) | Branch merged to main |
+| `push_pass` | System (squash + push branch succeeds) | Branch squashed and pushed to fork |
+| `merge_pass` | System (rebase + push main succeeds) | Branch merged to main |
 | `stamp_pass` | System (stamp written + verified) | Branch stamped as closed |
 | `cleanup_pass` | System (cleanup completes) | Return to idle |
 | `abort_close` | User command (abort during close) | Abort closing sequence |
@@ -99,7 +104,7 @@ Events are the inputs to the state machine. Each event corresponds to a user com
 | T6 | `active` | `work_next` | `transitioning` | `epic_manager.py advance`, update `.meta`, tick GitHub checkbox | Epic file must exist |
 | T7 | `transitioning` | `auto_refresh` | `active` | Garden search (new issue keywords), load specs (new issue), check protocols | Automatic — fires on any read of `transitioning` state |
 | T8 | `active` | `work_pause` | `paused` | WIP commit, push to `.pause-stack`, switch to main | `.meta` must exist |
-| T9 | `paused` | `work_resume` | `active` | Pop stack, checkout branch, reset WIP, run context setup | Entry must be in `.pause-stack` |
+| T9 | `paused` | `work_resume` | `active` | Pop stack, checkout branch, reset WIP, run context resume (§6.3) | Entry must be in `.pause-stack` |
 
 ### 3.2 Closing Sequence
 
@@ -108,9 +113,10 @@ Events are the inputs to the state machine. Each event corresponds to a user com
 | T10 | `active` | `work_end` | `closing:review` | Initiate close, run pre-close sweep | Must be on branch, no uncommitted changes |
 | T11 | `closing:review` | `review_pass` | `closing:verified` | Record review result in `.meta` | Code review or final review must complete |
 | T12 | `closing:verified` | `promote_pass` | `closing:promoted` | `close_artifacts.py` runs, `.artifacts-promoted` stamp written | Stamp must be written |
-| T13 | `closing:promoted` | `merge_pass` | `closing:merged` | Squash, rebase onto base branch, push to fork | Fork push must succeed |
-| T14 | `closing:merged` | `stamp_pass` | `closing:stamped` | Write closure stamp, verify content landed via `git cat-file` | `verify_stamp.py` must pass |
-| T15 | `closing:stamped` | `cleanup_pass` | `idle` | Write EPIC-CLOSED.md, return to main, remove `.meta`, write HANDOFF.md | Both repos on main |
+| T13 | `closing:promoted` | `push_pass` | `closing:pushed` | Squash commits, push branch to fork/origin | Push must succeed |
+| T14 | `closing:pushed` | `merge_pass` | `closing:merged` | Rebase onto base branch, push main | Merge must succeed |
+| T15 | `closing:merged` | `stamp_pass` | `closing:stamped` | Write closure stamp, verify content landed via `git cat-file` | `verify_stamp.py` must pass |
+| T16 | `closing:stamped` | `cleanup_pass` | `idle` | Write EPIC-CLOSED.md, return to main, remove `.meta`, write HANDOFF.md | Both repos on main |
 
 ### 3.3 Slot Phase A / Phase B Mapping
 
@@ -118,10 +124,12 @@ In slot mode, the closing sequence splits across two sessions:
 
 | Phase | Transitions | Session |
 |-------|------------|---------|
-| Phase A | T10 → T11 → T12 → T13 (push branch, not merge to main) | In the slot |
-| Phase B | T13 (rebase onto main, push main) → T14 → T15 | From main repo via `work-slot merge` |
+| Phase A | T10 → T11 → T12 → T13 (squash + push branch) | In the slot |
+| Phase B | T14 (rebase onto main, push main) → T15 → T16 | From main repo via `work-slot merge` |
 
-The `.phase-a-complete` marker file becomes redundant — it is the `closing:promoted` (or `closing:merged` after branch push) state in `.meta`.
+Phase A ends at `closing:pushed` — branch is squashed and pushed to fork, but not merged to main. Phase B starts from `closing:pushed` and completes the merge, stamp, and cleanup.
+
+The `.phase-a-complete` marker file is **removed** — replaced by `state: closing:pushed` in `.meta`. Migration: if `.phase-a-complete` exists and `.meta` has no `state:` field, `read_state()` returns `closing:pushed`. New branches use the state field exclusively.
 
 ### 3.4 Session-Start Routing (skill-layer, not transition table)
 
@@ -143,7 +151,7 @@ Transient states (`scaffolded`, `transitioning`) auto-resolve via their dedicate
 
 Every `(state, event)` pair not in the transition table is invalid. The state machine raises `InvalidTransition` with a human-readable message.
 
-### 4.1 Comprehensive Invalid Transition Table
+### 4.1 Common Invalid Transitions and Error Messages
 
 | From | Event | Why Invalid | Error Message |
 |------|-------|-------------|---------------|
@@ -167,7 +175,8 @@ Every `(state, event)` pair not in the transition table is invalid. The state ma
 | `closing:*` | `work` | Can't start new work mid-close | "Close sequence in progress. Complete or abort first." |
 | `closing:*` | `work_epic` | Can't start epic mid-close | "Close sequence in progress. Complete or abort first." |
 | `closing:verified` | `review_pass` | Already past review | "Review already passed — currently at promotion stage." |
-| `closing:promoted` | `promote_pass` | Already past promotion | "Promotion already passed — currently at merge stage." |
+| `closing:promoted` | `promote_pass` | Already past promotion | "Promotion already passed — currently at push stage." |
+| `closing:pushed` | `push_pass` | Already past push | "Push already complete — currently at merge stage." |
 | `closing:promoted` | `abort_close` | Past artifact promotion | "Cannot abort — artifacts already promoted. Continue forward." |
 | `closing:merged` | `abort_close` | Content on main | "Cannot abort — content already merged to main. Continue forward." |
 | `closing:stamped` | `abort_close` | Branch stamped | "Cannot abort — branch already stamped. Only cleanup remains." |
@@ -213,7 +222,7 @@ Every way work can begin, mapped to the event it fires. This is the exhaustive l
 | `work-slot create` | `idle` | `slot_create` | Create slot |
 | `work-slot epic #N` | `idle` | `slot_epic` | Create epic slot |
 | `work-slot next` | `active` | `work_next` | Same event as `work next` |
-| `work-slot merge` | `closing:promoted` | `merge_pass` | Phase B merge |
+| `work-slot merge` | `closing:pushed` | `merge_pass` | Phase B merge |
 
 ### 5.2 System Events
 
@@ -225,7 +234,8 @@ Every way work can begin, mapped to the event it fires. This is the exhaustive l
 | Session hook (`project` skill) | `closing:*` | `session_start` | Offer to continue close |
 | `close_artifacts.py` succeeds | `closing:verified` | `promote_pass` | Automatic after script |
 | Code review passes | `closing:review` | `review_pass` | Automatic after review |
-| Rebase + push succeeds | `closing:promoted` | `merge_pass` | Automatic after merge |
+| Squash + push branch succeeds | `closing:promoted` | `push_pass` | Automatic after push |
+| Rebase + push main succeeds | `closing:pushed` | `merge_pass` | Automatic after merge |
 | Stamp + verify succeeds | `closing:merged` | `stamp_pass` | Automatic after stamp |
 | Cleanup completes | `closing:stamped` | `cleanup_pass` | Automatic after cleanup |
 
@@ -239,7 +249,8 @@ These are things that happen outside the state machine. They can leave `.meta` i
 | Manual `git merge --ff-only <branch>` to main | `.meta` exists on main (GE-20260521-b6a1a7) | Offer to complete close or remove `.meta` |
 | Session crash mid-transition | Transient state persists beyond 1 hour | Re-run auto-resolve on next session |
 | Session crash mid-close | `closing:*` state persists | Offer to continue from current gate |
-| Manual `git push` bypassing work-end | Pre-push hook blocks if state < `closing:promoted` | Hook refuses the push |
+| Manual `git push` bypassing work-end | Pre-push hook blocks if state < `closing:pushed` | Hook refuses the push |
+| Workspace on stale branch (workspace dirty) | Workspace on non-main branch, project on main, no `.meta` | Switch workspace to main, then proceed with normal routing |
 | Another session modifies `.meta` | State read doesn't match expected state | Hard stop — investigate |
 | Branch deleted on remote | Branch exists locally but `git fetch --prune` removes tracking ref | Warn, offer to re-push or clean up |
 
@@ -272,6 +283,22 @@ A subset of context setup, focused on the new issue's domain:
 
 Context refresh does NOT re-run platform coherence (same branch), IntelliJ verification (already connected), or epic overlay (already displayed by `work_next`).
 
+### 6.3 Context Resume (fires on `paused → active`)
+
+A full context setup minus epic overlay, which is handled separately by the resume flow's stack entry metadata:
+
+| # | Step | Source | What Changes |
+|---|------|--------|-------------|
+| CX1 | Platform coherence | work-start Step 2 | Re-verify — session state may have drifted |
+| CX2 | Protocol check | work-start Step 3 | Protocols may have changed while paused |
+| CX3 | Garden search | work-start Step 3b | New entries may exist since pause |
+| CX4 | Load specs | work-start Step 3c | Specs may have been updated |
+| CX5 | IntelliJ verification | work-start Step 11 | New session needs IDE connection |
+
+Context resume does NOT re-run epic overlay (CS5) — the resume flow reads epic context from the stack entry's metadata and displays it as Step 9b in work-resume.
+
+T9's `context_resume` effect maps to this procedure.
+
 **Issue identity source:** Context refresh reads the current issue number from the epic file (`.epic` or `.slot`), NOT from `.meta`'s `issue:` field. The epic file is updated by `advance_issue` (T6 effect) and is authoritative for issue identity during transitions. If `update_meta` (also a T6 effect) fails after `advance_issue` succeeds, the epic file still has the correct new issue and auto-resolve works correctly. If `advance_issue` itself fails, the epic file retains the old issue — auto-resolve refreshes context for the old issue, which is correct since the advance didn't happen.
 
 ---
@@ -284,7 +311,7 @@ Context refresh does NOT re-run platform coherence (same branch), IntelliJ verif
 
 | Invariant | Check | Excludes |
 |-----------|-------|----------|
-| **No untracked files** | `git status --porcelain` filtered by exclude patterns | `.idea/`, `target/`, `build/`, `node_modules/`, `__pycache__/`, `*.iml`, `.worktrees/`, `slots/` |
+| **No untracked files** | `git status --porcelain` filtered by exclude patterns | `.idea/`, `target/`, `build/`, `node_modules/`, `__pycache__/`, `*.iml`, `.worktrees/`, `slots/`. Skip when transitioning to `paused` (`wip_commit` effect handles untracked files) |
 | **Branch alignment** | `.meta` branch field matches `git branch --show-current` in project AND workspace | Skip when transitioning to `idle` (`.meta` being removed) or `paused` (switching to main is the point) |
 | **`.meta` integrity** | `.meta` has required fields: `branch`, `state`, `date` | Skip when transitioning from `idle` (`.meta` doesn't exist yet) |
 
@@ -295,6 +322,7 @@ Context refresh does NOT re-run platform coherence (same branch), IntelliJ verif
 | `closing:review` | No uncommitted changes in project repo |
 | `closing:review` | No uncommitted changes in workspace repo |
 | `closing:promoted` | `.artifacts-promoted` stamp exists or `close_artifacts.py` exit code 0 |
+| `closing:pushed` | Branch squashed to single commit and pushed to fork/origin (verified by push success) |
 | `closing:merged` | Branch content exists on base branch (verified by merge/rebase success) |
 | `closing:stamped` | `verify_stamp.py` passes — content confirmed on base branch via `git cat-file` (GE-20260801-836d85) |
 | `paused` | WIP commit is HEAD on both repos |
@@ -334,12 +362,15 @@ A git pre-push hook reads `state:` from `.meta` and blocks pushes that skip clos
 | `state: active` | **BLOCK** — "Run work-end first" | ALLOW (WIP push) |
 | `state: scaffolded` | **BLOCK** — "Branch not yet active" | ALLOW |
 | `state: transitioning` | **BLOCK** — "Issue transition in progress" | ALLOW |
-| `state: paused` | **BLOCK** — "Branch is paused" | ALLOW |
+| `state: paused` | **BLOCK** — "Branch is paused" (defensive — see note) | ALLOW |
 | `state: closing:review` | **BLOCK** — "Code review not complete" | ALLOW |
 | `state: closing:verified` | **BLOCK** — "Artifacts not promoted" | ALLOW |
-| `state: closing:promoted` | **BLOCK** — "Merge not complete" | ALLOW |
-| `state: closing:merged` | ALLOW — merge push | ALLOW |
-| `state: closing:stamped` | ALLOW — stamp push | ALLOW |
+| `state: closing:promoted` | **BLOCK** — "Push not complete" | ALLOW |
+| `state: closing:pushed` | ALLOW — merge push | ALLOW |
+| `state: closing:merged` | ALLOW — stamp push | ALLOW |
+| `state: closing:stamped` | ALLOW — cleanup push | ALLOW |
+
+**Note on `state: paused` row:** When properly paused, both repos are on main and `.meta` is on the branch — the hook reads no `.meta` and hits the "No `.meta` exists → ALLOW" row. The `state: paused` row is a defensive guard for the case where a user manually checks out a paused branch (bypassing work-resume), which would expose `.meta` with `state: paused`.
 
 ### 8.2 Hook Location
 
@@ -399,11 +430,14 @@ When a session starts and finds a non-resting state, it must recover.
 | `transitioning` | Session start reads `.meta` | Auto-resolve: run context refresh (T7/T17). |
 | `closing:review` | Session start reads `.meta` | "Close was interrupted at code review. Continue review? (y) / Abort close? (n)" |
 | `closing:verified` | Session start reads `.meta` | "Close was interrupted at artifact promotion. Continue? (y) / Abort? (n)" |
-| `closing:promoted` | Session start reads `.meta` | "Close was interrupted at merge. Artifacts already promoted — continue. (y)" |
+| `closing:promoted` | Session start reads `.meta` | "Close was interrupted at push. Artifacts already promoted — continue. (y)" |
+| `closing:pushed` | Session start reads `.meta` | "Close was interrupted at merge. Branch pushed — continue. (y)" |
 | `closing:merged` | Session start reads `.meta` | "Close was interrupted at stamping. Content on main — continue. (y)" |
 | `closing:stamped` | Session start reads `.meta` | "Close was interrupted at cleanup. Branch stamped — continue. (y)" |
 
 Aborting is only available from `closing:review` and `closing:verified` (pre-artifact states). From `closing:promoted` and later, the close path is forward-only — artifacts have been promoted, issues closed, and/or content merged. The only option is to continue from the current gate.
+
+**`paused` is absent from this table** because paused branches are discovered via `.pause-stack` on main, not via stale `.meta` detection. The session-start routing (§3.4) checks `.pause-stack` and offers the stack picker — this is normal routing, not stale state recovery.
 
 ### 9.1 Orphaned `.meta` on Main
 
@@ -538,10 +572,20 @@ META_IS_TRANSIENT=no       # yes if state is scaffolded or transitioning
 
 The `work` router currently calls `work_router.py` which infers state from branch position and file existence. After this change:
 
-1. `work_router.py` reads `META_STATE` from ctx.py
-2. If `META_IS_TRANSIENT=yes`, route to auto-resolve (context setup or refresh)
-3. If `META_STATE` is a `closing:*` value, offer to continue close
-4. The existing `ROUTE` values (`start`, `resume_stack`, `resume_branch`, `workspace_dirty`) are replaced by state-based routing
+The existing `ROUTE` values (`start`, `resume_stack`, `resume_branch`, `workspace_dirty`) are replaced by state-based routing. The complete routing table:
+
+| On main? | `META_STATE` | Stack? | Route |
+|----------|-------------|--------|-------|
+| yes | empty (idle) | no | → work-start (new branch) |
+| yes | empty (idle) | yes | → stack picker (resume or new) |
+| yes | any (orphaned `.meta`) | any | → orphan recovery (§9.1) |
+| no | empty | any | → workspace_dirty recovery or unscaffolded branch (§5.3) |
+| no | `scaffolded` | any | → fire `auto_setup` (T5) |
+| no | `transitioning` | any | → fire `auto_refresh` (T7) |
+| no | `active` | any | → feature branch lifecycle menu |
+| no | `closing:*` | any | → continue close from current gate |
+
+`work_router.py` reads `META_STATE` from ctx.py and applies this table
 
 **Boundary between `lifecycle.py` and `work_router.py`:**
 
@@ -621,8 +665,9 @@ The gate actions themselves are NOT effects — they happen BEFORE the event fir
 | Event | Gate action (performed by skill BEFORE event) | Effects (instructions AFTER state change) |
 |-------|----------------------------------------------|------------------------------------------|
 | `review_pass` | Code review completes successfully | `['record_review']` — write review result to `.meta` |
-| `promote_pass` | `close_artifacts.py` runs successfully | `['run_close_artifacts', 'write_promotion_stamp']` — promotion and stamp |
-| `merge_pass` | Squash + rebase + push succeeds | `['verify_content_landed']` — verify via `git cat-file` |
+| `promote_pass` | `close_artifacts.py` runs successfully | `['write_promotion_stamp']` — write `.artifacts-promoted` stamp |
+| `push_pass` | Squash + push branch succeeds | `[]` — state change only |
+| `merge_pass` | Rebase + push main succeeds | `['verify_content_landed']` — verify via `git cat-file` |
 | `stamp_pass` | `verify_stamp.py` passes | `['write_stamp']` — write closure stamp commit |
 | `cleanup_pass` | Cleanup operations complete | `['write_epic_closed', 'return_to_main', 'remove_meta', 'write_handoff']` |
 
@@ -639,7 +684,7 @@ The gate actions themselves are NOT effects — they happen BEFORE the event fir
 | `issue-activate` | `transitioning → active` (T7) — new issue context |
 | `issue-complete` | `active → transitioning` (T6) — outgoing issue |
 
-### 13.2 Graceful Degradation
+### 13.3 Graceful Degradation
 
 If the worklog DB is unavailable (not configured, permissions error), `worklog_emit()` warns once and continues. Worklog emission is observability — it never blocks a transition.
 
@@ -805,7 +850,7 @@ TRANSITION_TABLE: dict[tuple[str, str], tuple[str, list[str]]] = {
     # Closing sequence
     ('active', 'work_end'):        ('closing:review',    ['pre_close_sweep']),
     ('closing:review', 'review_pass'):    ('closing:verified',  ['record_review']),
-    ('closing:verified', 'promote_pass'): ('closing:promoted',  ['run_close_artifacts', 'write_promotion_stamp']),
+    ('closing:verified', 'promote_pass'): ('closing:promoted',  ['write_promotion_stamp']),
     ('closing:promoted', 'merge_pass'):   ('closing:merged',    ['verify_content_landed']),
     ('closing:merged', 'stamp_pass'):     ('closing:stamped',   ['write_stamp']),
     ('closing:stamped', 'cleanup_pass'):  ('idle',              ['write_epic_closed', 'return_to_main', 'remove_meta', 'write_handoff']),
@@ -841,7 +886,7 @@ class TestValidTransitions:
         ("paused",              "work_resume",   "active",            ["pop_stack", "checkout_branch", "reset_wip", "context_setup"]),
         ("active",              "work_end",      "closing:review",    ["pre_close_sweep"]),
         ("closing:review",      "review_pass",   "closing:verified",  ["record_review"]),
-        ("closing:verified",    "promote_pass",  "closing:promoted",  ["run_close_artifacts", "write_promotion_stamp"]),
+        ("closing:verified",    "promote_pass",  "closing:promoted",  ["write_promotion_stamp"]),
         ("closing:promoted",    "merge_pass",    "closing:merged",    ["verify_content_landed"]),
         ("closing:merged",      "stamp_pass",    "closing:stamped",   ["write_stamp"]),
         ("closing:stamped",     "cleanup_pass",  "idle",              ["write_epic_closed", "return_to_main", "remove_meta", "write_handoff"]),
@@ -1100,7 +1145,7 @@ class TestStaleStateRecovery:
 | Hook blocks legitimate pushes | Developer friction | Hook allows all feature-branch pushes; only blocks main pushes |
 | Transient states never resolve (bug in auto-resolve) | Branch stuck in `scaffolded` forever | Next session re-attempts auto-resolve; hard timeout after 3 failed attempts |
 | Single-repo mode has different `.meta` location | State reads fail | ctx.py already handles single-repo — `META_STATE` output adapts |
-| Worklog DB unavailable | Events lost | Graceful degradation — warn, don't block (Section 13.2) |
+| Worklog DB unavailable | Events lost | Graceful degradation — warn, don't block (Section 13.3) |
 | Concurrent sessions race on `.meta` | Corrupted state | Second session detects unexpected state, hard stops (Section 14.3) |
 
 ---
@@ -1136,25 +1181,27 @@ Each step is independently deployable and testable. No step requires a later ste
                     │                          ┌─────────────┐    │
                     │             ┌──────────  │   active    │ ◄──┤
                     │             │            └──────┬──────┘    │
-                    │             │     work_end │    │ work_next │
-                    │             │             ▼    │           │
+                    │             │     work_end │    │ work_next │ abort
+                    │             │             ▼    │           │ _close
                     │        work_pause  ┌──────────┐│  ┌───────────────┐
-                    │             │      │ closing: ││  │ transitioning │
+                    │             │      │ closing: │├──│ transitioning │
                     │             │      │ review   ││  └───────┬───────┘
                     │             ▼      └────┬─────┘│    auto  │
                     │       ┌────────┐        │      │  refresh │
                     │       │ paused │        ▼      │          │
                     │       └────┬───┘  ┌──────────┐ │          │
-                    │            │      │ closing: │ │          │
-                    │       work_resume │ verified │ │          │
-                    │            │      └────┬─────┘ │          │
-                    │            │           │       │          │
-                    │            └───────────┼───────┘          │
-                    │                        ▼                  │
+                    │            │      │ closing: ├─┘          │
+                    │       work_resume │ verified │ abort_close │
+                    │            │      └────┬─────┘            │
+                    │            │           │                  │
+                    │            └───────────┘                  │
+                    │                        │                  │
+                    │              promote   │                  │
+                    │              _pass     ▼                  │
                     │                  ┌──────────┐             │
                     │                  │ closing: │             │
-                    │                  │ promoted │             │
-                    │                  └────┬─────┘             │
+                    │                  │ promoted │  (forward   │
+                    │                  └────┬─────┘   only)     │
                     │                       │                   │
                     │                       ▼                   │
                     │                  ┌──────────┐             │
@@ -1165,6 +1212,6 @@ Each step is independently deployable and testable. No step requires a later ste
                     │                       ▼                   │
                     │                  ┌──────────┐             │
                     │                  │ closing: │             │
-                    │   cleanup_pass   │ stamped  │  abort_close│
-                    └──────────────────┴──────────┴─────────────┘
+                    │   cleanup_pass   │ stamped  │             │
+                    └──────────────────┴──────────┘             │
 ```

@@ -648,12 +648,18 @@ This makes the work lifecycle implicit — every session on a feature branch wit
 
 ---
 
-## 13. Worklog Event Emission
+## 13. Transition Protocol
 
-Every `transition()` call emits a worklog event:
+State transitions use a two-phase protocol. Phase 1 (`transition()`) validates the transition and returns the effects to execute. Phase 2 (`commit_transition()`) verifies the state hasn't been modified concurrently, atomically writes the new state, and emits the worklog event.
 
 ```python
-def transition(meta_path: Path, event: str) -> TransitionResult:
+def transition(
+    meta_path: Path,
+    event: str,
+    project: Optional[Path] = None,
+    workspace: Optional[Path] = None,
+) -> TransitionResult:
+    """Phase 1: Validate transition and return result. Does NOT write state."""
     raw_state = read_state(meta_path)          # None if no .meta
     current_state = raw_state or 'idle'         # Map None → 'idle'
     
@@ -665,50 +671,83 @@ def transition(meta_path: Path, event: str) -> TransitionResult:
     
     validate_state(new_state, project, workspace)  # Hygiene check
     
-    # For idle→* transitions, .meta doesn't exist yet — scaffold.py creates it
-    # as part of the 'write_meta' effect. For all other transitions, write state now.
-    if raw_state is not None:
-        write_state(meta_path, new_state)
+    return TransitionResult(from_state=current_state, new_state=new_state, event=event, effects=effects)
+
+
+def commit_transition(meta_path: Path, result: TransitionResult) -> None:
+    """Phase 2: Verify state unchanged, write atomically, emit worklog."""
+    if result.from_state == 'idle':
+        # idle→* transitions: .meta was created by the write_meta effect.
+        # Verify .meta exists with the expected target state.
+        current = read_state(meta_path)
+        if current != result.new_state:
+            raise StateError(f"Expected state '{result.new_state}' after scaffold, got '{current}'")
+    else:
+        # Re-read state to detect concurrent modification
+        current = read_state(meta_path)
+        if current != result.from_state:
+            raise ConcurrentModification(expected=result.from_state, actual=current)
+        write_state(meta_path, result.new_state)  # Atomic write (§10.2)
     
     worklog_emit(
-        branch=read_field(meta_path, 'branch') if raw_state else '',
-        from_state=current_state,
-        to_state=new_state,
-        event=event,
-        issue=read_field(meta_path, 'issue') if raw_state else '',
+        branch=read_field(meta_path, 'branch'),
+        from_state=result.from_state,
+        to_state=result.new_state,
+        event=result.event,
+        issue=read_field(meta_path, 'issue'),
         timestamp=datetime.utcnow().isoformat(),
     )
-    
-    return TransitionResult(new_state=new_state, effects=effects)
 ```
+
+**Calling protocol:**
+
+```python
+# 1. Validate transition — no state written
+result = transition(meta_path, event, project=project_path, workspace=workspace_path)
+
+# 2. Execute effects (caller owns execution)
+for effect in result.effects:
+    execute_effect(effect, context)
+
+# 3. Commit — verify and write state atomically
+commit_transition(meta_path, result)
+```
+
+State never advances past completed work. If effects fail, state stays at the old value and the next session retries from the correct position.
+
+For `idle → *` transitions, `.meta` does not exist yet. The `write_meta` effect creates `.meta` with the target state field. `commit_transition()` verifies that `.meta` was created correctly rather than writing state itself.
 
 ### 13.1 Effects Semantics
 
-All effects in `TransitionResult.effects` are **instructions** — actions the caller must execute after `transition()` returns. There are no "observational records" in the effects list.
+All effects in `TransitionResult.effects` are **instructions** — actions the caller must execute between `transition()` and `commit_transition()`. The calling skill owns effect execution. `transition()` is a pure validation function with no side effects.
 
-**Calling protocol for the closing sequence:**
+**Unified calling protocol:**
 
-The closing sequence uses a gate-then-advance pattern:
-1. The caller performs the gate action (code review, artifact promotion, merge, stamp)
-2. On success, the caller fires the corresponding event (`review_pass`, `promote_pass`, `merge_pass`, `stamp_pass`)
-3. `transition()` advances the state and returns post-gate effects (record results, verify outcomes)
+1. For closing sequence events: perform the gate action (code review, artifact promotion, push, merge, stamp)
+2. Call `transition(meta_path, event)` — validates, returns `TransitionResult` with effects
+3. Execute all effects in `TransitionResult.effects`
+4. Call `commit_transition(meta_path, result)` — verifies state, writes atomically, emits worklog
 
-The gate actions themselves are NOT effects — they happen BEFORE the event fires, driven by the work-end skill. The effects describe what to do AFTER the gate passes.
+This is a single model for all transitions. The closing sequence adds a pre-transition gate action (step 1), but the transition protocol (steps 2–4) is identical for core lifecycle and closing sequence transitions.
 
-| Event | Gate action (performed by skill BEFORE event) | Effects (instructions AFTER state change) |
-|-------|----------------------------------------------|------------------------------------------|
-| `review_pass` | Code review completes successfully | `['record_review']` — write review result to `.meta` |
-| `promote_pass` | `close_artifacts.py` runs successfully | `['write_promotion_stamp']` — write `.artifacts-promoted` stamp |
-| `push_pass` | Squash + push branch succeeds | `[]` — state change only |
-| `merge_pass` | Rebase + push main succeeds | `['verify_content_landed']` — verify via `git cat-file` |
-| `stamp_pass` | `verify_stamp.py` passes | `['write_stamp']` — write closure stamp commit |
+**Gate-then-advance pattern (closing sequence):**
+
+| Event | Gate action (before `transition()`) | Effects (between `transition()` and `commit_transition()`) |
+|-------|--------------------------------------|----------------------------------------------------------|
+| `review_pass` | Code review completes | `['record_review']` |
+| `promote_pass` | `close_artifacts.py` succeeds | `['write_promotion_stamp']` |
+| `push_pass` | Squash + push branch succeeds | `[]` |
+| `merge_pass` | Rebase + push main succeeds | `['verify_content_landed']` |
+| `stamp_pass` | `verify_stamp.py` passes | `['write_stamp']` |
 | `cleanup_pass` | Cleanup operations complete | `['write_epic_closed', 'return_to_main', 'remove_meta', 'write_handoff']` |
+
+Gate actions are NOT effects — they happen before `transition()` is called, driven by the work-end skill.
 
 **Pre-transition action for `work_resume`:**
 
-The `work_resume` event follows a similar pre-action pattern to the closing gates. Before firing `work_resume`, the caller (work-resume skill) checks out the paused branch — this makes `.meta` accessible so `transition()` can read `state: paused`. The checkout is NOT an effect; it is a pre-transition action. T9's effects (`pop_stack`, `reset_wip`, `context_resume`) execute after the state is written to `active`.
+The `work_resume` event follows a similar pre-action pattern. Before firing `work_resume`, the caller checks out the paused branch — making `.meta` accessible so `transition()` can read `state: paused`. The checkout is NOT an effect; it is a pre-transition action. T9's effects (`pop_stack`, `reset_wip`, `context_resume`) execute between `transition()` and `commit_transition()`.
 
-**State is written optimistically** — before effects execute. If effects fail (session crash, script error), the state machine is in the target state but effects haven't completed. The session-start recovery mechanism (§9) handles this: it detects the state, and the work-end skill retries from the current gate.
+**Effect idempotency:** Effects should be idempotent where possible. If `commit_transition()` fails after effects execute (e.g. concurrent modification detected), the next session re-runs the same transition — effects must tolerate being executed twice.
 
 ### 13.2 Mapping to Worklog Events (#158)
 
@@ -726,6 +765,14 @@ These six events are intentionally scoped to user-visible lifecycle boundaries. 
 ### 13.3 Graceful Degradation
 
 If the worklog DB is unavailable (not configured, permissions error), `worklog_emit()` warns once and continues. Worklog emission is observability — it never blocks a transition.
+
+### 13.4 Loss Window and Authoritative History
+
+Worklog emission happens in `commit_transition()` — after state is written. If the process crashes between the state write and the `worklog_emit()` call, the worklog event is permanently lost. Additionally, if the worklog DB is unavailable for an entire session, all events for that session are lost.
+
+This is accepted by design. The worklog is **best-effort observability**, not an authoritative record. A write-ahead log pattern (pending → committed events) would add significant complexity (pending/committed markers, recovery replay, cleanup) for a single-developer CLI tool.
+
+For authoritative state history, `git log` on `.meta` changes is the canonical source — every `commit_transition()` is followed by a git commit that records the state change. `git log --follow -- design/.meta` provides a complete, tamper-evident timeline of all lifecycle transitions.
 
 ---
 
@@ -823,7 +870,9 @@ RESTING_STATES = frozenset({
 
 @dataclass
 class TransitionResult:
+    from_state: str
     new_state: str
+    event: str
     effects: list[str]
 
 class InvalidTransition(Exception):
@@ -838,29 +887,46 @@ class InvalidState(Exception):
         self.violations = violations
         super().__init__(f"State '{state}' invariant violations: {violations}")
 
+class ConcurrentModification(Exception):
+    def __init__(self, expected: str, actual: str):
+        self.expected = expected
+        self.actual = actual
+        super().__init__(f"State changed by another session: expected '{expected}', found '{actual}'")
+
+class CorruptedState(Exception):
+    def __init__(self, meta_path: Path, raw_value: str):
+        self.meta_path = meta_path
+        self.raw_value = raw_value
+        super().__init__(f"Unknown state '{raw_value}' in {meta_path} — file may be corrupted. Verify .meta manually.")
+
 def read_state(meta_path: Path) -> Optional[str]:
-    """Read lifecycle state from .meta. Returns None if no .meta exists."""
+    """Read lifecycle state from .meta. Returns None if no .meta exists.
+    Raises CorruptedState if state: field has unrecognised value."""
 
 def write_state(meta_path: Path, state: str) -> None:
-    """Write lifecycle state to existing .meta. Raises if .meta doesn't exist."""
+    """Write lifecycle state to existing .meta atomically (§10.2). Raises if .meta doesn't exist."""
 
 def transition(
     meta_path: Path,
     event: str,
     project: Optional[Path] = None,
     workspace: Optional[Path] = None,
-    validate: bool = True,
 ) -> TransitionResult:
-    """Execute a state transition. Validates invariants, writes state, emits worklog event.
+    """Phase 1: Validate transition and return result. Does NOT write state.
     
     Calling protocol:
     - read_state() returns None when .meta is absent. transition() maps None → 'idle'
       internally for transition table lookup.
-    - For idle→scaffolded transitions: transition() does NOT call write_state() — the
-      'write_meta' effect (scaffold.py) creates .meta with the target state field.
-    - For all other transitions: transition() calls write_state() to update the existing
-      .meta before returning.
-    - Effects are instructions — the caller MUST execute them after transition() returns.
+    - transition() validates invariants but does NOT write state or emit worklog.
+    - The caller executes effects, then calls commit_transition() to write state.
+    """
+
+def commit_transition(meta_path: Path, result: TransitionResult) -> None:
+    """Phase 2: Verify state unchanged, write atomically, emit worklog.
+    
+    For idle→* transitions: verifies .meta was created by the write_meta effect.
+    For all other transitions: re-reads state, compares to result.from_state,
+    raises ConcurrentModification if changed, writes new state via atomic rename.
     """
 
 def validate_state(
@@ -1014,10 +1080,11 @@ class TestMigration:
         meta.write_text("branch: issue-42-foo\ndate: 2026-08-03\nissue: 42\n")
         assert read_state(meta) == "active"
     
-    def test_unknown_state_defaults_to_active(self, tmp_path):
+    def test_unknown_state_raises_corrupted(self, tmp_path):
         meta = tmp_path / ".meta"
         meta.write_text("branch: issue-42-foo\nstate: bogus\ndate: 2026-08-03\n")
-        assert read_state(meta) == "active"
+        with pytest.raises(CorruptedState):
+            read_state(meta)
     
     def test_write_state_appends_to_legacy_meta(self, tmp_path):
         meta = tmp_path / ".meta"

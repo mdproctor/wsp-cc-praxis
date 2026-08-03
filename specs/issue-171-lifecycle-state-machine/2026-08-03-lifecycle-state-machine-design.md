@@ -1,0 +1,1170 @@
+# Lifecycle State Machine — Design Spec
+
+**Issue:** Hortora/soredium#171
+**Date:** 2026-08-03
+**Status:** Draft — pending design review
+
+## Problem Statement
+
+The work lifecycle system infers state from scattered filesystem signals: `.meta` existence, branch position, `.pause-stack`, `HAS_HANDOFF`, `.epic`/`.slot`. Every entry point independently re-derives state from these signals. Six of eleven entry points get it wrong — context setup is silently skipped, lifecycle events go untracked, and closing gates can be bypassed.
+
+This inference-based approach is:
+- **Fragile** — each new entry point must correctly combine 5+ signals
+- **Untestable** — requires mocking multiple files and branch states in combination
+- **Silent on failure** — skipped context setup produces no error
+- **Bypassable** — manual `git merge` brings `.meta` to main with no close path (GE-20260521-b6a1a7)
+
+## Design Goal
+
+Replace inference with an explicit `state:` field in `.meta`. A single Python module (`lifecycle.py`) owns all state transitions. Entry points declare events; the state machine determines effects. No entry point decides what subset of work-start to run — the transition table decides.
+
+---
+
+## 1. States
+
+Ten states in a single flat namespace. No nested sub-machines.
+
+| State | Meaning | `.meta` value | Resting? |
+|-------|---------|---------------|----------|
+| `idle` | On main, no work in progress | No `.meta` exists | Yes |
+| `scaffolded` | Branch + `.meta` created, context setup pending | `state: scaffolded` | **No — transient** |
+| `active` | Context loaded, working | `state: active` | Yes |
+| `transitioning` | Between epic issues, context refresh pending | `state: transitioning` | **No — transient** |
+| `paused` | On pause stack, WIP committed | `state: paused` | Yes |
+| `closing:review` | Close initiated, code review pending | `state: closing:review` | Yes |
+| `closing:verified` | Review passed, artifact promotion pending | `state: closing:verified` | Yes |
+| `closing:promoted` | Artifacts promoted, merge pending | `state: closing:promoted` | Yes |
+| `closing:merged` | Merged to main, stamp pending | `state: closing:merged` | Yes |
+| `closing:stamped` | Stamped, cleanup pending | `state: closing:stamped` | Yes |
+
+### Transient States
+
+`scaffolded` and `transitioning` are **not resting states**. They auto-resolve: the system detects the transient state and immediately runs the required side effects (context setup or context refresh) then transitions to `active`. A session that reads a transient state always resolves it — there is no user action required.
+
+### State Invariants
+
+Each state has invariants that must be true whenever the system is in that state:
+
+| State | Invariants |
+|-------|-----------|
+| `idle` | No `.meta` exists. Project and workspace on main/base branch. |
+| `scaffolded` | `.meta` exists with `state: scaffolded`. Branch created in project and workspace. `.meta` has branch, issue, date fields populated. |
+| `active` | `.meta` exists with `state: active`. Project and workspace on the branch named in `.meta`. No transient context setup pending. |
+| `transitioning` | `.meta` exists with `state: transitioning`. Epic file (`.epic` or `.slot`) exists. Previous issue checked off. Next issue marked active. |
+| `paused` | `.meta` exists with `state: paused`. Entry present in `.pause-stack`. WIP commit is HEAD on both repos' branches. Project and workspace on main/base. |
+| `closing:review` | `.meta` exists. On the branch. No uncommitted changes in project. |
+| `closing:verified` | Same as `closing:review` plus code review passed (recorded in `.meta`). |
+| `closing:promoted` | Same as `closing:verified` plus `.artifacts-promoted` stamp exists OR `close_artifacts.py` returned success. |
+| `closing:merged` | Project base branch has the branch content. Rebase/squash completed. |
+| `closing:stamped` | Branch has closure stamp commit. Content verified on base branch. |
+
+---
+
+## 2. Events
+
+Events are the inputs to the state machine. Each event corresponds to a user command or system trigger.
+
+| Event | Source | Description |
+|-------|--------|-------------|
+| `work` | User command | Begin new work from main |
+| `work_epic` | User command (`work epic #N`) | Set up single-repo epic |
+| `slot_create` | User command (`work-slot create`) | Create a slot |
+| `slot_epic` | User command (`work-slot epic #N`) | Create an epic slot |
+| `auto_setup` | System (transient state detected) | Auto-resolve `scaffolded` → run context setup |
+| `work_next` | User command (`work next`, `work-slot next`) | Advance to next epic issue |
+| `auto_refresh` | System (transient state detected) | Auto-resolve `transitioning` → run context refresh |
+| `work_pause` | User command (`work pause`) | Pause current branch |
+| `work_resume` | User command (`work resume`) | Resume a paused branch |
+| `work_end` | User command (`work end`) | Initiate close sequence |
+| `review_pass` | System (code review completes) | Code review passed |
+| `promote_pass` | System (`close_artifacts.py` succeeds) | Artifacts promoted |
+| `merge_pass` | System (rebase + push succeeds) | Branch merged to main |
+| `stamp_pass` | System (stamp written + verified) | Branch stamped as closed |
+| `cleanup_pass` | System (cleanup completes) | Return to idle |
+| `abort_close` | User command (abort during close) | Abort closing sequence |
+
+---
+
+## 3. Transition Table
+
+### 3.1 Core Lifecycle
+
+| # | From | Event | To | Side Effects | Gate |
+|---|------|-------|----|-------------|------|
+| T1 | `idle` | `work` | `scaffolded` | Create branch (project + workspace), write `.meta` with `state: scaffolded`, scaffold JOURNAL.md | Must be on main |
+| T2 | `idle` | `work_epic` | `scaffolded` | Create branch, scaffold, write `.epic`, batch plan | Must be on main |
+| T3 | `idle` | `slot_create` | `scaffolded` | Create slot clones, write `.meta` in slot with `state: scaffolded` | Must be on main, family root resolved |
+| T4 | `idle` | `slot_epic` | `scaffolded` | Create epic slot, write `.meta` + `.slot` with `state: scaffolded` | Must be on main |
+| T5 | `scaffolded` | `auto_setup` | `active` | Garden search, load specs, check protocols, verify IntelliJ | Automatic — fires on any read of `scaffolded` state |
+| T6 | `active` | `work_next` | `transitioning` | `epic_manager.py advance`, update `.meta`, tick GitHub checkbox | Epic file must exist |
+| T7 | `transitioning` | `auto_refresh` | `active` | Garden search (new issue keywords), load specs (new issue), check protocols | Automatic — fires on any read of `transitioning` state |
+| T8 | `active` | `work_pause` | `paused` | WIP commit, push to `.pause-stack`, switch to main | `.meta` must exist |
+| T9 | `paused` | `work_resume` | `active` | Pop stack, checkout branch, reset WIP, run context setup | Entry must be in `.pause-stack` |
+
+### 3.2 Closing Sequence
+
+| # | From | Event | To | Side Effects | Gate |
+|---|------|-------|----|-------------|------|
+| T10 | `active` | `work_end` | `closing:review` | Initiate close, run pre-close sweep | Must be on branch, no uncommitted changes |
+| T11 | `closing:review` | `review_pass` | `closing:verified` | Record review result in `.meta` | Code review or final review must complete |
+| T12 | `closing:verified` | `promote_pass` | `closing:promoted` | `close_artifacts.py` runs, `.artifacts-promoted` stamp written | Stamp must be written |
+| T13 | `closing:promoted` | `merge_pass` | `closing:merged` | Squash, rebase onto base branch, push to fork | Fork push must succeed |
+| T14 | `closing:merged` | `stamp_pass` | `closing:stamped` | Write closure stamp, verify content landed via `git cat-file` | `verify_stamp.py` must pass |
+| T15 | `closing:stamped` | `cleanup_pass` | `idle` | Write EPIC-CLOSED.md, return to main, remove `.meta`, write HANDOFF.md | Both repos on main |
+
+### 3.3 Slot Phase A / Phase B Mapping
+
+In slot mode, the closing sequence splits across two sessions:
+
+| Phase | Transitions | Session |
+|-------|------------|---------|
+| Phase A | T10 → T11 → T12 → T13 (push branch, not merge to main) | In the slot |
+| Phase B | T13 (rebase onto main, push main) → T14 → T15 | From main repo via `work-slot merge` |
+
+The `.phase-a-complete` marker file becomes redundant — it is the `closing:promoted` (or `closing:merged` after branch push) state in `.meta`.
+
+### 3.4 Session-Start Routing (skill-layer, not transition table)
+
+Session start is NOT a state machine event. It is routing logic in the `project` skill and `work` router that reads the current state and dispatches to the appropriate handler. These are documented here for completeness but do NOT appear in the `TRANSITION_TABLE` dict in §15.2.
+
+| Current State | Routing Action |
+|---------------|---------------|
+| `scaffolded` | Fire `auto_setup` event → resolves to T5 (`scaffolded → active`) |
+| `transitioning` | Fire `auto_refresh` event → resolves to T7 (`transitioning → active`) |
+| `active` | Show work lifecycle menu (resume/end/pause/wrap) — no state change |
+| `paused` | Show pause stack (same as existing work router) — no state change |
+| `closing:*` | Offer to continue close from current gate — no state change |
+
+Transient states (`scaffolded`, `transitioning`) auto-resolve via their dedicated events. Resting states show the appropriate UI without firing any transition.
+
+---
+
+## 4. Invalid Transitions
+
+Every `(state, event)` pair not in the transition table is invalid. The state machine raises `InvalidTransition` with a human-readable message.
+
+### 4.1 Comprehensive Invalid Transition Table
+
+| From | Event | Why Invalid | Error Message |
+|------|-------|-------------|---------------|
+| `idle` | `work_next` | No branch exists | "Cannot advance — no active branch. Start work first." |
+| `idle` | `work_pause` | Nothing to pause | "Cannot pause — no active branch." |
+| `idle` | `work_end` | Nothing to close | "Cannot close — no active branch. You're on main." |
+| `idle` | `work_resume` | Nothing to resume (no stack) | "Cannot resume — pause stack is empty." |
+| `scaffolded` | `work_next` | Context setup hasn't run | "Branch not yet active — context setup must complete first." |
+| `scaffolded` | `work_end` | Can't close before starting | "Cannot close — branch hasn't been activated yet." |
+| `scaffolded` | `work_pause` | Can't pause before starting | "Cannot pause — branch hasn't been activated yet." |
+| `active` | `work` | Already working | "Already on an active branch. Use `work end`, `work pause`, or `work next`." |
+| `active` | `work_epic` | Already working | "Already on an active branch. Close or pause first." |
+| `active` | `work_resume` | Not paused | "Branch is active, not paused. Nothing to resume." |
+| `transitioning` | `work_end` | Context refresh pending | "Issue transition in progress — context refresh must complete first." |
+| `transitioning` | `work_pause` | Context refresh pending | "Issue transition in progress — wait for context refresh." |
+| `paused` | `work_end` | Can't close while paused | "Cannot close a paused branch. Resume it first, then close." |
+| `paused` | `work_next` | Can't advance while paused | "Cannot advance — branch is paused. Resume first." |
+| `paused` | `work_pause` | Already paused | "Branch is already paused." |
+| `closing:review` | `work_pause` | Can't pause mid-close | "Cannot pause during close sequence. Abort or complete the close." |
+| `closing:review` | `work_next` | Can't advance mid-close | "Cannot advance — close sequence in progress." |
+| `closing:*` | `work` | Can't start new work mid-close | "Close sequence in progress. Complete or abort first." |
+| `closing:*` | `work_epic` | Can't start epic mid-close | "Close sequence in progress. Complete or abort first." |
+| `closing:verified` | `review_pass` | Already past review | "Review already passed — currently at promotion stage." |
+| `closing:promoted` | `promote_pass` | Already past promotion | "Promotion already passed — currently at merge stage." |
+| `closing:promoted` | `abort_close` | Past artifact promotion | "Cannot abort — artifacts already promoted. Continue forward." |
+| `closing:merged` | `abort_close` | Content on main | "Cannot abort — content already merged to main. Continue forward." |
+| `closing:stamped` | `abort_close` | Branch stamped | "Cannot abort — branch already stamped. Only cleanup remains." |
+
+### 4.2 Abort from Closing States
+
+Only pre-artifact closing states can be aborted. Once artifacts are promoted (`closing:promoted` and beyond), the close path is forward-only — issues have been closed, specs promoted, and blogs published. These operations are practically irreversible without manual intervention.
+
+| From | Event | To | Side Effects |
+|------|-------|----|-------------|
+| `closing:review` | `abort_close` | `active` | Clear closing markers, restore working state |
+| `closing:verified` | `abort_close` | `active` | Clear closing markers, restore working state |
+
+This handles the case where code review finds issues that need fixing — abort the close, fix the code, then re-initiate `work_end`.
+
+**Why `closing:promoted` and later are non-abortable:**
+- `closing:promoted` — `close_artifacts.py` has already closed GitHub issues, promoted specs to main, and published blogs. Aborting would leave promoted artifacts on main with no corresponding branch close.
+- `closing:merged` — content has been rebased onto the base branch and pushed to the fork. Aborting would mean continuing work on a branch whose content is already on main, producing duplicate commits on the next close.
+- `closing:stamped` — branch has a closure stamp commit. Only cleanup remains.
+
+If the merge step (8j) fails at `closing:promoted`, the correct action is to fix the conflict and retry the merge, not abort. The state remains `closing:promoted` until `merge_pass` succeeds.
+
+---
+
+## 5. Entry Point → Event Mapping
+
+Every way work can begin, mapped to the event it fires. This is the exhaustive list — if an entry point is not here, it doesn't exist.
+
+### 5.1 User Commands
+
+| Entry Point | Current State | Event | Notes |
+|-------------|--------------|-------|-------|
+| `work` from main (no stack) | `idle` | `work` | New branch path |
+| `work` from main (with stack → "new") | `idle` | `work` | User chose "new" from stack picker |
+| `work` from main (with stack → pick) | `paused` | `work_resume` | User chose a paused branch |
+| `work` from feature branch | any | `session_start` | Router detects state, shows menu |
+| `work start` | `idle` | `work` | Synonym for `work` |
+| `work end` | `active` | `work_end` | Initiate close |
+| `work pause` | `active` | `work_pause` | Pause current branch |
+| `work resume` | `paused` | `work_resume` | Resume from stack |
+| `work epic #N` | `idle` | `work_epic` | Single-repo epic setup |
+| `work next` | `active` | `work_next` | Advance epic issue |
+| `work-slot create` | `idle` | `slot_create` | Create slot |
+| `work-slot epic #N` | `idle` | `slot_epic` | Create epic slot |
+| `work-slot next` | `active` | `work_next` | Same event as `work next` |
+| `work-slot merge` | `closing:promoted` | `merge_pass` | Phase B merge |
+
+### 5.2 System Events
+
+| Trigger | Current State | Event | Notes |
+|---------|--------------|-------|-------|
+| Session hook (`project` skill) | `scaffolded` | `session_start` → `auto_setup` | Transient state auto-resolves |
+| Session hook (`project` skill) | `transitioning` | `session_start` → `auto_refresh` | Transient state auto-resolves |
+| Session hook (`project` skill) | `active` | `session_start` | Show lifecycle menu |
+| Session hook (`project` skill) | `closing:*` | `session_start` | Offer to continue close |
+| `close_artifacts.py` succeeds | `closing:verified` | `promote_pass` | Automatic after script |
+| Code review passes | `closing:review` | `review_pass` | Automatic after review |
+| Rebase + push succeeds | `closing:promoted` | `merge_pass` | Automatic after merge |
+| Stamp + verify succeeds | `closing:merged` | `stamp_pass` | Automatic after stamp |
+| Cleanup completes | `closing:stamped` | `cleanup_pass` | Automatic after cleanup |
+
+### 5.3 External Events (Not Modelled — Detected and Recovered)
+
+These are things that happen outside the state machine. They can leave `.meta` in an inconsistent state. The state machine detects and recovers rather than modelling them as transitions.
+
+| External Event | Detection | Recovery |
+|---------------|-----------|----------|
+| Manual `git checkout main` while on branch | `.meta` branch field doesn't match current branch | Offer to switch back or discard |
+| Manual `git merge --ff-only <branch>` to main | `.meta` exists on main (GE-20260521-b6a1a7) | Offer to complete close or remove `.meta` |
+| Session crash mid-transition | Transient state persists beyond 1 hour | Re-run auto-resolve on next session |
+| Session crash mid-close | `closing:*` state persists | Offer to continue from current gate |
+| Manual `git push` bypassing work-end | Pre-push hook blocks if state < `closing:promoted` | Hook refuses the push |
+| Another session modifies `.meta` | State read doesn't match expected state | Hard stop — investigate |
+| Branch deleted on remote | Branch exists locally but `git fetch --prune` removes tracking ref | Warn, offer to re-push or clean up |
+
+---
+
+## 6. Side Effects — Context Setup and Context Refresh
+
+### 6.1 Context Setup (fires on `scaffolded → active`)
+
+These are the work-start resume path steps that must run before any implementation work begins:
+
+| # | Step | Source | Skippable? |
+|---|------|--------|-----------|
+| CS1 | Platform coherence (five questions) | work-start Step 2 | Skip if no PLATFORM.md |
+| CS2 | Protocol check | work-start Step 3 | Skip if no protocols dir |
+| CS3 | Garden search | work-start Step 3b | Skip if no garden or pure tooling task |
+| CS4 | Load existing specs | work-start Step 3c | Never skip — always scan |
+| CS5 | Epic overlay | work-start Step 3d | Skip if no epic file |
+| CS6 | IntelliJ verification | work-start Step 11 | Skip only if user confirms docs-only |
+
+### 6.2 Context Refresh (fires on `transitioning → active`)
+
+A subset of context setup, focused on the new issue's domain:
+
+| # | Step | What Changes |
+|---|------|-------------|
+| CR1 | Garden search | New keywords from new issue title/body |
+| CR2 | Load specs | Specs matching new issue number |
+| CR3 | Protocol check | Protocols relevant to new issue's domain |
+
+Context refresh does NOT re-run platform coherence (same branch), IntelliJ verification (already connected), or epic overlay (already displayed by `work_next`).
+
+**Issue identity source:** Context refresh reads the current issue number from the epic file (`.epic` or `.slot`), NOT from `.meta`'s `issue:` field. The epic file is updated by `advance_issue` (T6 effect) and is authoritative for issue identity during transitions. If `update_meta` (also a T6 effect) fails after `advance_issue` succeeds, the epic file still has the correct new issue and auto-resolve works correctly. If `advance_issue` itself fails, the epic file retains the old issue — auto-resolve refreshes context for the old issue, which is correct since the advance didn't happen.
+
+---
+
+## 7. Hygiene Invariants
+
+`validate_state()` runs at every transition, BEFORE the state is written. If any invariant fails, the transition is rejected — state stays unchanged, error reported.
+
+### 7.1 Universal Invariants (checked at every transition)
+
+| Invariant | Check | Excludes |
+|-----------|-------|----------|
+| **No untracked files** | `git status --porcelain` filtered by exclude patterns | `.idea/`, `target/`, `build/`, `node_modules/`, `__pycache__/`, `*.iml`, `.worktrees/`, `slots/` |
+| **Branch alignment** | `.meta` branch field matches `git branch --show-current` in project AND workspace | Skip when transitioning to `idle` (`.meta` being removed) or `paused` (switching to main is the point) |
+| **`.meta` integrity** | `.meta` has required fields: `branch`, `state`, `date` | Skip when transitioning from `idle` (`.meta` doesn't exist yet) |
+
+### 7.2 State-Specific Invariants
+
+| State Entering | Additional Invariant |
+|---------------|---------------------|
+| `closing:review` | No uncommitted changes in project repo |
+| `closing:review` | No uncommitted changes in workspace repo |
+| `closing:promoted` | `.artifacts-promoted` stamp exists or `close_artifacts.py` exit code 0 |
+| `closing:merged` | Branch content exists on base branch (verified by merge/rebase success) |
+| `closing:stamped` | `verify_stamp.py` passes — content confirmed on base branch via `git cat-file` (GE-20260801-836d85) |
+| `paused` | WIP commit is HEAD on both repos |
+| `active` (from `paused`) | WIP commit has been reset (working tree restored) |
+
+### 7.3 Slot-Specific Invariants
+
+| Invariant | When |
+|-----------|------|
+| `proj/` symlink resolves to a valid git repo | Any transition in slot context |
+| `wksp/` symlink resolves to a valid git repo | Any transition in slot context |
+| `.slot` file exists and is parseable | `work_next` in slot context |
+| Epic active issue in `.slot` matches `.meta` active issue | `transitioning → active` in slot context |
+
+### 7.4 Untracked File Exclude Patterns
+
+The exclude list is configurable per project type via CLAUDE.md `## Project Type`:
+
+| Project Type | Additional Excludes |
+|-------------|-------------------|
+| `java` | `target/`, `*.class`, `.mvn/`, `*.jar` |
+| `skills` | `__pycache__/`, `*.pyc`, `.pytest_cache/` |
+| `blog` | `_site/`, `.jekyll-cache/`, `.sass-cache/` |
+| `generic` | (universal excludes only) |
+
+---
+
+## 8. Pre-Push Hook Enforcement
+
+A git pre-push hook reads `state:` from `.meta` and blocks pushes that skip closing gates.
+
+### 8.1 Hook Rules
+
+| Condition | Push to main/base | Push to feature branch |
+|-----------|-------------------|----------------------|
+| No `.meta` exists | ALLOW | ALLOW |
+| `state: active` | **BLOCK** — "Run work-end first" | ALLOW (WIP push) |
+| `state: scaffolded` | **BLOCK** — "Branch not yet active" | ALLOW |
+| `state: transitioning` | **BLOCK** — "Issue transition in progress" | ALLOW |
+| `state: paused` | **BLOCK** — "Branch is paused" | ALLOW |
+| `state: closing:review` | **BLOCK** — "Code review not complete" | ALLOW |
+| `state: closing:verified` | **BLOCK** — "Artifacts not promoted" | ALLOW |
+| `state: closing:promoted` | **BLOCK** — "Merge not complete" | ALLOW |
+| `state: closing:merged` | ALLOW — merge push | ALLOW |
+| `state: closing:stamped` | ALLOW — stamp push | ALLOW |
+
+### 8.2 Hook Location
+
+The hook reads `.meta` from the workspace's `design/` directory. In two-repo mode, this requires the hook to know the workspace path. Resolution:
+
+1. Check `wksp/` symlink in the repo being pushed (follows to workspace)
+2. If no symlink, check `$WORKSPACE` environment variable
+3. If neither, skip enforcement (single-repo mode or no workspace configured)
+
+**Broken symlink detection:** If `wksp/` exists as a symlink but does not resolve to a valid directory, the hook BLOCKS the push with an error: "wksp/ symlink is broken — cannot verify lifecycle state. Fix the symlink or remove it to bypass." Similarly, if `$WORKSPACE` is set but the path doesn't exist, the hook blocks. Silent degradation only occurs when no symlink AND no env var exist — meaning lifecycle was never configured for this repo.
+
+### 8.3 Hook Implementation
+
+```python
+#!/usr/bin/env python3
+"""Pre-push hook: enforce lifecycle state gates."""
+import sys
+from pathlib import Path
+
+def find_meta():
+    """Find .meta via wksp/ symlink or WORKSPACE env."""
+    # ... resolution logic
+    return meta_path or None
+
+def main():
+    meta = find_meta()
+    if not meta or not meta.exists():
+        sys.exit(0)  # No .meta = not in lifecycle, allow
+
+    state = read_state(meta)
+    push_target = sys.argv[1]  # remote name
+    
+    # Read stdin for ref updates (pre-push protocol)
+    for line in sys.stdin:
+        local_ref, local_sha, remote_ref, remote_sha = line.split()
+        is_main_push = remote_ref.endswith('/main') or remote_ref.endswith(f'/{base_branch}')
+        
+        if is_main_push and state not in ('closing:merged', 'closing:stamped'):
+            print(f"BLOCKED: state is '{state}'. Run work-end to complete the close sequence.")
+            sys.exit(1)
+    
+    sys.exit(0)
+
+if __name__ == '__main__':
+    main()
+```
+
+---
+
+## 9. Stale State Recovery
+
+When a session starts and finds a non-resting state, it must recover.
+
+| Stale State | Detection | Recovery Action |
+|-------------|-----------|----------------|
+| `scaffolded` | Session start reads `.meta` | Auto-resolve: run context setup (T5/T16). No timeout needed — this is the normal path for slot sessions. |
+| `transitioning` | Session start reads `.meta` | Auto-resolve: run context refresh (T7/T17). |
+| `closing:review` | Session start reads `.meta` | "Close was interrupted at code review. Continue review? (y) / Abort close? (n)" |
+| `closing:verified` | Session start reads `.meta` | "Close was interrupted at artifact promotion. Continue? (y) / Abort? (n)" |
+| `closing:promoted` | Session start reads `.meta` | "Close was interrupted at merge. Artifacts already promoted — continue. (y)" |
+| `closing:merged` | Session start reads `.meta` | "Close was interrupted at stamping. Content on main — continue. (y)" |
+| `closing:stamped` | Session start reads `.meta` | "Close was interrupted at cleanup. Branch stamped — continue. (y)" |
+
+Aborting is only available from `closing:review` and `closing:verified` (pre-artifact states). From `closing:promoted` and later, the close path is forward-only — artifacts have been promoted, issues closed, and/or content merged. The only option is to continue from the current gate.
+
+### 9.1 Orphaned `.meta` on Main
+
+If `.meta` exists but the current branch is main (GE-20260521-b6a1a7, GE-20260517-9d8cdf):
+
+1. Read `state:` from `.meta`
+2. Read `branch:` from `.meta`
+3. Check if the branch still exists locally: `git rev-parse --verify <branch>`
+
+| Branch exists? | Action |
+|---------------|--------|
+| Yes | "`.meta` orphaned on main. Switch to `<branch>` to complete close? (y) / Remove `.meta`? (n)" |
+| No | "`.meta` orphaned on main — branch `<branch>` no longer exists. Remove `.meta`? (y)" |
+
+This replaces the current work-start State 3 detection with explicit state-aware recovery.
+
+---
+
+## 10. Migration
+
+Existing `.meta` files do not have a `state:` field. Migration is backward-compatible:
+
+### 10.1 Read Migration
+
+```python
+def read_state(meta_path: Path) -> str:
+    """Read state from .meta. Defaults to 'active' if field is missing."""
+    content = meta_path.read_text()
+    for line in content.splitlines():
+        if line.startswith('state:'):
+            return line.split(':', 1)[1].strip()
+    return 'active'  # Migration default
+```
+
+**Why `active`:** An existing `.meta` without a `state:` field was created by the current system. If `.meta` exists and the branches are aligned, work was in progress — the system was in the `active` state implicitly. Defaulting to `active` preserves existing behavior.
+
+### 10.2 Write Migration
+
+On the first `transition()` call for a legacy `.meta`, the `state:` field is appended. Subsequent calls update it in place.
+
+```python
+def write_state(meta_path: Path, state: str) -> None:
+    """Write state to .meta. Appends if field missing, updates if present."""
+    content = meta_path.read_text()
+    lines = content.splitlines()
+    
+    state_line_idx = None
+    for i, line in enumerate(lines):
+        if line.startswith('state:'):
+            state_line_idx = i
+            break
+    
+    if state_line_idx is not None:
+        lines[state_line_idx] = f'state: {state}'
+    else:
+        # Insert after 'branch:' line for consistent ordering
+        for i, line in enumerate(lines):
+            if line.startswith('branch:'):
+                lines.insert(i + 1, f'state: {state}')
+                break
+        else:
+            lines.append(f'state: {state}')
+    
+    meta_path.write_text('\n'.join(lines) + '\n')
+```
+
+### 10.3 No Big-Bang Migration
+
+There is no migration script that rewrites all existing `.meta` files. Migration happens lazily on first touch. This avoids:
+- Modifying `.meta` on paused branches (would create a diff)
+- Requiring a migration step before the feature can be used
+- Breaking concurrent sessions that haven't updated their skills
+
+---
+
+## 11. `.meta` Format
+
+### 11.1 Current Format (before this change)
+
+```yaml
+branch: issue-171-lifecycle-state-machine
+date: 2026-08-03
+issue: 171
+issue-repo: Hortora/soredium
+covers: 171
+project-sha: abc1234def5678
+flyway-next-v: none
+design-repo: workspace
+design-section-hashes: abc123|def456|ghi789
+```
+
+### 11.2 New Format (after this change)
+
+```yaml
+branch: issue-171-lifecycle-state-machine
+state: active
+date: 2026-08-03
+issue: 171
+issue-repo: Hortora/soredium
+covers: 171
+project-sha: abc1234def5678
+flyway-next-v: none
+design-repo: workspace
+design-section-hashes: abc123|def456|ghi789
+```
+
+One new field: `state`. No other changes to `.meta` format.
+
+### 11.3 State Field Semantics
+
+- Written by `lifecycle.py` only — no other script or skill writes `state:`
+- Read by `lifecycle.py`, `ctx.py`, and the pre-push hook
+- Values are the state names from Section 1 (lowercase, colon-separated for closing sub-states)
+- Invalid values are treated as `active` (migration safety)
+
+---
+
+## 12. ctx.py Integration
+
+`ctx.py` currently outputs `HAS_META=yes|no`. After this change:
+
+### 12.1 New Output Fields
+
+```
+META_STATE=active          # The state: field from .meta (empty if no .meta)
+META_IS_TRANSIENT=no       # yes if state is scaffolded or transitioning
+```
+
+**Branch alignment ownership change:** ctx.py currently clears the in-memory `meta` dict when `.meta`'s `branch:` field doesn't match the workspace or project branch (lines 109-113). After `lifecycle.py` adoption, this clearing behavior is removed from ctx.py. ctx.py reports the raw facts (`CURRENT_BRANCH`, `META_BRANCH`, `BRANCH_MISMATCH`); `lifecycle.py`'s `validate_state()` owns branch alignment validation as an invariant check (§7.1). Without this change, ctx.py would silently nullify `.meta` data that `lifecycle.py` needs to detect and report the mismatch.
+
+### 12.2 Routing Changes
+
+The `work` router currently calls `work_router.py` which infers state from branch position and file existence. After this change:
+
+1. `work_router.py` reads `META_STATE` from ctx.py
+2. If `META_IS_TRANSIENT=yes`, route to auto-resolve (context setup or refresh)
+3. If `META_STATE` is a `closing:*` value, offer to continue close
+4. The existing `ROUTE` values (`start`, `resume_stack`, `resume_branch`, `workspace_dirty`) are replaced by state-based routing
+
+**Boundary between `lifecycle.py` and `work_router.py`:**
+
+`lifecycle.py` owns the state machine — transitions, validation, state reads/writes. `work_router.py` becomes a context enricher that reads the state and adds non-state-machine context the `work` skill needs for routing:
+
+| Concern | Owner |
+|---------|-------|
+| State transitions | `lifecycle.py` |
+| Branch alignment validation | `lifecycle.py` (§7.1 invariants) |
+| State classification (transient, closing, resting) | `lifecycle.py` |
+| Stack depth (`.pause-stack`) | `work_router.py` |
+| Slot/epic detection (`.slot`, `.epic`) | `work_router.py` |
+| Handoff detection (`HANDOFF.md`) | `work_router.py` |
+| Workspace dirty detection | `work_router.py` (recovery, not state machine) |
+
+`work_router.py` is modified (not removed) because it retains independent routing logic that sits alongside the state machine.
+
+### 12.3 Session Hook Integration
+
+The `project` skill (session start hook) currently checks CLAUDE.md, workspace, and issue tracking. After this change, it also:
+
+1. Reads `META_STATE` from ctx.py
+2. If non-empty (`.meta` exists), routes to `work` router
+3. The work router handles all state-based routing
+
+This makes the work lifecycle implicit — every session on a feature branch with `.meta` enters the lifecycle automatically.
+
+---
+
+## 13. Worklog Event Emission
+
+Every `transition()` call emits a worklog event:
+
+```python
+def transition(meta_path: Path, event: str) -> TransitionResult:
+    raw_state = read_state(meta_path)          # None if no .meta
+    current_state = raw_state or 'idle'         # Map None → 'idle'
+    
+    key = (current_state, event)
+    if key not in TRANSITION_TABLE:
+        raise InvalidTransition(current_state, event, INVALID_MESSAGES.get(key, f"No transition from '{current_state}' on '{event}'"))
+    
+    new_state, effects = TRANSITION_TABLE[key]
+    
+    validate_state(new_state, project, workspace)  # Hygiene check
+    
+    # For idle→* transitions, .meta doesn't exist yet — scaffold.py creates it
+    # as part of the 'write_meta' effect. For all other transitions, write state now.
+    if raw_state is not None:
+        write_state(meta_path, new_state)
+    
+    worklog_emit(
+        branch=read_field(meta_path, 'branch') if raw_state else '',
+        from_state=current_state,
+        to_state=new_state,
+        event=event,
+        issue=read_field(meta_path, 'issue') if raw_state else '',
+        timestamp=datetime.utcnow().isoformat(),
+    )
+    
+    return TransitionResult(new_state=new_state, effects=effects)
+```
+
+### 13.1 Effects Semantics
+
+All effects in `TransitionResult.effects` are **instructions** — actions the caller must execute after `transition()` returns. There are no "observational records" in the effects list.
+
+**Calling protocol for the closing sequence:**
+
+The closing sequence uses a gate-then-advance pattern:
+1. The caller performs the gate action (code review, artifact promotion, merge, stamp)
+2. On success, the caller fires the corresponding event (`review_pass`, `promote_pass`, `merge_pass`, `stamp_pass`)
+3. `transition()` advances the state and returns post-gate effects (record results, verify outcomes)
+
+The gate actions themselves are NOT effects — they happen BEFORE the event fires, driven by the work-end skill. The effects describe what to do AFTER the gate passes.
+
+| Event | Gate action (performed by skill BEFORE event) | Effects (instructions AFTER state change) |
+|-------|----------------------------------------------|------------------------------------------|
+| `review_pass` | Code review completes successfully | `['record_review']` — write review result to `.meta` |
+| `promote_pass` | `close_artifacts.py` runs successfully | `['run_close_artifacts', 'write_promotion_stamp']` — promotion and stamp |
+| `merge_pass` | Squash + rebase + push succeeds | `['verify_content_landed']` — verify via `git cat-file` |
+| `stamp_pass` | `verify_stamp.py` passes | `['write_stamp']` — write closure stamp commit |
+| `cleanup_pass` | Cleanup operations complete | `['write_epic_closed', 'return_to_main', 'remove_meta', 'write_handoff']` |
+
+**State is written optimistically** — before effects execute. If effects fail (session crash, script error), the state machine is in the target state but effects haven't completed. The session-start recovery mechanism (§9) handles this: it detects the state, and the work-end skill retries from the current gate.
+
+### 13.2 Mapping to Worklog Events (#158)
+
+| Worklog Event | State Transition |
+|--------------|-----------------|
+| `work-start` | `scaffolded → active` (T5) |
+| `work-end` | `closing:stamped → idle` (T15) |
+| `work-pause` | `active → paused` (T8) |
+| `work-resume` | `paused → active` (T9) |
+| `issue-activate` | `transitioning → active` (T7) — new issue context |
+| `issue-complete` | `active → transitioning` (T6) — outgoing issue |
+
+### 13.2 Graceful Degradation
+
+If the worklog DB is unavailable (not configured, permissions error), `worklog_emit()` warns once and continues. Worklog emission is observability — it never blocks a transition.
+
+---
+
+## 14. Edge Cases
+
+### 14.1 Two-Repo Naming Inversion (GE-20260714-2b8973)
+
+In two-repo casehub projects, ctx.py's `WORKSPACE` and `PROJECT` names invert relative to CLAUDE.md's semantic roles. The state machine uses ctx.py's naming consistently — `.meta` is always at `$WORKSPACE/design/.meta` where `$WORKSPACE` is ctx.py's output, regardless of CLAUDE.md terminology.
+
+### 14.2 Cherry-Pick Conflicts from Session Wrap (GE-20260605-1f6896)
+
+The closing sub-states prevent this: artifacts are promoted during `closing:verified → closing:promoted` (Step 8a), which commits to workspace main. The merge (Step 8j / `closing:promoted → closing:merged`) only touches the project repo. No cherry-pick is used — the rebase operates on the project branch. Artifacts and code live in separate repos and never conflict.
+
+In single-repo mode, the filter-repo preprocessing (Step 8j) strips scaffold paths before rebase, preventing scaffold-artifact conflicts.
+
+### 14.3 Concurrent Sessions on Same Branch
+
+Not modelled as a state machine concern. The state machine is single-writer — only one session should work a branch at a time. If two sessions read the same `.meta`, the second session's `transition()` call will find an unexpected state (the first session already advanced it) and raise `InvalidTransition`.
+
+Detection: before any transition, read the state and compare to expected. If the state has changed since last read, hard stop.
+
+### 14.4 Manual `git checkout` While in `closing:*`
+
+If the user manually checks out a different branch while the close sequence is in progress:
+- Branch alignment invariant fails on the next transition
+- Transition is rejected with "Branch mismatch"
+- User must re-checkout the closing branch to continue
+
+### 14.5 `.meta` Deleted Manually
+
+If `.meta` is deleted while in any state:
+- `read_state()` returns `None` (no `.meta`)
+- Next session sees `idle` state
+- Any in-progress close is lost — branch is in limbo
+- Hygiene: if the branch still exists, the next session's `work` command will detect State 6 (on non-main branch, no `.meta`) and offer to continue or return to main
+
+### 14.6 Force Push That Rewrites History
+
+If someone force-pushes to the branch, rewriting commits:
+- The state machine doesn't track commit SHAs (except `project-sha` baseline)
+- State is unaffected — it tracks lifecycle position, not code state
+- The squash step in work-end will operate on whatever commits exist
+
+### 14.7 `.meta` State Field Has Unknown Value
+
+```python
+def read_state(meta_path: Path) -> str:
+    raw = _read_raw_state(meta_path)
+    if raw in VALID_STATES:
+        return raw
+    return 'active'  # Unknown values default to active
+```
+
+This prevents a typo or corruption in `.meta` from breaking the lifecycle.
+
+---
+
+## 15. Module API
+
+### 15.1 `lifecycle.py` — Public API
+
+```python
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
+
+VALID_STATES = frozenset({
+    'idle', 'scaffolded', 'active', 'transitioning', 'paused',
+    'closing:review', 'closing:verified', 'closing:promoted',
+    'closing:merged', 'closing:stamped',
+})
+
+TRANSIENT_STATES = frozenset({'scaffolded', 'transitioning'})
+
+CLOSING_STATES = frozenset({
+    'closing:review', 'closing:verified', 'closing:promoted',
+    'closing:merged', 'closing:stamped',
+})
+
+RESTING_STATES = frozenset({
+    'idle', 'active', 'paused',
+    'closing:review', 'closing:verified', 'closing:promoted',
+    'closing:merged', 'closing:stamped',
+})
+
+@dataclass
+class TransitionResult:
+    new_state: str
+    effects: list[str]
+
+class InvalidTransition(Exception):
+    def __init__(self, from_state: str, event: str, message: str):
+        self.from_state = from_state
+        self.event = event
+        super().__init__(message)
+
+class InvalidState(Exception):
+    def __init__(self, state: str, violations: list[str]):
+        self.state = state
+        self.violations = violations
+        super().__init__(f"State '{state}' invariant violations: {violations}")
+
+def read_state(meta_path: Path) -> Optional[str]:
+    """Read lifecycle state from .meta. Returns None if no .meta exists."""
+
+def write_state(meta_path: Path, state: str) -> None:
+    """Write lifecycle state to existing .meta. Raises if .meta doesn't exist."""
+
+def transition(
+    meta_path: Path,
+    event: str,
+    project: Optional[Path] = None,
+    workspace: Optional[Path] = None,
+    validate: bool = True,
+) -> TransitionResult:
+    """Execute a state transition. Validates invariants, writes state, emits worklog event.
+    
+    Calling protocol:
+    - read_state() returns None when .meta is absent. transition() maps None → 'idle'
+      internally for transition table lookup.
+    - For idle→scaffolded transitions: transition() does NOT call write_state() — the
+      'write_meta' effect (scaffold.py) creates .meta with the target state field.
+    - For all other transitions: transition() calls write_state() to update the existing
+      .meta before returning.
+    - Effects are instructions — the caller MUST execute them after transition() returns.
+    """
+
+def validate_state(
+    state: str,
+    project: Path,
+    workspace: Path,
+    exclude_patterns: Optional[list[str]] = None,
+) -> list[str]:
+    """Check hygiene invariants. Returns list of violations (empty = clean)."""
+
+def is_transient(state: str) -> bool:
+    """True if the state auto-resolves (scaffolded, transitioning)."""
+
+def is_closing(state: str) -> bool:
+    """True if in the closing sequence."""
+
+def can_transition(from_state: str, event: str) -> bool:
+    """Check if a transition is valid without executing it."""
+```
+
+### 15.2 Transition Table as Data
+
+```python
+TRANSITION_TABLE: dict[tuple[str, str], tuple[str, list[str]]] = {
+    # Core lifecycle
+    ('idle', 'work'):              ('scaffolded',        ['create_branch', 'write_meta']),
+    ('idle', 'work_epic'):         ('scaffolded',        ['create_branch', 'write_meta', 'write_epic']),
+    ('idle', 'slot_create'):       ('scaffolded',        ['create_slot', 'write_meta']),
+    ('idle', 'slot_epic'):         ('scaffolded',        ['create_slot', 'write_meta', 'write_slot_epic']),
+    ('scaffolded', 'auto_setup'):  ('active',            ['garden_search', 'load_specs', 'check_protocols', 'check_intellij']),
+    ('active', 'work_next'):       ('transitioning',     ['advance_issue', 'update_meta', 'tick_github']),
+    ('transitioning', 'auto_refresh'): ('active',        ['garden_search', 'load_specs', 'check_protocols']),
+    ('active', 'work_pause'):      ('paused',            ['wip_commit', 'push_stack', 'switch_to_main']),
+    ('paused', 'work_resume'):     ('active',            ['pop_stack', 'checkout_branch', 'reset_wip', 'context_setup']),
+    
+    # Closing sequence
+    ('active', 'work_end'):        ('closing:review',    ['pre_close_sweep']),
+    ('closing:review', 'review_pass'):    ('closing:verified',  ['record_review']),
+    ('closing:verified', 'promote_pass'): ('closing:promoted',  ['run_close_artifacts', 'write_promotion_stamp']),
+    ('closing:promoted', 'merge_pass'):   ('closing:merged',    ['verify_content_landed']),
+    ('closing:merged', 'stamp_pass'):     ('closing:stamped',   ['write_stamp']),
+    ('closing:stamped', 'cleanup_pass'):  ('idle',              ['write_epic_closed', 'return_to_main', 'remove_meta', 'write_handoff']),
+    
+    # Abort (pre-artifact states only — post-promotion is forward-only)
+    ('closing:review', 'abort_close'):    ('active', ['clear_closing_markers']),
+    ('closing:verified', 'abort_close'):  ('active', ['clear_closing_markers']),
+}
+```
+
+---
+
+## 16. TDD Test Cases
+
+### 16.1 Transition Table Tests
+
+```python
+import pytest
+from lifecycle import transition, read_state, write_state, InvalidTransition, InvalidState
+
+class TestValidTransitions:
+    """Every row in the transition table produces the expected state and effects."""
+    
+    @pytest.mark.parametrize("from_state, event, expected_state, expected_effects", [
+        ("idle",                "work",          "scaffolded",        ["create_branch", "write_meta"]),
+        ("idle",                "work_epic",     "scaffolded",        ["create_branch", "write_meta", "write_epic"]),
+        ("idle",                "slot_create",   "scaffolded",        ["create_slot", "write_meta"]),
+        ("idle",                "slot_epic",     "scaffolded",        ["create_slot", "write_meta", "write_slot_epic"]),
+        ("scaffolded",          "auto_setup",    "active",            ["garden_search", "load_specs", "check_protocols", "check_intellij"]),
+        ("active",              "work_next",     "transitioning",     ["advance_issue", "update_meta", "tick_github"]),
+        ("transitioning",       "auto_refresh",  "active",            ["garden_search", "load_specs", "check_protocols"]),
+        ("active",              "work_pause",    "paused",            ["wip_commit", "push_stack", "switch_to_main"]),
+        ("paused",              "work_resume",   "active",            ["pop_stack", "checkout_branch", "reset_wip", "context_setup"]),
+        ("active",              "work_end",      "closing:review",    ["pre_close_sweep"]),
+        ("closing:review",      "review_pass",   "closing:verified",  ["record_review"]),
+        ("closing:verified",    "promote_pass",  "closing:promoted",  ["run_close_artifacts", "write_promotion_stamp"]),
+        ("closing:promoted",    "merge_pass",    "closing:merged",    ["verify_content_landed"]),
+        ("closing:merged",      "stamp_pass",    "closing:stamped",   ["write_stamp"]),
+        ("closing:stamped",     "cleanup_pass",  "idle",              ["write_epic_closed", "return_to_main", "remove_meta", "write_handoff"]),
+    ])
+    def test_valid_transition(self, from_state, event, expected_state, expected_effects, tmp_meta):
+        write_state(tmp_meta, from_state)
+        result = transition(tmp_meta, event, validate=False)
+        assert result.new_state == expected_state
+        assert result.effects == expected_effects
+        assert read_state(tmp_meta) == expected_state
+
+    @pytest.mark.parametrize("closing_state", [
+        "closing:review", "closing:verified",
+    ])
+    def test_abort_from_pre_artifact_closing_state(self, closing_state, tmp_meta):
+        write_state(tmp_meta, closing_state)
+        result = transition(tmp_meta, "abort_close", validate=False)
+        assert result.new_state == "active"
+    
+    @pytest.mark.parametrize("closing_state", [
+        "closing:promoted", "closing:merged", "closing:stamped",
+    ])
+    def test_abort_blocked_from_post_artifact_closing_state(self, closing_state, tmp_meta):
+        write_state(tmp_meta, closing_state)
+        with pytest.raises(InvalidTransition):
+            transition(tmp_meta, "abort_close", validate=False)
+```
+
+### 16.2 Invalid Transition Tests
+
+```python
+class TestInvalidTransitions:
+    """Every invalid (state, event) pair raises InvalidTransition."""
+    
+    @pytest.mark.parametrize("from_state, event", [
+        ("idle",          "work_next"),
+        ("idle",          "work_pause"),
+        ("idle",          "work_end"),
+        ("idle",          "work_resume"),
+        ("scaffolded",    "work_next"),
+        ("scaffolded",    "work_end"),
+        ("scaffolded",    "work_pause"),
+        ("active",        "work"),
+        ("active",        "work_epic"),
+        ("active",        "work_resume"),
+        ("active",        "auto_setup"),
+        ("transitioning", "work_end"),
+        ("transitioning", "work_pause"),
+        ("paused",        "work_end"),
+        ("paused",        "work_next"),
+        ("paused",        "work_pause"),
+        ("closing:review",   "work_pause"),
+        ("closing:review",   "work_next"),
+        ("closing:review",   "work"),
+        ("closing:review",   "work_epic"),
+        ("closing:verified", "review_pass"),
+        ("closing:promoted", "promote_pass"),
+    ])
+    def test_invalid_transition_raises(self, from_state, event, tmp_meta):
+        write_state(tmp_meta, from_state)
+        with pytest.raises(InvalidTransition):
+            transition(tmp_meta, event, validate=False)
+```
+
+### 16.3 Migration Tests
+
+```python
+class TestMigration:
+    """Legacy .meta files without state: field work correctly."""
+    
+    def test_missing_state_defaults_to_active(self, tmp_path):
+        meta = tmp_path / ".meta"
+        meta.write_text("branch: issue-42-foo\ndate: 2026-08-03\nissue: 42\n")
+        assert read_state(meta) == "active"
+    
+    def test_unknown_state_defaults_to_active(self, tmp_path):
+        meta = tmp_path / ".meta"
+        meta.write_text("branch: issue-42-foo\nstate: bogus\ndate: 2026-08-03\n")
+        assert read_state(meta) == "active"
+    
+    def test_write_state_appends_to_legacy_meta(self, tmp_path):
+        meta = tmp_path / ".meta"
+        meta.write_text("branch: issue-42-foo\ndate: 2026-08-03\n")
+        write_state(meta, "closing:review")
+        content = meta.read_text()
+        assert "state: closing:review" in content
+        assert content.index("branch:") < content.index("state:")
+    
+    def test_write_state_updates_existing_field(self, tmp_path):
+        meta = tmp_path / ".meta"
+        meta.write_text("branch: issue-42-foo\nstate: active\ndate: 2026-08-03\n")
+        write_state(meta, "closing:review")
+        assert read_state(meta) == "closing:review"
+        assert meta.read_text().count("state:") == 1
+    
+    def test_no_meta_returns_none(self, tmp_path):
+        meta = tmp_path / ".meta"
+        assert read_state(meta) is None
+```
+
+### 16.4 Hygiene Invariant Tests
+
+```python
+class TestHygieneInvariants:
+    """Invariant violations block transitions."""
+    
+    def test_untracked_files_block_transition(self, tmp_project_with_untracked):
+        meta, project, workspace = tmp_project_with_untracked
+        write_state(meta, "active")
+        with pytest.raises(InvalidState, match="Untracked files"):
+            transition(meta, "work_end", project=project, workspace=workspace)
+    
+    def test_excluded_untracked_files_allowed(self, tmp_project_with_idea_dir):
+        meta, project, workspace = tmp_project_with_idea_dir
+        write_state(meta, "active")
+        # .idea/ is in exclude list — should not block
+        result = transition(meta, "work_end", project=project, workspace=workspace)
+        assert result.new_state == "closing:review"
+    
+    def test_branch_mismatch_blocks_transition(self, tmp_project_wrong_branch):
+        meta, project, workspace = tmp_project_wrong_branch
+        write_state(meta, "active")
+        with pytest.raises(InvalidState, match="Branch mismatch"):
+            transition(meta, "work_end", project=project, workspace=workspace)
+    
+    def test_uncommitted_changes_block_close(self, tmp_project_with_dirty_tree):
+        meta, project, workspace = tmp_project_with_dirty_tree
+        write_state(meta, "active")
+        with pytest.raises(InvalidState, match="Uncommitted changes"):
+            transition(meta, "work_end", project=project, workspace=workspace)
+    
+    def test_validate_false_skips_invariants(self, tmp_project_with_untracked):
+        meta, project, workspace = tmp_project_with_untracked
+        write_state(meta, "active")
+        # validate=False bypasses hygiene checks (for testing)
+        result = transition(meta, "work_end", validate=False)
+        assert result.new_state == "closing:review"
+```
+
+### 16.5 State Query Tests
+
+```python
+class TestStateQueries:
+    """Helper functions for state classification."""
+    
+    @pytest.mark.parametrize("state, expected", [
+        ("scaffolded", True),
+        ("transitioning", True),
+        ("active", False),
+        ("paused", False),
+        ("closing:review", False),
+        ("idle", False),
+    ])
+    def test_is_transient(self, state, expected):
+        assert is_transient(state) == expected
+    
+    @pytest.mark.parametrize("state, expected", [
+        ("closing:review", True),
+        ("closing:verified", True),
+        ("closing:promoted", True),
+        ("closing:merged", True),
+        ("closing:stamped", True),
+        ("active", False),
+        ("idle", False),
+    ])
+    def test_is_closing(self, state, expected):
+        assert is_closing(state) == expected
+    
+    def test_can_transition_valid(self):
+        assert can_transition("active", "work_end") is True
+    
+    def test_can_transition_invalid(self):
+        assert can_transition("idle", "work_next") is False
+```
+
+### 16.6 Pre-Push Hook Tests
+
+```python
+class TestPrePushHook:
+    """Hook blocks pushes to main when state gates are not satisfied."""
+    
+    @pytest.mark.parametrize("state, push_to_main, should_block", [
+        ("active",              True,  True),
+        ("scaffolded",          True,  True),
+        ("closing:review",      True,  True),
+        ("closing:verified",    True,  True),
+        ("closing:promoted",    True,  True),
+        ("closing:merged",      True,  False),
+        ("closing:stamped",     True,  False),
+        ("active",              False, False),  # feature branch push
+        ("closing:review",      False, False),  # feature branch push
+    ])
+    def test_hook_enforcement(self, state, push_to_main, should_block, tmp_meta):
+        write_state(tmp_meta, state)
+        result = hook_check(tmp_meta, push_to_main=push_to_main)
+        assert result.blocked == should_block
+    
+    def test_no_meta_allows_push(self, tmp_path):
+        meta = tmp_path / ".meta"  # does not exist
+        result = hook_check(meta, push_to_main=True)
+        assert result.blocked is False
+```
+
+### 16.7 Stale State Recovery Tests
+
+```python
+class TestStaleStateRecovery:
+    """Sessions that find non-resting states recover correctly."""
+    
+    def test_scaffolded_auto_resolves(self, tmp_meta):
+        write_state(tmp_meta, "scaffolded")
+        # Simulates session_start finding scaffolded state
+        result = transition(tmp_meta, "auto_setup", validate=False)
+        assert result.new_state == "active"
+    
+    def test_transitioning_auto_resolves(self, tmp_meta):
+        write_state(tmp_meta, "transitioning")
+        result = transition(tmp_meta, "auto_refresh", validate=False)
+        assert result.new_state == "active"
+    
+    def test_orphaned_meta_on_main_detected(self, tmp_path):
+        meta = tmp_path / ".meta"
+        meta.write_text("branch: issue-42-foo\nstate: active\n")
+        # Current branch is main, not issue-42-foo
+        violations = validate_state("active", project=tmp_path, workspace=tmp_path)
+        assert any("Branch mismatch" in v for v in violations)
+```
+
+---
+
+## 17. File Inventory
+
+| File | Purpose | New/Modified |
+|------|---------|-------------|
+| `lifecycle.py` | State machine core — transitions, validation, read/write | **New** |
+| `test_lifecycle.py` | Tests for lifecycle.py | **New** |
+| `ctx.py` | Add `META_STATE` and `META_IS_TRANSIENT` output fields | Modified |
+| `work_router.py` | Read state from ctx.py instead of inferring | Modified |
+| `scaffold.py` | Write `state: scaffolded` on creation | Modified |
+| `work-start/SKILL.md` | Replace 6-state detection with state reads | Modified |
+| `work-end/SKILL.md` | Replace preconditions with state transitions | Modified |
+| `work-pause/SKILL.md` | Add `transition(active, work_pause)` call | Modified |
+| `work-resume/SKILL.md` | Add `transition(paused, work_resume)` call | Modified |
+| `work/SKILL.md` | Route based on state, not inference | Modified |
+| `work-slot/SKILL.md` | Write `state: scaffolded` on slot creation | Modified |
+| `project/SKILL.md` | Route to work lifecycle when `.meta` exists | Modified |
+| `.git/hooks/pre-push` | Hook script reading state | **New** |
+
+---
+
+## 18. Risks and Mitigations
+
+| Risk | Impact | Mitigation |
+|------|--------|-----------|
+| `.meta` state field gets corrupted | Lifecycle stalls | Unknown values default to `active` (Section 14.7) |
+| Hook blocks legitimate pushes | Developer friction | Hook allows all feature-branch pushes; only blocks main pushes |
+| Transient states never resolve (bug in auto-resolve) | Branch stuck in `scaffolded` forever | Next session re-attempts auto-resolve; hard timeout after 3 failed attempts |
+| Single-repo mode has different `.meta` location | State reads fail | ctx.py already handles single-repo — `META_STATE` output adapts |
+| Worklog DB unavailable | Events lost | Graceful degradation — warn, don't block (Section 13.2) |
+| Concurrent sessions race on `.meta` | Corrupted state | Second session detects unexpected state, hard stops (Section 14.3) |
+
+---
+
+## 19. Implementation Order
+
+Matches the epic child issues (#172–#178):
+
+1. **#172 — lifecycle.py** — transition table, read/write, validate_state. Pure Python, no skill changes. Tests: Sections 16.1–16.5.
+2. **#173 — Wire into skills** — Replace work-start detection and work-end preconditions with state reads. ctx.py and work_router.py changes.
+3. **#174 — Implicit work-start** — Epic setup chains via `scaffolded`. Session hook routes to work lifecycle. Slot messaging fix.
+4. **#175 — Context refresh** — `work next` / `work-slot next` via `transitioning` state. Extract context refresh subroutine.
+5. **#176 — Pre-push hook** — Hook script. Tests: Section 16.6.
+6. **#177 — Hygiene invariants** — Untracked files, branch alignment, clean tree checks. Tests: Section 16.4.
+7. **#178 — Worklog emission** — Wire `worklog_emit()` into `transition()`. Depends on #158.
+
+Each step is independently deployable and testable. No step requires a later step to be useful.
+
+---
+
+## Appendix A: State Diagram
+
+```
+                    ┌──────────────────────────────────────────────┐
+                    │                                              │
+                    ▼                                              │
+                 ┌──────┐  work / work_epic    ┌─────────────┐    │
+                 │ idle │ ──────────────────── │ scaffolded  │    │
+                 └──────┘  slot_create/epic    └──────┬──────┘    │
+                    ▲                          auto   │           │
+                    │                          setup  │           │
+                    │                                 ▼           │
+                    │                          ┌─────────────┐    │
+                    │             ┌──────────  │   active    │ ◄──┤
+                    │             │            └──────┬──────┘    │
+                    │             │     work_end │    │ work_next │
+                    │             │             ▼    │           │
+                    │        work_pause  ┌──────────┐│  ┌───────────────┐
+                    │             │      │ closing: ││  │ transitioning │
+                    │             │      │ review   ││  └───────┬───────┘
+                    │             ▼      └────┬─────┘│    auto  │
+                    │       ┌────────┐        │      │  refresh │
+                    │       │ paused │        ▼      │          │
+                    │       └────┬───┘  ┌──────────┐ │          │
+                    │            │      │ closing: │ │          │
+                    │       work_resume │ verified │ │          │
+                    │            │      └────┬─────┘ │          │
+                    │            │           │       │          │
+                    │            └───────────┼───────┘          │
+                    │                        ▼                  │
+                    │                  ┌──────────┐             │
+                    │                  │ closing: │             │
+                    │                  │ promoted │             │
+                    │                  └────┬─────┘             │
+                    │                       │                   │
+                    │                       ▼                   │
+                    │                  ┌──────────┐             │
+                    │                  │ closing: │             │
+                    │                  │ merged   │             │
+                    │                  └────┬─────┘             │
+                    │                       │                   │
+                    │                       ▼                   │
+                    │                  ┌──────────┐             │
+                    │                  │ closing: │             │
+                    │   cleanup_pass   │ stamped  │  abort_close│
+                    └──────────────────┴──────────┴─────────────┘
+```

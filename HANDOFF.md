@@ -23,8 +23,9 @@
 - Branch guards wired into blog_publish.py and close_artifacts.py
 
 ## What is NOT done
-- 9 failing tests in `test_design_review.py` from #159's `depth` → `degree` rename — import error
-- 2 pre-existing failures in `test_close_report.py` — rendered output format mismatch
-- #161 — ctx.py finds wrong .meta in Claude Code worktrees (S / Low) — unblocked by #162
+*Updated: #164 closed (test failures fixed), #161/#165/#166 have fix commits on branch but work-end didn't complete — removed resolved items.*
+- #161 — fix committed but branch not merged to main (work-end interrupted)
+- #165 — spec promotion remapped, branch not merged
+- #166 — post-promotion verification gate added, branch not merged
 - Fix 3 casehub CLAUDE.md absolute blog paths: `platform`, `worker`, `pages` — change to `blog/` (different repo, do in casehub sessions)
 - Untracked file in mdproctor.github.io: `_articles/2026-08-03-mdp01-teaching-agents-who-they-are.md` — commit or discard

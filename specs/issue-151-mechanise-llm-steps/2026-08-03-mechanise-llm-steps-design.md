@@ -289,11 +289,22 @@ The direction is correct — slot operations delegate to epic logic. Import
 **Error handling:** The tick is cosmetic — the merge has already succeeded
 (`.landed` written, code on main). If `gh api` fails, print
 `WARN=epic_tick_failed` and continue. Do not fail `merge_slot()` for a
-GitHub API error. The user can re-tick manually or the next merge will
-catch up.
+GitHub API error. The `tick` CLI subcommand (§A) provides an independent
+retry path when re-running `merge_slot()` would return
+`ERROR=already_landed`. Additionally, `archive_slot` (§E) calls
+`tick_epic_checkboxes` as a catch-up mechanism before archival.
+
+The function is idempotent — already-ticked checkboxes are left unchanged.
+
+**Concurrent merge constraint:** The read-modify-write on the GitHub epic
+body is not atomic. Concurrent merges of different slots for the same epic
+could lose checkbox ticks. This is acceptable: slot merges are sequential
+in practice (manual, one-at-a-time workflow), and `archive_slot` (§E)
+corrects any cosmetic drift.
 
 **Tests:** Mock `gh api` calls, verify checkbox replacement regex handles
 various formats (`- [ ] #83`, `- [ ] #83 — title`, `- [ ] https://...`).
+Test idempotency (running twice doesn't double-tick).
 
 ### ~~H. update_blog_index.py~~ — moved to #155
 
@@ -311,13 +322,6 @@ work-end mechanisation. Filed as Hortora/soredium#155 for independent delivery.
   and `epic_active_issue` fields to the stack entry
 - If not epic: omit (backward compatible — existing stack entries without
   these fields are handled gracefully)
-
-**Serializer fix:** `_entries_to_text()` uses a hardcoded key tuple
-`("issue", "paused", "wip_project", "wip_workspace", "slot")` for
-serialization. Keys not in this tuple are silently dropped on write-back.
-Add `"epic_batch"` and `"epic_active_issue"` to the tuple. Without this,
-the new fields survive push (in-memory) but are lost after the next stack
-file write.
 
 Stack entry format becomes:
 ```
@@ -413,13 +417,13 @@ Every new script and every modified function gets unit tests per the
 | Item | Test file | Tests |
 |------|-----------|-------|
 | A | test_epic_manager.py | detect() with .epic, .slot, non-epic, missing |
-| A | test_epic_manager.py | check subcommand output format |
+| A | test_epic_manager.py | check: output format, SAFE_EXIT mid-batch, EPIC_COMPLETE empty plan |
 | B | test_ctx.py | EPIC_BATCH, EPIC_ACTIVE_ISSUE in output (slot + single-repo) |
 | B2 | test_work_router.py | detect() delegation, identical KEY=VALUE output |
 | D | test_slot_manager.py | merge_slot prints EPIC_STATUS for epic slot |
 | E | test_slot_manager.py | archive_slot auto-ticks stale checkboxes |
-| F | test_phase_b_gate.py (new) | pass, fail-stamps, fail-issues, fail-archive |
-| G | test_epic_manager.py | tick_epic_checkboxes regex for various formats |
+| F | test_phase_b_gate.py (new) | pass, fail-stamps, fail-issues, fail-archive, warn-github-unreachable |
+| G | test_epic_manager.py | tick_epic_checkboxes regex, idempotency |
 | I | test_stack.py | push/pop with epic fields, _entries_to_text keys, backward compat |
 
 Items C, J1–J4, K are skill-documentation or audit-only changes — no script

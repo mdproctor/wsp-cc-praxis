@@ -20,6 +20,7 @@
 
 ## What is NOT done
 - 9 failing tests in `test_design_review.py` from #159's `depth` → `degree` rename — import error
-- #161 — ctx.py finds wrong .meta in Claude Code worktrees — workspace epic .meta bleeds into worktree context (S / Low)
+- #161 — ctx.py finds wrong .meta in Claude Code worktrees — workspace epic .meta bleeds into worktree context · S · Low
+- #162 — rename slot directory from `worktrees/` to `slots/` — backward-compatible migration, fixes detection collision with Claude Code worktrees · L · Med — blocks #161 (the .meta fix alone doesn't prevent the heuristic collision)
 </content>
 </invoke>

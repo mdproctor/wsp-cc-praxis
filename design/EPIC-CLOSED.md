@@ -1,5 +1,5 @@
-# Branch Closed: issue-151-mechanise-llm-steps
+# Branch Closed: issue-168-workspace-branch-guard
 
 **Date:** 2026-08-03
-**Issues:** 151
+**Issues:** 168,169
 **Status:** merged to main

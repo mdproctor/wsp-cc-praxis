@@ -1,0 +1,9 @@
+branch: issue-161-ctx-wrong-meta-worktree
+project-sha: ffa7a1cf2423e9099507fd2f1ed0cabd46fe1001
+date: 2026-08-03
+issue: 161
+issue-repo: Hortora/soredium
+covers: 161
+flyway-next-v: unknown
+design-repo: workspace
+design-section-hashes: 

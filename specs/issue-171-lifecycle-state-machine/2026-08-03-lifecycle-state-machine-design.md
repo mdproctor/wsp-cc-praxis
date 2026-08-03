@@ -382,7 +382,11 @@ The hook reads `.meta` from the workspace's `design/` directory. In two-repo mod
 3. Check `design/.meta` in the current repo (single-repo mode fallback)
 4. If no `.meta` found anywhere, skip enforcement (repo not in lifecycle)
 
-**Broken symlink detection:** If `wksp/` exists as a symlink but does not resolve to a valid directory, the hook BLOCKS the push with an error: "wksp/ symlink is broken — cannot verify lifecycle state. Fix the symlink or remove it to bypass." Similarly, if `$WORKSPACE` is set but the path doesn't exist, the hook blocks. Silent degradation only occurs when no symlink AND no env var exist — meaning lifecycle was never configured for this repo.
+**Broken symlink detection:** If `wksp/` exists as a symlink but does not resolve to a valid directory, the hook BLOCKS the push with an error: "wksp/ symlink is broken — cannot verify lifecycle state. Fix the symlink or remove it to bypass." Similarly, if `$WORKSPACE` is set but the path doesn't exist, the hook blocks.
+
+**Local `.meta` fallback (step 3):** When no workspace symlink or env var resolves (steps 1–2 fail without a broken symlink), the hook checks `design/.meta` in the current repo. This handles single-repo projects where `.meta` exists locally but no workspace configuration is present. Enforcement uses the local `.meta` state.
+
+**Skip enforcement (step 4):** Only when no `.meta` is found anywhere — no workspace, no env var, no local file — does the hook skip. This means the repo was never configured for lifecycle management. When workspace was expected but unresolvable (steps 1–2 found symlink/env but path didn't resolve), the hook blocks rather than skipping — see broken symlink detection above.
 
 ### 8.3 Hook Implementation
 
@@ -669,7 +673,8 @@ def transition(
     
     new_state, effects = TRANSITION_TABLE[key]
     
-    validate_state(new_state, project, workspace)  # Hygiene check
+    if project is not None and workspace is not None:
+        validate_state(new_state, project, workspace)  # Hygiene check
     
     return TransitionResult(from_state=current_state, new_state=new_state, event=event, effects=effects)
 
@@ -790,9 +795,7 @@ In single-repo mode, the filter-repo preprocessing (Step 8j) strips scaffold pat
 
 ### 14.3 Concurrent Sessions on Same Branch
 
-Not modelled as a state machine concern. The state machine is single-writer — only one session should work a branch at a time. If two sessions read the same `.meta`, the second session's `transition()` call will find an unexpected state (the first session already advanced it) and raise `InvalidTransition`.
-
-Detection: before any transition, read the state and compare to expected. If the state has changed since last read, hard stop.
+Not modelled as a state machine concern. The state machine is single-writer — only one session should work a branch at a time. The two-phase protocol (§13) detects concurrent modification: `commit_transition()` re-reads the state before writing. If another session changed it between `transition()` and `commit_transition()`, a `ConcurrentModification` exception is raised with the expected and actual state values. This narrows the race window to sub-millisecond (between the re-read and the atomic `os.replace()` in `commit_transition()`).
 
 ### 14.4 Manual `git checkout` While in `closing:*`
 
@@ -985,7 +988,10 @@ TRANSITION_TABLE: dict[tuple[str, str], tuple[str, list[str]]] = {
 
 ```python
 import pytest
-from lifecycle import transition, read_state, write_state, InvalidTransition, InvalidState
+from lifecycle import (
+    transition, commit_transition, read_state, write_state,
+    InvalidTransition, InvalidState, ConcurrentModification, CorruptedState,
+)
 
 class TestValidTransitions:
     """Every row in the transition table produces the expected state and effects."""
@@ -1010,17 +1016,18 @@ class TestValidTransitions:
     ])
     def test_valid_transition(self, from_state, event, expected_state, expected_effects, tmp_meta):
         write_state(tmp_meta, from_state)
-        result = transition(tmp_meta, event, validate=False)
+        result = transition(tmp_meta, event)  # No project/workspace → validation skipped
+        assert result.from_state == from_state
         assert result.new_state == expected_state
         assert result.effects == expected_effects
-        assert read_state(tmp_meta) == expected_state
+        assert read_state(tmp_meta) == from_state  # Phase 1 does NOT write state
 
     @pytest.mark.parametrize("closing_state", [
         "closing:review", "closing:verified",
     ])
     def test_abort_from_pre_artifact_closing_state(self, closing_state, tmp_meta):
         write_state(tmp_meta, closing_state)
-        result = transition(tmp_meta, "abort_close", validate=False)
+        result = transition(tmp_meta, "abort_close")
         assert result.new_state == "active"
     
     @pytest.mark.parametrize("closing_state", [
@@ -1029,7 +1036,7 @@ class TestValidTransitions:
     def test_abort_blocked_from_post_artifact_closing_state(self, closing_state, tmp_meta):
         write_state(tmp_meta, closing_state)
         with pytest.raises(InvalidTransition):
-            transition(tmp_meta, "abort_close", validate=False)
+            transition(tmp_meta, "abort_close")
 ```
 
 ### 16.2 Invalid Transition Tests
@@ -1066,7 +1073,7 @@ class TestInvalidTransitions:
     def test_invalid_transition_raises(self, from_state, event, tmp_meta):
         write_state(tmp_meta, from_state)
         with pytest.raises(InvalidTransition):
-            transition(tmp_meta, event, validate=False)
+            transition(tmp_meta, event)
 ```
 
 ### 16.3 Migration Tests
@@ -1137,11 +1144,11 @@ class TestHygieneInvariants:
         with pytest.raises(InvalidState, match="Uncommitted changes"):
             transition(meta, "work_end", project=project, workspace=workspace)
     
-    def test_validate_false_skips_invariants(self, tmp_project_with_untracked):
+    def test_no_paths_skips_validation(self, tmp_project_with_untracked):
         meta, project, workspace = tmp_project_with_untracked
         write_state(meta, "active")
-        # validate=False bypasses hygiene checks (for testing)
-        result = transition(meta, "work_end", validate=False)
+        # Omitting project/workspace skips hygiene validation
+        result = transition(meta, "work_end")
         assert result.new_state == "closing:review"
 ```
 
@@ -1221,12 +1228,12 @@ class TestStaleStateRecovery:
     def test_scaffolded_auto_resolves(self, tmp_meta):
         write_state(tmp_meta, "scaffolded")
         # Simulates session_start finding scaffolded state
-        result = transition(tmp_meta, "auto_setup", validate=False)
+        result = transition(tmp_meta, "auto_setup")
         assert result.new_state == "active"
     
     def test_transitioning_auto_resolves(self, tmp_meta):
         write_state(tmp_meta, "transitioning")
-        result = transition(tmp_meta, "auto_refresh", validate=False)
+        result = transition(tmp_meta, "auto_refresh")
         assert result.new_state == "active"
     
     def test_orphaned_meta_on_main_detected(self, tmp_path):

@@ -1,0 +1,9 @@
+branch: issue-162-rename-worktrees-to-slots
+project-sha: 58356b4b58f074f1980109c7c3b0338870cf8f69
+date: 2026-08-03
+issue: 162
+issue-repo: Hortora/soredium
+covers: 162
+flyway-next-v: unknown
+design-repo: project
+design-section-hashes: 979de182:## Artifact Schema|2babe25e:## S1 Introduction and Goals|bb734ef3:## S2 Constraints|56f12d30:## S3 Context and Scope|e1b910f2:## S4 Solution Strategy|52bc89ed:## S5 Building Block View|912c0058:## S6 Runtime View|e8498ada:## S7 Deployment View|a9787bd0:## S8 Crosscutting Concepts|295520db:## S9 Journeys and Chapters|3c1be7c4:## S10 Architectural Decisions|acc0167f:## S11 Quality Requirements|6ac24194:## S12 Risks and Technical Debt|33dfd20d:## S13 Glossary

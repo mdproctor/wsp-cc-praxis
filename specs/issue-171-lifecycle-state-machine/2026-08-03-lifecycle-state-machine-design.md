@@ -178,7 +178,7 @@ Every `(state, event)` pair not in the transition table is invalid. The state ma
 | `closing:promoted` | `promote_pass` | Already past promotion | "Promotion already passed — currently at push stage." |
 | `closing:pushed` | `push_pass` | Already past push | "Push already complete — currently at merge stage." |
 | `closing:promoted` | `abort_close` | Past artifact promotion | "Cannot abort — artifacts already promoted. Continue forward." |
-| `closing:pushed` | `abort_close` | Branch already pushed | "Cannot abort — branch already pushed to fork. Continue forward." |
+| `closing:pushed` | `abort_close` | Past artifact promotion | "Cannot abort — artifacts already promoted. Branch pushed — continue forward." |
 | `closing:merged` | `abort_close` | Content on main | "Cannot abort — content already merged to main. Continue forward." |
 | `closing:stamped` | `abort_close` | Branch stamped | "Cannot abort — branch already stamped. Only cleanup remains." |
 
@@ -379,7 +379,8 @@ The hook reads `.meta` from the workspace's `design/` directory. In two-repo mod
 
 1. Check `wksp/` symlink in the repo being pushed (follows to workspace)
 2. If no symlink, check `$WORKSPACE` environment variable
-3. If neither, skip enforcement (single-repo mode or no workspace configured)
+3. Check `design/.meta` in the current repo (single-repo mode fallback)
+4. If no `.meta` found anywhere, skip enforcement (repo not in lifecycle)
 
 **Broken symlink detection:** If `wksp/` exists as a symlink but does not resolve to a valid directory, the hook BLOCKS the push with an error: "wksp/ symlink is broken — cannot verify lifecycle state. Fix the symlink or remove it to bypass." Similarly, if `$WORKSPACE` is set but the path doesn't exist, the hook blocks. Silent degradation only occurs when no symlink AND no env var exist — meaning lifecycle was never configured for this repo.
 
@@ -464,18 +465,24 @@ Existing `.meta` files do not have a `state:` field. Migration is backward-compa
 ### 10.1 Read Migration
 
 ```python
-def read_state(meta_path: Path) -> str:
-    """Read state from .meta. Defaults to 'active' if field is missing."""
+def read_state(meta_path: Path) -> Optional[str]:
+    """Read state from .meta. Returns None if no .meta exists."""
+    if not meta_path.exists():
+        return None
     content = meta_path.read_text()
     for line in content.splitlines():
         if line.startswith('state:'):
-            return line.split(':', 1)[1].strip()
-    return 'active'  # Migration default
+            raw = line.split(':', 1)[1].strip()
+            if raw in VALID_STATES:
+                return raw
+            raise CorruptedState(meta_path, raw)
+    return 'active'  # Missing field → legacy migration default
 ```
 
-**Why `active`:** An existing `.meta` without a `state:` field was created by the current system. If `.meta` exists and the branches are aligned, work was in progress — the system was in the `active` state implicitly. Defaulting to `active` preserves existing behavior.
-
-**Note:** This snippet shows the migration path for existing `.meta` files — the case where `.meta` exists but has no `state:` field. The full `read_state()` API (§15.1) wraps this with a `.meta` existence check, returning `None` when no `.meta` exists. The caller (`transition()`) maps `None → 'idle'` for transition table lookup.
+Three cases:
+- **No `.meta` file** → return `None`. The caller (`transition()`) maps `None → 'idle'` for transition table lookup.
+- **`.meta` exists, no `state:` field** (legacy) → return `'active'`. An existing `.meta` without a `state:` field was created by the current system. If `.meta` exists and the branches are aligned, work was in progress — the system was in the `active` state implicitly.
+- **`.meta` exists, `state:` has unrecognised value** → raise `CorruptedState`. A truncated or corrupt value (e.g. `closing:pro`) is never silently treated as `active`.
 
 ### 10.2 Write Migration
 
@@ -504,8 +511,13 @@ def write_state(meta_path: Path, state: str) -> None:
         else:
             lines.append(f'state: {state}')
     
-    meta_path.write_text('\n'.join(lines) + '\n')
+    # Atomic write: write to temp file then rename
+    tmp_path = meta_path.parent / '.meta.tmp'
+    tmp_path.write_text('\n'.join(lines) + '\n')
+    tmp_path.replace(meta_path)  # Atomic on POSIX filesystems
 ```
+
+This guarantees `.meta` is either fully old or fully new — never partially written. If the process is killed between `write_text()` and `replace()`, only the temp file is corrupted; `.meta` retains its previous content.
 
 ### 10.3 No Big-Bang Migration
 
@@ -513,6 +525,24 @@ There is no migration script that rewrites all existing `.meta` files. Migration
 - Modifying `.meta` on paused branches (would create a diff)
 - Requiring a migration step before the feature can be used
 - Breaking concurrent sessions that haven't updated their skills
+
+### 10.4 Paused Branch Migration
+
+Legacy paused branches have `.meta` without a `state:` field. When `work_resume` checks out a paused branch, `read_state()` returns `'active'` (migration default from §10.1). The transition `('active', 'work_resume')` is invalid — the state machine expects `('paused', 'work_resume')`.
+
+The fix is a migration step in the `work_resume` flow, after checkout and before `transition()`:
+
+```python
+# After checking out the paused branch:
+state = read_state(meta_path)
+if state == 'active' and branch_was_on_pause_stack:
+    # Legacy paused branch — migrate state field
+    write_state(meta_path, 'paused')
+```
+
+This one-time write permanently fixes the `.meta` file. Subsequent `work_resume` calls see `state: paused` directly.
+
+**Why not in `read_state()`:** `read_state()` should be a pure file reader. Adding pause-stack awareness would couple it to routing logic. The migration belongs in the flow that needs it (`work_resume`), not in the generic reader.
 
 ---
 
@@ -554,7 +584,7 @@ One new field: `state`. No other changes to `.meta` format.
 - Written by `lifecycle.py` only — no other script or skill writes `state:`
 - Read by `lifecycle.py`, `ctx.py`, and the pre-push hook
 - Values are the state names from Section 1 (lowercase, colon-separated for closing sub-states)
-- Invalid values are treated as `active` (migration safety)
+- Missing `state:` field defaults to `active` (legacy migration — §10.1). Present but unrecognised values raise `CorruptedState` (§14.7)
 
 ---
 
@@ -742,14 +772,24 @@ If someone force-pushes to the branch, rewriting commits:
 ### 14.7 `.meta` State Field Has Unknown Value
 
 ```python
-def read_state(meta_path: Path) -> str:
-    raw = _read_raw_state(meta_path)
-    if raw in VALID_STATES:
-        return raw
-    return 'active'  # Unknown values default to active
+def read_state(meta_path: Path) -> Optional[str]:
+    if not meta_path.exists():
+        return None
+    content = meta_path.read_text()
+    for line in content.splitlines():
+        if line.startswith('state:'):
+            raw = line.split(':', 1)[1].strip()
+            if raw in VALID_STATES:
+                return raw
+            raise CorruptedState(meta_path, raw)
+    return 'active'  # Missing field → legacy migration default
 ```
 
-This prevents a typo or corruption in `.meta` from breaking the lifecycle. This is the internal validation within `read_state()` (§15.1) — it applies when `.meta` exists and has a `state:` field with an unrecognized value.
+This distinguishes two cases:
+- **Missing `state:` field** (legacy `.meta`) → return `'active'` (migration default)
+- **Present but unrecognised value** (e.g. `state: closing:pro`) → raise `CorruptedState` with actionable message: "Unknown state 'closing:pro' in .meta — file may be corrupted. Run `read_state()` returned raw value; verify .meta manually."
+
+A truncated or corrupt value is never silently treated as `active`. This is the internal validation within `read_state()` (§15.1) — it applies when `.meta` exists and has a `state:` field with an unrecognized value.
 
 ---
 
@@ -1156,7 +1196,7 @@ class TestStaleStateRecovery:
 
 | Risk | Impact | Mitigation |
 |------|--------|-----------|
-| `.meta` state field gets corrupted | Lifecycle stalls | Unknown values default to `active` (Section 14.7) |
+| `.meta` state field gets corrupted | Lifecycle stalls | Unknown values raise `CorruptedState` with actionable error (§14.7). Missing field defaults to `active` for legacy migration (§10.1) |
 | Hook blocks legitimate pushes | Developer friction | Hook allows all feature-branch pushes; only blocks main pushes |
 | Transient states never resolve (bug in auto-resolve) | Branch stuck in `scaffolded` forever | Next session re-attempts auto-resolve; hard timeout after 3 failed attempts |
 | Single-repo mode has different `.meta` location | State reads fail | ctx.py already handles single-repo — `META_STATE` output adapts |

@@ -103,7 +103,7 @@ Events are the inputs to the state machine. Each event corresponds to a user com
 | T5 | `scaffolded` | `auto_setup` | `active` | Garden search, load specs, check protocols, verify IntelliJ | Automatic — fires on any read of `scaffolded` state |
 | T6 | `active` | `work_next` | `transitioning` | `epic_manager.py advance`, update `.meta`, tick GitHub checkbox | Epic file must exist |
 | T7 | `transitioning` | `auto_refresh` | `active` | Garden search (new issue keywords), load specs (new issue), check protocols | Automatic — fires on any read of `transitioning` state |
-| T8 | `active` | `work_pause` | `paused` | WIP commit, push to `.pause-stack`, switch to main | `.meta` must exist |
+| T8 | `active` | `work_pause` | `paused` | WIP commit · **post-commit:** switch to main, push `.pause-stack` | `.meta` must exist |
 | T9 | `paused` | `work_resume` | `active` | Pop stack, reset WIP, run context resume (§6.3) | Entry must be in `.pause-stack`; branch checked out before event fires |
 
 ### 3.2 Closing Sequence
@@ -116,7 +116,7 @@ Events are the inputs to the state machine. Each event corresponds to a user com
 | T13 | `closing:promoted` | `push_pass` | `closing:pushed` | Squash commits, push branch to fork/origin | Push must succeed |
 | T14 | `closing:pushed` | `merge_pass` | `closing:merged` | Rebase onto base branch, push main | Merge must succeed |
 | T15 | `closing:merged` | `stamp_pass` | `closing:stamped` | Write closure stamp, verify content landed via `git cat-file` | `verify_stamp.py` must pass |
-| T16 | `closing:stamped` | `cleanup_pass` | `idle` | Write EPIC-CLOSED.md, return to main, remove `.meta`, write HANDOFF.md | Both repos on main |
+| T16 | `closing:stamped` | `cleanup_pass` | `idle` | Write EPIC-CLOSED.md · **post-commit:** return to main, write HANDOFF.md | On the branch |
 
 ### 3.3 Slot Phase A / Phase B Mapping
 
@@ -213,7 +213,7 @@ Every way work can begin, mapped to the event it fires. This is the exhaustive l
 | `work` from main (no stack) | `idle` | `work` | New branch path |
 | `work` from main (with stack → "new") | `idle` | `work` | User chose "new" from stack picker |
 | `work` from main (with stack → pick) | `paused` | `work_resume` | User chose a paused branch |
-| `work` from feature branch | any | `session_start` | Router detects state, shows menu |
+| `work` from feature branch | any | _(routing — §3.4)_ | Router detects state, shows menu |
 | `work start` | `idle` | `work` | Synonym for `work` |
 | `work end` | `active` | `work_end` | Initiate close |
 | `work pause` | `active` | `work_pause` | Pause current branch |
@@ -316,18 +316,27 @@ T9's `context_resume` effect maps to this procedure.
 | **Branch alignment** | `.meta` branch field matches `git branch --show-current` in project AND workspace | Skip when transitioning to `idle` (`.meta` being removed) or `paused` (switching to main is the point) |
 | **`.meta` integrity** | `.meta` has required fields: `branch`, `state`, `date` | Skip when transitioning from `idle` (`.meta` doesn't exist yet) |
 
-### 7.2 State-Specific Invariants
+### 7.2 Transition Pre-Conditions (checked by `validate_state()`)
 
-| State Entering | Additional Invariant |
-|---------------|---------------------|
+These are conditions that must be true BEFORE the transition fires. `validate_state()` checks these alongside the universal invariants in §7.1. They describe pre-existing environmental state, not conditions established by effects.
+
+| State Entering | Pre-Condition |
+|---------------|--------------|
 | `closing:review` | No uncommitted changes in project repo |
 | `closing:review` | No uncommitted changes in workspace repo |
-| `closing:promoted` | `.artifacts-promoted` stamp exists or `close_artifacts.py` exit code 0 |
-| `closing:pushed` | Branch squashed to single commit and pushed to fork/origin (verified by push success) |
-| `closing:merged` | Branch content exists on base branch (verified by merge/rebase success) |
-| `closing:stamped` | `verify_stamp.py` passes — content confirmed on base branch via `git cat-file` (GE-20260801-836d85) |
-| `paused` | WIP commit is HEAD on both repos |
-| `active` (from `paused`) | WIP commit has been reset (working tree restored) |
+
+### 7.3 State Post-Conditions (design invariants — NOT checked by `validate_state()`)
+
+These describe conditions that must be true AFTER the transition completes — they are established by effects and gate actions, not pre-existing. They guide implementors on what each state means and what each effect must accomplish, but `validate_state()` does not check them. Checking them at transition time would always fail because the effects that establish them have not yet executed.
+
+| State | Post-Condition | Established By |
+|-------|---------------|----------------|
+| `closing:promoted` | `.artifacts-promoted` stamp exists | `write_promotion_stamp` effect |
+| `closing:pushed` | Branch squashed to single commit and pushed to fork/origin | Push gate action (before `transition()`) |
+| `closing:merged` | Branch content exists on base branch | Merge gate action (before `transition()`) |
+| `closing:stamped` | `verify_stamp.py` passes — content confirmed on base branch via `git cat-file` (GE-20260801-836d85) | `write_stamp` effect |
+| `paused` | WIP commit is HEAD on both repos | `wip_commit` effect |
+| `active` (from `paused`) | WIP commit has been reset (working tree restored) | `reset_wip` effect |
 
 ### 7.3 Slot-Specific Invariants
 
@@ -534,17 +543,17 @@ There is no migration script that rewrites all existing `.meta` files. Migration
 
 Legacy paused branches have `.meta` without a `state:` field. When `work_resume` checks out a paused branch, `read_state()` returns `'active'` (migration default from §10.1). The transition `('active', 'work_resume')` is invalid — the state machine expects `('paused', 'work_resume')`.
 
-The fix is a migration step in the `work_resume` flow, after checkout and before `transition()`:
+The fix is a migration step in the `work_resume` flow, after checkout and before `transition()`. The write is routed through `lifecycle.py`'s `migrate_legacy_paused()` function to preserve the ownership constraint (§11.3: only `lifecycle.py` writes `state:`):
 
 ```python
 # After checking out the paused branch:
-state = read_state(meta_path)
-if state == 'active' and branch_was_on_pause_stack:
-    # Legacy paused branch — migrate state field
-    write_state(meta_path, 'paused')
+from lifecycle import migrate_legacy_paused
+
+if branch_was_on_pause_stack:
+    migrate_legacy_paused(meta_path)  # writes state: paused if field is missing/defaulted
 ```
 
-This one-time write permanently fixes the `.meta` file. Subsequent `work_resume` calls see `state: paused` directly.
+`migrate_legacy_paused()` is a `lifecycle.py` public API function (§15.1) that reads the current state, checks if it defaulted to `active` (legacy migration), and writes `state: paused` via the atomic `write_state()` path. This one-time write permanently fixes the `.meta` file. Subsequent `work_resume` calls see `state: paused` directly.
 
 **Why not in `read_state()`:** `read_state()` should be a pure file reader. Adding pause-stack awareness would couple it to routing logic. The migration belongs in the flow that needs it (`work_resume`), not in the generic reader.
 
@@ -654,7 +663,9 @@ This makes the work lifecycle implicit — every session on a feature branch wit
 
 ## 13. Transition Protocol
 
-State transitions use a two-phase protocol. Phase 1 (`transition()`) validates the transition and returns the effects to execute. Phase 2 (`commit_transition()`) verifies the state hasn't been modified concurrently, atomically writes the new state, and emits the worklog event.
+State transitions use a three-phase protocol. Phase 1 (`transition()`) validates the transition and returns the effects to execute. Phase 2 (effects + `commit_transition()`) executes pre-commit effects, then verifies the state hasn't been modified concurrently, atomically writes the new state, and emits the worklog event. Phase 3 executes post-commit effects — branch switches and cleanup that must run after state is committed.
+
+Post-commit effects exist because some transitions switch branches (T8 `active → paused`, T16 `closing:stamped → idle`). After a branch switch, `.meta` on the original branch becomes inaccessible. State must be written BEFORE the switch so that `commit_transition()` can read and verify `.meta`. Post-commit effects run after state is committed and are tolerant of `.meta` inaccessibility.
 
 ```python
 def transition(
@@ -680,10 +691,16 @@ def transition(
 
 
 def commit_transition(meta_path: Path, result: TransitionResult) -> None:
-    """Phase 2: Verify state unchanged, write atomically, emit worklog."""
+    """Phase 2: Verify state unchanged, write atomically, emit worklog.
+    
+    Three modes:
+    - idle→*: verify .meta created by write_meta effect
+    - *→idle: verify current state, emit worklog, skip write
+      (post-commit return_to_main makes .meta inaccessible)
+    - *→*: verify current state, write new state atomically
+    """
     if result.from_state == 'idle':
         # idle→* transitions: .meta was created by the write_meta effect.
-        # Verify .meta exists with the expected target state.
         current = read_state(meta_path)
         if current != result.new_state:
             raise StateError(f"Expected state '{result.new_state}' after scaffold, got '{current}'")
@@ -692,7 +709,10 @@ def commit_transition(meta_path: Path, result: TransitionResult) -> None:
         current = read_state(meta_path)
         if current != result.from_state:
             raise ConcurrentModification(expected=result.from_state, actual=current)
-        write_state(meta_path, result.new_state)  # Atomic write (§10.2)
+        if result.new_state != 'idle':
+            write_state(meta_path, result.new_state)  # Atomic write (§10.2)
+        # *→idle: skip write. .meta stays on the branch with from_state.
+        # Post-commit return_to_main makes it inaccessible from main.
     
     worklog_emit(
         branch=read_field(meta_path, 'branch'),
@@ -710,15 +730,19 @@ def commit_transition(meta_path: Path, result: TransitionResult) -> None:
 # 1. Validate transition — no state written
 result = transition(meta_path, event, project=project_path, workspace=workspace_path)
 
-# 2. Execute effects (caller owns execution)
+# 2. Execute pre-commit effects (caller owns execution)
 for effect in result.effects:
     execute_effect(effect, context)
 
 # 3. Commit — verify and write state atomically
 commit_transition(meta_path, result)
+
+# 4. Execute post-commit effects (branch switches, cleanup)
+for effect in result.post_commit_effects:
+    execute_effect(effect, context)
 ```
 
-State never advances past completed work. If effects fail, state stays at the old value and the next session retries from the correct position.
+State never advances past completed work. If pre-commit effects fail, state stays at the old value and the next session retries from the correct position. Post-commit effects run after state is committed — if they fail, state reflects completed work but environmental cleanup may be incomplete (e.g. still on feature branch after state is `paused`). Recovery: next session detects the state and re-runs the missing cleanup.
 
 For `idle → *` transitions, `.meta` does not exist yet. The `write_meta` effect creates `.meta` with the target state field. `commit_transition()` verifies that `.meta` was created correctly rather than writing state itself.
 
@@ -730,8 +754,9 @@ All effects in `TransitionResult.effects` are **instructions** — actions the c
 
 1. For closing sequence events: perform the gate action (code review, artifact promotion, push, merge, stamp)
 2. Call `transition(meta_path, event)` — validates, returns `TransitionResult` with effects
-3. Execute all effects in `TransitionResult.effects`
+3. Execute all effects in `TransitionResult.effects` (pre-commit)
 4. Call `commit_transition(meta_path, result)` — verifies state, writes atomically, emits worklog
+5. Execute all effects in `TransitionResult.post_commit_effects` (branch switches, cleanup)
 
 This is a single model for all transitions. The closing sequence adds a pre-transition gate action (step 1), but the transition protocol (steps 2–4) is identical for core lifecycle and closing sequence transitions.
 
@@ -752,7 +777,38 @@ Gate actions are NOT effects — they happen before `transition()` is called, dr
 
 The `work_resume` event follows a similar pre-action pattern. Before firing `work_resume`, the caller checks out the paused branch — making `.meta` accessible so `transition()` can read `state: paused`. The checkout is NOT an effect; it is a pre-transition action. T9's effects (`pop_stack`, `reset_wip`, `context_resume`) execute between `transition()` and `commit_transition()`.
 
-**Effect idempotency:** Effects should be idempotent where possible. If `commit_transition()` fails after effects execute (e.g. concurrent modification detected), the next session re-runs the same transition — effects must tolerate being executed twice.
+**Effect idempotency:** Every effect MUST be idempotent — guarded by an existence or state check so that re-execution is a no-op. If `commit_transition()` fails after effects execute (e.g. concurrent modification detected), the next session re-runs the same transition — effects must tolerate being executed twice.
+
+**Idempotency guards per effect:**
+
+| Effect | Guard | Re-execution Behavior |
+|--------|-------|----------------------|
+| `create_branch` | Branch exists? → skip | Prevents "branch already exists" error |
+| `write_meta` | `.meta` exists? → skip | Prevents overwriting in-progress `.meta` |
+| `write_epic` | `.epic` exists? → skip | Same |
+| `create_slot` | Slot directory exists? → skip | Same |
+| `garden_search` | _(inherently idempotent)_ | Re-runs harmlessly |
+| `load_specs` | _(inherently idempotent)_ | Re-runs harmlessly |
+| `check_protocols` | _(inherently idempotent)_ | Re-runs harmlessly |
+| `check_intellij` | _(inherently idempotent)_ | Re-runs harmlessly |
+| `advance_issue` | Current issue matches next? → skip | Prevents double-advance |
+| `update_meta` | _(overwrites — idempotent)_ | Same data written |
+| `tick_github` | Checkbox already ticked? → skip | Prevents skipping an issue |
+| `wip_commit` | Working tree clean? → skip | Prevents empty commit error |
+| `push_stack` | Entry already in stack? → skip | Prevents duplicate entries |
+| `switch_to_main` | Already on main? → no-op | Safe re-execution |
+| `pop_stack` | Entry absent from stack? → skip | Prevents underflow |
+| `reset_wip` | HEAD is not a WIP commit? → skip | Prevents resetting non-WIP work |
+| `context_resume` | _(inherently idempotent)_ | Re-runs harmlessly |
+| `write_epic_closed` | File exists? → skip | Prevents duplicate marker |
+| `return_to_main` | Already on main? → no-op | Safe re-execution |
+| `write_handoff` | _(overwrites — idempotent)_ | Same data written |
+| `record_review` | _(overwrites — idempotent)_ | Same data written |
+| `write_promotion_stamp` | _(overwrites — idempotent)_ | Same data written |
+| `write_stamp` | Stamp commit exists? → skip | Prevents duplicate stamp |
+| `clear_closing_markers` | _(inherently idempotent)_ | Re-runs harmlessly |
+
+**Recovery from partial effect failure:** When the first effect succeeds but a subsequent effect fails, state stays at the old value (pre-commit effects never called `commit_transition()`). The next session re-runs `transition()` with the same event. The idempotency guards above ensure the already-completed effects skip cleanly, and execution continues from the failed effect.
 
 ### 13.2 Mapping to Worklog Events (#158)
 
@@ -876,7 +932,8 @@ class TransitionResult:
     from_state: str
     new_state: str
     event: str
-    effects: list[str]
+    effects: list[str]           # Pre-commit: run between transition() and commit_transition()
+    post_commit_effects: list[str]  # Post-commit: run after commit_transition() (branch switches, cleanup)
 
 class InvalidTransition(Exception):
     def __init__(self, from_state: str, event: str, message: str):
@@ -948,35 +1005,42 @@ def is_closing(state: str) -> bool:
 
 def can_transition(from_state: str, event: str) -> bool:
     """Check if a transition is valid without executing it."""
+
+def migrate_legacy_paused(meta_path: Path) -> bool:
+    """Migrate legacy paused branch .meta: write state: paused if field missing/defaulted.
+    Called by work_resume flow after checkout, before transition().
+    Returns True if migration was performed, False if already migrated."""
 ```
 
 ### 15.2 Transition Table as Data
 
 ```python
-TRANSITION_TABLE: dict[tuple[str, str], tuple[str, list[str]]] = {
+# (from_state, event): (new_state, effects, post_commit_effects)
+# effects run before commit_transition(); post_commit_effects run after.
+TRANSITION_TABLE: dict[tuple[str, str], tuple[str, list[str], list[str]]] = {
     # Core lifecycle
-    ('idle', 'work'):              ('scaffolded',        ['create_branch', 'write_meta']),
-    ('idle', 'work_epic'):         ('scaffolded',        ['create_branch', 'write_meta', 'write_epic']),
-    ('idle', 'slot_create'):       ('scaffolded',        ['create_slot', 'write_meta']),
-    ('idle', 'slot_epic'):         ('scaffolded',        ['create_slot', 'write_meta', 'write_slot_epic']),
-    ('scaffolded', 'auto_setup'):  ('active',            ['garden_search', 'load_specs', 'check_protocols', 'check_intellij']),
-    ('active', 'work_next'):       ('transitioning',     ['advance_issue', 'update_meta', 'tick_github']),
-    ('transitioning', 'auto_refresh'): ('active',        ['garden_search', 'load_specs', 'check_protocols']),
-    ('active', 'work_pause'):      ('paused',            ['wip_commit', 'push_stack', 'switch_to_main']),
-    ('paused', 'work_resume'):     ('active',            ['pop_stack', 'reset_wip', 'context_resume']),
+    ('idle', 'work'):              ('scaffolded',        ['create_branch', 'write_meta'],                           []),
+    ('idle', 'work_epic'):         ('scaffolded',        ['create_branch', 'write_meta', 'write_epic'],             []),
+    ('idle', 'slot_create'):       ('scaffolded',        ['create_slot', 'write_meta'],                             []),
+    ('idle', 'slot_epic'):         ('scaffolded',        ['create_slot', 'write_meta', 'write_slot_epic'],          []),
+    ('scaffolded', 'auto_setup'):  ('active',            ['garden_search', 'load_specs', 'check_protocols', 'check_intellij'], []),
+    ('active', 'work_next'):       ('transitioning',     ['advance_issue', 'update_meta', 'tick_github'],           []),
+    ('transitioning', 'auto_refresh'): ('active',        ['garden_search', 'load_specs', 'check_protocols'],        []),
+    ('active', 'work_pause'):      ('paused',            ['wip_commit'],                                            ['switch_to_main', 'push_stack']),
+    ('paused', 'work_resume'):     ('active',            ['pop_stack', 'reset_wip', 'context_resume'],              []),
     
     # Closing sequence
-    ('active', 'work_end'):        ('closing:review',    ['pre_close_sweep']),
-    ('closing:review', 'review_pass'):    ('closing:verified',  ['record_review']),
-    ('closing:verified', 'promote_pass'): ('closing:promoted',  ['write_promotion_stamp']),
-    ('closing:promoted', 'push_pass'):    ('closing:pushed',    []),
-    ('closing:pushed', 'merge_pass'):     ('closing:merged',    ['verify_content_landed']),
-    ('closing:merged', 'stamp_pass'):     ('closing:stamped',   ['write_stamp']),
-    ('closing:stamped', 'cleanup_pass'):  ('idle',              ['write_epic_closed', 'return_to_main', 'remove_meta', 'write_handoff']),
+    ('active', 'work_end'):        ('closing:review',    ['pre_close_sweep'],                                       []),
+    ('closing:review', 'review_pass'):    ('closing:verified',  ['record_review'],                                  []),
+    ('closing:verified', 'promote_pass'): ('closing:promoted',  ['write_promotion_stamp'],                          []),
+    ('closing:promoted', 'push_pass'):    ('closing:pushed',    [],                                                 []),
+    ('closing:pushed', 'merge_pass'):     ('closing:merged',    ['verify_content_landed'],                          []),
+    ('closing:merged', 'stamp_pass'):     ('closing:stamped',   ['write_stamp'],                                    []),
+    ('closing:stamped', 'cleanup_pass'):  ('idle',              ['write_epic_closed'],                               ['return_to_main', 'write_handoff']),
     
     # Abort (pre-artifact states only — post-promotion is forward-only)
-    ('closing:review', 'abort_close'):    ('active', ['clear_closing_markers']),
-    ('closing:verified', 'abort_close'):  ('active', ['clear_closing_markers']),
+    ('closing:review', 'abort_close'):    ('active', ['clear_closing_markers'],                                     []),
+    ('closing:verified', 'abort_close'):  ('active', ['clear_closing_markers'],                                     []),
 }
 ```
 
@@ -1004,7 +1068,7 @@ class TestValidTransitions:
         ("scaffolded",          "auto_setup",    "active",            ["garden_search", "load_specs", "check_protocols", "check_intellij"]),
         ("active",              "work_next",     "transitioning",     ["advance_issue", "update_meta", "tick_github"]),
         ("transitioning",       "auto_refresh",  "active",            ["garden_search", "load_specs", "check_protocols"]),
-        ("active",              "work_pause",    "paused",            ["wip_commit", "push_stack", "switch_to_main"]),
+        ("active",              "work_pause",    "paused",            ["wip_commit"]),
         ("paused",              "work_resume",   "active",            ["pop_stack", "reset_wip", "context_resume"]),
         ("active",              "work_end",      "closing:review",    ["pre_close_sweep"]),
         ("closing:review",      "review_pass",   "closing:verified",  ["record_review"]),
@@ -1012,7 +1076,7 @@ class TestValidTransitions:
         ("closing:promoted",    "push_pass",     "closing:pushed",    []),
         ("closing:pushed",      "merge_pass",    "closing:merged",    ["verify_content_landed"]),
         ("closing:merged",      "stamp_pass",    "closing:stamped",   ["write_stamp"]),
-        ("closing:stamped",     "cleanup_pass",  "idle",              ["write_epic_closed", "return_to_main", "remove_meta", "write_handoff"]),
+        ("closing:stamped",     "cleanup_pass",  "idle",              ["write_epic_closed"]),
     ])
     def test_valid_transition(self, from_state, event, expected_state, expected_effects, tmp_meta):
         write_state(tmp_meta, from_state)
@@ -1242,6 +1306,68 @@ class TestStaleStateRecovery:
         # Current branch is main, not issue-42-foo
         violations = validate_state("active", project=tmp_path, workspace=tmp_path)
         assert any("Branch mismatch" in v for v in violations)
+```
+
+### 16.8 Commit Transition Tests
+
+```python
+class TestCommitTransition:
+    """Phase 2: commit_transition verifies state, writes atomically, emits worklog."""
+    
+    def test_commit_writes_new_state(self, tmp_meta):
+        write_state(tmp_meta, "active")
+        result = transition(tmp_meta, "work_end")
+        commit_transition(tmp_meta, result)
+        assert read_state(tmp_meta) == "closing:review"
+    
+    def test_commit_detects_concurrent_modification(self, tmp_meta):
+        write_state(tmp_meta, "active")
+        result = transition(tmp_meta, "work_end")
+        # Simulate another session changing state between transition() and commit()
+        write_state(tmp_meta, "paused")
+        with pytest.raises(ConcurrentModification):
+            commit_transition(tmp_meta, result)
+    
+    def test_commit_idle_to_scaffolded_verifies_meta_created(self, tmp_path):
+        meta = tmp_path / ".meta"
+        result = transition(meta, "work")
+        # Simulate write_meta effect creating .meta with target state
+        meta.write_text("branch: issue-1-test\nstate: scaffolded\ndate: 2026-08-03\n")
+        commit_transition(meta, result)
+        assert read_state(meta) == "scaffolded"
+    
+    def test_commit_idle_to_scaffolded_fails_if_meta_not_created(self, tmp_path):
+        meta = tmp_path / ".meta"
+        result = transition(meta, "work")
+        # write_meta effect didn't run — .meta not created
+        with pytest.raises(StateError):
+            commit_transition(meta, result)
+    
+    def test_commit_to_idle_skips_write(self, tmp_meta):
+        write_state(tmp_meta, "closing:stamped")
+        result = transition(tmp_meta, "cleanup_pass")
+        commit_transition(tmp_meta, result)
+        # .meta still has from_state — write was skipped.
+        # The return_to_main post-commit effect makes .meta inaccessible.
+        assert read_state(tmp_meta) == "closing:stamped"
+    
+    def test_commit_to_idle_still_checks_concurrent_modification(self, tmp_meta):
+        write_state(tmp_meta, "closing:stamped")
+        result = transition(tmp_meta, "cleanup_pass")
+        write_state(tmp_meta, "closing:merged")  # Another session rolled back
+        with pytest.raises(ConcurrentModification):
+            commit_transition(tmp_meta, result)
+    
+    def test_post_commit_effects_populated_for_branch_switching_transitions(self, tmp_meta):
+        write_state(tmp_meta, "active")
+        result = transition(tmp_meta, "work_pause")
+        assert result.effects == ["wip_commit"]
+        assert result.post_commit_effects == ["switch_to_main", "push_stack"]
+    
+    def test_post_commit_effects_empty_for_standard_transitions(self, tmp_meta):
+        write_state(tmp_meta, "active")
+        result = transition(tmp_meta, "work_end")
+        assert result.post_commit_effects == []
 ```
 
 ---

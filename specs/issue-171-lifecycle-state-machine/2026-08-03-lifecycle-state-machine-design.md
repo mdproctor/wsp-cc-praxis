@@ -104,7 +104,7 @@ Events are the inputs to the state machine. Each event corresponds to a user com
 | T6 | `active` | `work_next` | `transitioning` | `epic_manager.py advance`, update `.meta`, tick GitHub checkbox | Epic file must exist |
 | T7 | `transitioning` | `auto_refresh` | `active` | Garden search (new issue keywords), load specs (new issue), check protocols | Automatic — fires on any read of `transitioning` state |
 | T8 | `active` | `work_pause` | `paused` | WIP commit, push to `.pause-stack`, switch to main | `.meta` must exist |
-| T9 | `paused` | `work_resume` | `active` | Pop stack, checkout branch, reset WIP, run context resume (§6.3) | Entry must be in `.pause-stack` |
+| T9 | `paused` | `work_resume` | `active` | Pop stack, reset WIP, run context resume (§6.3) | Entry must be in `.pause-stack`; branch checked out before event fires |
 
 ### 3.2 Closing Sequence
 
@@ -178,6 +178,7 @@ Every `(state, event)` pair not in the transition table is invalid. The state ma
 | `closing:promoted` | `promote_pass` | Already past promotion | "Promotion already passed — currently at push stage." |
 | `closing:pushed` | `push_pass` | Already past push | "Push already complete — currently at merge stage." |
 | `closing:promoted` | `abort_close` | Past artifact promotion | "Cannot abort — artifacts already promoted. Continue forward." |
+| `closing:pushed` | `abort_close` | Branch already pushed | "Cannot abort — branch already pushed to fork. Continue forward." |
 | `closing:merged` | `abort_close` | Content on main | "Cannot abort — content already merged to main. Continue forward." |
 | `closing:stamped` | `abort_close` | Branch stamped | "Cannot abort — branch already stamped. Only cleanup remains." |
 
@@ -474,6 +475,8 @@ def read_state(meta_path: Path) -> str:
 
 **Why `active`:** An existing `.meta` without a `state:` field was created by the current system. If `.meta` exists and the branches are aligned, work was in progress — the system was in the `active` state implicitly. Defaulting to `active` preserves existing behavior.
 
+**Note:** This snippet shows the migration path for existing `.meta` files — the case where `.meta` exists but has no `state:` field. The full `read_state()` API (§15.1) wraps this with a `.meta` existence check, returning `None` when no `.meta` exists. The caller (`transition()`) maps `None → 'idle'` for transition table lookup.
+
 ### 10.2 Write Migration
 
 On the first `transition()` call for a legacy `.meta`, the `state:` field is appended. Subsequent calls update it in place.
@@ -671,6 +674,10 @@ The gate actions themselves are NOT effects — they happen BEFORE the event fir
 | `stamp_pass` | `verify_stamp.py` passes | `['write_stamp']` — write closure stamp commit |
 | `cleanup_pass` | Cleanup operations complete | `['write_epic_closed', 'return_to_main', 'remove_meta', 'write_handoff']` |
 
+**Pre-transition action for `work_resume`:**
+
+The `work_resume` event follows a similar pre-action pattern to the closing gates. Before firing `work_resume`, the caller (work-resume skill) checks out the paused branch — this makes `.meta` accessible so `transition()` can read `state: paused`. The checkout is NOT an effect; it is a pre-transition action. T9's effects (`pop_stack`, `reset_wip`, `context_resume`) execute after the state is written to `active`.
+
 **State is written optimistically** — before effects execute. If effects fail (session crash, script error), the state machine is in the target state but effects haven't completed. The session-start recovery mechanism (§9) handles this: it detects the state, and the work-end skill retries from the current gate.
 
 ### 13.2 Mapping to Worklog Events (#158)
@@ -678,11 +685,13 @@ The gate actions themselves are NOT effects — they happen BEFORE the event fir
 | Worklog Event | State Transition |
 |--------------|-----------------|
 | `work-start` | `scaffolded → active` (T5) |
-| `work-end` | `closing:stamped → idle` (T15) |
+| `work-end` | `closing:stamped → idle` (T16) |
 | `work-pause` | `active → paused` (T8) |
 | `work-resume` | `paused → active` (T9) |
 | `issue-activate` | `transitioning → active` (T7) — new issue context |
 | `issue-complete` | `active → transitioning` (T6) — outgoing issue |
+
+These six events are intentionally scoped to user-visible lifecycle boundaries. Internal transitions (T1–T4 branch creation, T10 close initiation, T11–T15 closing sub-gates) are not worklog events — they represent intermediate state machine steps within a single user-initiated action. The worklog tracks what the user did (started, ended, paused, resumed, advanced), not what the state machine did internally to get there.
 
 ### 13.3 Graceful Degradation
 
@@ -740,7 +749,7 @@ def read_state(meta_path: Path) -> str:
     return 'active'  # Unknown values default to active
 ```
 
-This prevents a typo or corruption in `.meta` from breaking the lifecycle.
+This prevents a typo or corruption in `.meta` from breaking the lifecycle. This is the internal validation within `read_state()` (§15.1) — it applies when `.meta` exists and has a `state:` field with an unrecognized value.
 
 ---
 
@@ -845,7 +854,7 @@ TRANSITION_TABLE: dict[tuple[str, str], tuple[str, list[str]]] = {
     ('active', 'work_next'):       ('transitioning',     ['advance_issue', 'update_meta', 'tick_github']),
     ('transitioning', 'auto_refresh'): ('active',        ['garden_search', 'load_specs', 'check_protocols']),
     ('active', 'work_pause'):      ('paused',            ['wip_commit', 'push_stack', 'switch_to_main']),
-    ('paused', 'work_resume'):     ('active',            ['pop_stack', 'checkout_branch', 'reset_wip', 'context_setup']),
+    ('paused', 'work_resume'):     ('active',            ['pop_stack', 'reset_wip', 'context_resume']),
     
     # Closing sequence
     ('active', 'work_end'):        ('closing:review',    ['pre_close_sweep']),
@@ -884,7 +893,7 @@ class TestValidTransitions:
         ("active",              "work_next",     "transitioning",     ["advance_issue", "update_meta", "tick_github"]),
         ("transitioning",       "auto_refresh",  "active",            ["garden_search", "load_specs", "check_protocols"]),
         ("active",              "work_pause",    "paused",            ["wip_commit", "push_stack", "switch_to_main"]),
-        ("paused",              "work_resume",   "active",            ["pop_stack", "checkout_branch", "reset_wip", "context_setup"]),
+        ("paused",              "work_resume",   "active",            ["pop_stack", "reset_wip", "context_resume"]),
         ("active",              "work_end",      "closing:review",    ["pre_close_sweep"]),
         ("closing:review",      "review_pass",   "closing:verified",  ["record_review"]),
         ("closing:verified",    "promote_pass",  "closing:promoted",  ["write_promotion_stamp"]),
@@ -946,6 +955,7 @@ class TestInvalidTransitions:
         ("closing:review",   "work_epic"),
         ("closing:verified", "review_pass"),
         ("closing:promoted", "promote_pass"),
+        ("closing:pushed",    "push_pass"),
     ])
     def test_invalid_transition_raises(self, from_state, event, tmp_meta):
         write_state(tmp_meta, from_state)
@@ -1049,6 +1059,7 @@ class TestStateQueries:
         ("closing:review", True),
         ("closing:verified", True),
         ("closing:promoted", True),
+        ("closing:pushed", True),
         ("closing:merged", True),
         ("closing:stamped", True),
         ("active", False),

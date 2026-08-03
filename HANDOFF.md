@@ -1,31 +1,19 @@
 # HANDOFF — soredium
 
-**Last session:** 2026-08-03 (worktree fix + slots rename + blog escape fix)
-**Branches closed:** issue-156-ctx-worktree-symlink-fix, issue-162-rename-worktrees-to-slots, issue-163-blog-slot-escape
+**Last session:** 2026-08-03 (branch close: .meta validation + spec remapping + verification gate)
+**Branch closed:** issue-161-ctx-wrong-meta-worktree
+**Issues closed:** #161, #165, #166
 **On main:** yes
 
 ## What was done
 
-### #156 — ctx.py worktree symlink fix (CLOSED)
-- ctx.py resolves proj/wksp symlinks from the main working tree when running in a git worktree
-- Uses `git worktree list --porcelain` to find the main root
-- New output fields: IN_WORKTREE, MAIN_WORKTREE_ROOT
+- #161 — ctx.py validates .meta branch against current branch; prevents workspace epic context bleeding into worktrees
+- #165 — spec promotion remapped from `project/specs/` to `project/docs/specs/`; `dest-prefix` parameter added to artifact_promote.py
+- #166 — post-promotion verification gate (`verify_promotion.py`) added to work-end step 8a-verify; filesystem evidence check
 
-### #162 — Rename slot directory worktrees/ → slots/ (CLOSED)
-- New slots create under `slots/`. Existing `worktrees/` slots continue working via dual-path reads
-- `is_slot_path()` replaces `"/worktrees/" in path` — excludes `.claude/worktrees/` and `.worktrees/`
-- Updated slot_manager, work_router, pause_exec, ctx.py, 5 SKILL.md files
+## What's Left
 
-### #163 — Blog entries escaping slot boundary (CLOSED)
-- Root cause: absolute `Blog directory:` paths in CLAUDE.md escape the slot clone
-- `resolve_blog_dir.py` detects slot escape, falls back to `$WORKSPACE/blog/`
-- `safe_commit.py` provides reusable branch-guarded commit-to-main helper
-- Branch guards wired into blog_publish.py and close_artifacts.py
-
-## What is NOT done
-*Updated: #164 closed (test failures fixed), #161/#165/#166 have fix commits on branch but work-end didn't complete — removed resolved items.*
-- #161 — fix committed but branch not merged to main (work-end interrupted)
-- #165 — spec promotion remapped, branch not merged
-- #166 — post-promotion verification gate added, branch not merged
-- Fix 3 casehub CLAUDE.md absolute blog paths: `platform`, `worker`, `pages` — change to `blog/` (different repo, do in casehub sessions)
-- Untracked file in mdproctor.github.io: `_articles/2026-08-03-mdp01-teaching-agents-who-they-are.md` — commit or discard
+- Run `recover_orphaned_specs.py` to recover 19 specs stranded on closed workspace branches · M · Low
+- Fix 3 casehub CLAUDE.md absolute blog paths: `platform`, `worker`, `pages` — change to `blog/` · S · Low (different repo)
+- Untracked file in mdproctor.github.io: `_articles/2026-08-03-mdp01-teaching-agents-who-they-are.md` — commit or discard · XS · Low
+- ctx.py `OWNER_REPO=**` bug — markdown bold parsing captures literal asterisks instead of repo name · S · Low

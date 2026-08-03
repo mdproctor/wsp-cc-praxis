@@ -373,6 +373,31 @@ Add Step 9b after Step 9 (work-start pre-checks): "If stack entry has
 - work-pause confirmation: include "Epic Batch N/M, active: #X" when epic
 - work-resume confirmation: include epic context from stack entry
 
+**J5. Slot clones: no remote pushes until Phase A** (`work-slot/SKILL.md`,
+`work-start/SKILL.md`, `git-commit/SKILL.md`):
+
+Slot clones (`git clone --shared`) are isolated workspaces. Their `origin`
+points to the local parent repo, not GitHub. During regular work (committing,
+advancing issues), branches should accumulate commits locally in the clone.
+No pushes to origin (local parent) or to GitHub until:
+
+- **Phase A:** squash + push branch to origin (`--force-with-lease`)
+- **Phase B:** merge_slot pushes to origin, then original pushes to GitHub
+
+Currently the LLM offers "push the branch to remote" after advancing issues
+or completing work. This creates branch noise on the parent repo and can
+cause conflicts when Phase A squashes. Fix:
+
+- `work-slot/SKILL.md` `work-slot next` — remove any push instruction after
+  advancing. The only remote operation is the GitHub checkbox tick (§G, Step 3).
+- `work-start/SKILL.md` Step 10 — when in slot mode (`IN_SLOT=yes`), skip
+  the scaffold push. The scaffold lives in the clone only.
+- `git-commit/SKILL.md` — when in slot mode, suppress the post-commit push
+  offer. Commits stay local until Phase A.
+
+Add to each skill: "**Slot mode:** commits stay local in the clone. No pushes
+until Phase A."
+
 ---
 
 ## Layer 5 — Audit

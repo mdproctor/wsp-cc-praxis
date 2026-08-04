@@ -1,0 +1,10 @@
+branch: issue-158-worklog-track-individual-issue
+state: scaffolded
+project-sha: 8f910a6595acd86ba6a260a09d3e1eaf1b4c06c3
+date: 2026-08-04
+issue: 158
+issue-repo: Hortora/soredium
+covers: 158
+flyway-next-v: unknown
+design-repo: workspace
+design-section-hashes: 

@@ -1,5 +1,5 @@
-# Branch Closed: issue-182-work-observability
+# Branch Closed: issue-158-worklog-track-individual-issue
 
 **Date:** 2026-08-04
-**Issues:** 178
+**Issues:** 158
 **Status:** merged to main

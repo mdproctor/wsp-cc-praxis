@@ -2,48 +2,43 @@
 
 ## Last Session
 
-Designed and implemented the unified work lifecycle (#180). Wrote a 21-section
-design spec, ran adversarial design review (56 issues, 0 unresolved, $45.68),
-then implemented 10 of 12 plan tasks — all Python infrastructure complete
-(531 tests green). Branch pushed, skills synced.
+Closed #180 (unified work lifecycle). Ran ecosystem health check, triaged all
+24 open issues, closed 12 (11 implemented + #142 subsumed by trellis). Squashed
+36 commits → 5 semantic groups and landed on main.
 
-Also discovered and triaged slot data loss — 3 slots deleted without archival,
-~20 legacy slots with stale DB state. A separate session ran reconcile_slots.py
-to fix all 32 issues and patched allocate_slot_number to scan all 4 directories.
+Also found: 15 soredium blog entries unpublished to hortora.github.io, 6
+merged-but-unstamped branches, 3 archived slots still on feature branches,
+close_artifacts.py fails with "commit_failed" when nothing to promote (filed
+separately — verify_promotion confirms 26/26 landed).
 
 ## Immediate Next Step
 
-**Documentation sweep.** The unified model simplifies the command surface
-(work-start, work-next, work-end — that's it) but the current docs still
-describe the old fragmented routes (Phase A/B, `work-slot merge`, `work epic`
-as separate). Update all docs to reflect the new model. This is Task 8 from
-the implementation plan plus a broader messaging sweep.
-
-Run `/work` to resume on `issue-180-unified-work-lifecycle`.
+Pick up remaining work from the open issue list. Start with `/work`.
 
 ## What's Left
 
-- **Task 8: SKILL.md updates** — 5 files: work-start, work-end, work-slot,
-  work, handover. Add `.plan` awareness, remove Phase A/B language, collapse
-  `work-slot merge` into `work-end`, remove `work epic` route. · L · Med
-- **Documentation sweep** — CLAUDE.md Key Skills section, README.md skill
-  descriptions and chaining table, docs/PROJECT-TYPES.md if it references
-  old commands. Update messaging to emphasise the unified model. · L · Med
-- **Stashed changes on main** — `git stash list` shows
-  `WIP: slot_manager ephemeral artifacts cleanup` (`.claude`/`.playwright-mcp`
-  added to `_EPHEMERAL_ARTIFACTS`). Apply after merge or on a separate branch. · XS · Low
-- Run `recover_orphaned_specs.py` to recover 19 specs stranded on closed workspace branches · M · Low
+- **close_artifacts.py empty-commit bug** — script fails when nothing to promote
+  (commit_failed), even though artifacts are already at destination. verify_promotion
+  passes. Needs graceful handling of no-op case. · S · Low
+- **Stashed changes on main** — `WIP: slot_manager ephemeral artifacts cleanup`.
+  Apply on a separate branch. · XS · Low
+- Run `recover_orphaned_specs.py` — 19 specs stranded on closed workspace branches · M · Low
 - Fix 3 casehub CLAUDE.md absolute blog paths · S · Low (different repo)
+- Publish 15 soredium blog entries to hortora.github.io · S · Low
+- Stamp 6 merged-but-unstamped branches (5 feat/garden-engine* + 1 workspace) · S · Low
+- Reset 3 archived slots (3, 4, 10) to main · XS · Low
 
 ## What's Next
 
 | # | Description | Scale | Complexity | Notes |
 |---|-------------|-------|------------|-------|
-| — | Trellis integration (Phase 8) | L | Med | Separate plan in trellis repo: WorkspaceScanner, WorklogReader, WorkPlan data model |
-| #170 | Pre-merge hook for slot artifact promotion stamp | M | Med | Prevents silent skip of close_artifacts.py |
+| — | Trellis integration (Phase 8) | L | Med | Separate plan in trellis repo |
+| #170 | Pre-merge hook for slot artifact promotion | M | Med | Subsumed by #176 (now closed) |
+| #178 | Worklog event emission at transitions | M | Med | Docstring promises, code doesn't implement |
+| #158 | Worklog: issue transitions within branches | M | Med | Data layer gap |
+| #95 | Mechanize remaining LLM operations | L | High | ~7 raw git commands remain across skills |
 
 ## References
 
 - Spec: `docs/specs/issue-180-unified-work-lifecycle/2026-08-04-unified-work-lifecycle-design.md`
 - Plan: `~/claude/public/cc-praxis/plans/2026-08-04-unified-work-lifecycle.md`
-- Review workspaces: `~/reviews/hortora-soredium/unified-work-lifecycle-*/`

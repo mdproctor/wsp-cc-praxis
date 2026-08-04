@@ -1,0 +1,10 @@
+branch: issue-180-unified-work-lifecycle
+state: scaffolded
+project-sha: 37b17a95019ceb395a398f4caa11920ecf080086
+date: 2026-08-04
+issue: 180
+issue-repo: Hortora/soredium
+covers: 180
+flyway-next-v: none
+design-repo: project
+design-section-hashes: 

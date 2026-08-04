@@ -1,0 +1,11 @@
+branch: issue-182-work-observability
+state: scaffolded
+project-sha: d247fddf2e207305bd0fa6a606a05d8b4e2e10fc
+date: 2026-08-04
+issue: 182
+issue-repo: Hortora/soredium
+covers: 182,178,158,141,157
+flyway-next-v: unknown
+design-repo: workspace
+design-section-hashes: 
+plan: yes

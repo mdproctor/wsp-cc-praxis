@@ -1,0 +1,10 @@
+branch: issue-157-worklog-rest-mcp
+state: scaffolded
+project-sha: 9ea9eeb75c6d85f2cddf832788e160714599cf16
+date: 2026-08-05
+issue: 157
+issue-repo: Hortora/soredium
+covers: 157
+flyway-next-v: none
+design-repo: workspace
+design-section-hashes: 

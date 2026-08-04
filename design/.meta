@@ -2,9 +2,9 @@ branch: issue-141-issue-lifecycle-slots
 state: scaffolded
 project-sha: cb8b4ce3ff3e6167d252df3c0f7e746bef040f1d
 date: 2026-08-04
-issue: 141
+issue: 183
 issue-repo: Hortora/soredium
-covers: 141
+covers: 183
 flyway-next-v: none
 design-repo: workspace
 design-section-hashes: 

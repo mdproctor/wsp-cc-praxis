@@ -1,5 +1,5 @@
-# Branch Closed: issue-158-worklog-track-individual-issue
+# Branch Closed: issue-141-issue-lifecycle-slots
 
-**Date:** 2026-08-04
-**Issues:** 158
+**Date:** 2026-08-05
+**Issues:** 183
 **Status:** merged to main

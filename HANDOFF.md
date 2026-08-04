@@ -2,26 +2,37 @@
 
 ## Last Session
 
-Closed #158 (wire worklog issue-activate/complete into callers). This is
-the second child of epic #182 (Work Observability). Added `_emit_issue_events()`
-helper to `plan_manager.py`, wired it into `advance()` for work-next,
-added `complete_active_issue()` for work-end, and wired
-`record_issue_activate()` into `scaffold.py` for work-start. 17 new tests.
+Closed #183 (issue lifecycle wiring gaps). Pivoted from #141 which was
+closed because its core scope had already landed across #158, #178,
+and the #180 `.plan` infrastructure. The three remaining gaps:
+
+1. **work-end issue-complete emission** — `complete_active_issue()` existed
+   but work-end never called it. Added Step 0c to work-end SKILL.md.
+2. **Crash reconciliation** — `reconcile_covers()` added to `plan_manager.py`.
+   Runs at start of every `advance()` and at work-end Step 0c. Scans `[x]`
+   items in `.plan` against `covers:` in `.meta`, appends missing ones.
+   Also catches parent epics that `_mark_parent_epics_if_done()` marks `[x]`
+   but never adds to covers.
+3. **Slot-mode verification** — confirmed ctx.py resolves `PLAN_PATH` correctly
+   in slot context. Added 2 tests for slot-mode detect + advance.
+
+Code review found a CRITICAL: parent epic issue numbers were never added to
+covers during `advance()` — only the leaf was. The reconciliation at
+`advance()` start catches this for mid-queue advances, but the queue-exhaustion
+case (last advance, then work-end) had no reconciliation. Fixed by adding
+`reconcile_covers()` to work-end Step 0c.
 
 ## Immediate Next Step
 
-Resume epic #182 with `work 182`. Auto-detection will skip closed #178 and
-#158, starting on #141 (nested issue lifecycle in slots — auto-end-previous
-on advance).
+Epic #182 has one remaining child: #157 (REST + MCP server over worklog.db).
+This is deferred until trellis coordinator consumer needs are clearer.
 
 ## What's Left
 
-### Epic #182 — Work Observability (2 of 4 remaining)
+### Epic #182 — Work Observability (1 of 5 remaining)
 
-- **#141** — Nested issue lifecycle in slots — auto-end-previous on
-  advance. · L · High
-- **#157** — REST + MCP server over worklog.db. Deferred until trellis
-  coordinator needs are clearer. · L · High
+- **#157** — REST + MCP server over worklog.db. Deferred until consumer
+  needs (trellis coordinator, Claude Code agents) are clearer. · L · High
 
 ### Housekeeping (carried forward)
 
@@ -37,7 +48,6 @@ on advance).
 |---|-------|-------|------------|-------|
 | #170 | Pre-merge hook for slot artifact promotion | M | Med | — |
 | #157 | Worklog REST + MCP server | L | High | Epic #182 child |
-| #141 | Issue-level lifecycle in slots | L | High | Epic #182 child |
 | #118 | Evaluate splitting HANDOFF.md roles | S | Low | — |
 | #110 | Support nested epics | L | High | — |
 | #95 | Mechanize remaining LLM operations | L | High | — |
@@ -47,6 +57,4 @@ on advance).
 
 ## References
 
-- Spec: `~/claude/hortora/soredium/docs/specs/issue-158-worklog-track-individual-issue/2026-08-04-issue-transition-wiring-design.md`
-- Plan: `~/claude/public/cc-praxis/plans/attic/issue-158-worklog-track-individual-issue/2026-08-04-issue-transition-wiring.md`
-- Landed SHA: `d804e07fc08ca2030925508643dea640639afb81`
+- Landed SHA: `6f77e07bb9e7255030926ff6753cfa0973e0df2c`

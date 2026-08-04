@@ -1,5 +1,5 @@
-# Branch Closed: issue-168-workspace-branch-guard
+# Branch Closed: issue-182-work-observability
 
-**Date:** 2026-08-03
-**Issues:** 168,169
+**Date:** 2026-08-04
+**Issues:** 178
 **Status:** merged to main

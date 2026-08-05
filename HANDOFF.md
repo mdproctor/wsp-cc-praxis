@@ -2,37 +2,43 @@
 
 ## Last Session
 
-Closed #183 (issue lifecycle wiring gaps). Pivoted from #141 which was
-closed because its core scope had already landed across #158, #178,
-and the #180 `.plan` infrastructure. The three remaining gaps:
+Two issues closed from epic #182 (Work Observability):
 
-1. **work-end issue-complete emission** — `complete_active_issue()` existed
-   but work-end never called it. Added Step 0c to work-end SKILL.md.
-2. **Crash reconciliation** — `reconcile_covers()` added to `plan_manager.py`.
-   Runs at start of every `advance()` and at work-end Step 0c. Scans `[x]`
-   items in `.plan` against `covers:` in `.meta`, appends missing ones.
-   Also catches parent epics that `_mark_parent_epics_if_done()` marks `[x]`
-   but never adds to covers.
-3. **Slot-mode verification** — confirmed ctx.py resolves `PLAN_PATH` correctly
-   in slot context. Added 2 tests for slot-mode detect + advance.
+**#183 — Issue lifecycle wiring gaps** (S/Med). Three gaps:
+1. work-end Step 0c now calls `reconcile_covers()` + `complete_active_issue()`
+2. `plan_manager.advance()` runs crash reconciliation at start of every call
+3. Slot-mode plan detection verified with tests
 
-Code review found a CRITICAL: parent epic issue numbers were never added to
-covers during `advance()` — only the leaf was. The reconciliation at
-`advance()` start catches this for mid-queue advances, but the queue-exhaustion
-case (last advance, then work-end) had no reconciliation. Fixed by adding
-`reconcile_covers()` to work-end Step 0c.
+Code review found parent epic issues never added to `covers:` during
+`advance()` — fixed by adding `reconcile_covers()` to work-end pre-close.
+
+**#157 — Worklog MCP server** (L/High → actual: S/Med). Python FastMCP
+server (stdio) with 4 read-only tools wrapping `worklog.py` queries:
+`worklog_active`, `worklog_events`, `worklog_timeline`, `worklog_slots`.
+Includes repo_path normalization, metadata JSON parsing, structured error
+handling. 15 tests. Design review (light, 3 dimensions) surfaced 4
+accepted robustness fixes applied to the spec before implementation.
+
+Key design decision: Python MCP server in soredium (not Quarkus, not in
+trellis). Rationale: per-session stdio server is lightweight; trellis
+REST/MCP for always-on consumers is a separate trellis issue. The two
+aren't mutually exclusive — Python MCP is the baseline that works without
+trellis.
 
 ## Immediate Next Step
 
-Epic #182 has one remaining child: #157 (REST + MCP server over worklog.db).
-This is deferred until trellis coordinator consumer needs are clearer.
+Epic #182 is effectively complete — all "Done when" criteria met except
+REST/MCP exposure, which was descoped to a trellis issue. Consider
+closing the epic or filing a trellis issue for the REST layer.
 
 ## What's Left
 
-### Epic #182 — Work Observability (1 of 5 remaining)
+### Epic #182 — Work Observability
 
-- **#157** — REST + MCP server over worklog.db. Deferred until consumer
-  needs (trellis coordinator, Claude Code agents) are clearer. · L · High
+All children closed. The remaining "Done when" item (worklog queryable
+via REST + MCP) is now split:
+- MCP: done (soredium #157)
+- REST: deferred to trellis (not yet filed)
 
 ### Housekeeping (carried forward)
 
@@ -47,7 +53,6 @@ This is deferred until trellis coordinator consumer needs are clearer.
 | # | Title | Scale | Complexity | Notes |
 |---|-------|-------|------------|-------|
 | #170 | Pre-merge hook for slot artifact promotion | M | Med | — |
-| #157 | Worklog REST + MCP server | L | High | Epic #182 child |
 | #118 | Evaluate splitting HANDOFF.md roles | S | Low | — |
 | #110 | Support nested epics | L | High | — |
 | #95 | Mechanize remaining LLM operations | L | High | — |
@@ -57,4 +62,7 @@ This is deferred until trellis coordinator consumer needs are clearer.
 
 ## References
 
-- Landed SHA: `6f77e07bb9e7255030926ff6753cfa0973e0df2c`
+- #183 landed SHA: `6f77e07bb9e7255030926ff6753cfa0973e0df2c`
+- #157 landed SHA: `4a031c204f4e905270376fab2415dc7978546ea0`
+- Spec: `/Users/mdproctor/claude/public/cc-praxis/specs/issue-157-worklog-rest-mcp/2026-08-05-worklog-mcp-server-design.md`
+- Plan: `/Users/mdproctor/claude/public/cc-praxis/plans/2026-08-05-worklog-mcp-server.md`

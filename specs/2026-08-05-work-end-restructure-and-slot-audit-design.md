@@ -282,13 +282,23 @@ repos = parse_slot(slot_dir / ".slot")  # from .slot file
 primary = repos[0]  # marked (primary) in .slot
 promoted_workspaces: set[Path] = set()
 
+# Step 1: code review — ONCE before per-repo loop (LLM subagent)
+code_review(context)
+
+# Steps 2-4: promotion, blogs, plans — once per unique workspace
 for repo in repos:
     ws = resolve_workspace(repo)
-    # Steps 2-3 run once per unique workspace (skip if already promoted)
     if ws not in promoted_workspaces:
-        promote_and_publish(ws, repo.project, context)
+        promote_and_publish(ws, repo.project, context)  # Steps 2-3
+        verify_promotion(ws, repo.project)               # Post-promote gate
+        archive_plans(ws, context)                        # Step 4
         promoted_workspaces.add(ws)
-    # Steps 1, 4, 6-11 run per-repo
+
+# Step 6: journal merge — ONCE (decision from Sweep)
+journal_merge(context)
+
+# Steps 7-11: rebase/squash/build/push/stamp — per-repo
+for repo in repos:
     execute_repo(repo, context)
 
 # Post-loop steps (ONCE)
@@ -303,17 +313,18 @@ are not in `.slot` — they must be stamped separately. In non-slot mode,
 the single workspace branch is stamped after the project branch; no
 `.landed` marker is written (it is a slot-mode concept).
 
-**Existing scripts reused (not rewritten):**
+**Existing scripts reused:**
 
-| Script | Called by Execute | Per-repo? |
-|--------|------------------|-----------|
-| `close_artifacts.py` | Promotion + blog publish | Once per unique workspace |
-| `land_branch.py rebase` | Step 7 | Yes |
-| `land_branch.py push` | Step 10 | Yes |
-| `land_branch.py stamp` | Step 11 | Yes |
-| `verify_stamp.py` | Called by land_branch.py stamp | Yes (internal) |
-| `artifact_promote.py` | Called by close_artifacts.py | Yes (internal) |
-| `blog_dest.py` | Called by close_artifacts.py | No (once) |
+| Script | Called by Execute | Per-repo? | Modified? |
+|--------|------------------|-----------|-----------|
+| `close_artifacts.py` | Promotion + blog publish | Once per unique workspace | No |
+| `verify_promotion.py` | Post-promote gate | Once per unique workspace | No |
+| `land_branch.py rebase` | Step 7 | Yes | No |
+| `land_branch.py push` | Step 10 | Yes | No |
+| `land_branch.py stamp` | Step 11 | Yes | Yes — adds push |
+| `verify_stamp.py` | Called by land_branch.py stamp | Yes (internal) | No |
+| `artifact_promote.py` | Called by close_artifacts.py | Yes (internal) | No |
+| `blog_dest.py` | Called by close_artifacts.py | No (once) | No |
 
 **close_artifacts.py per-workspace calling:** In multi-repo slots,
 `close_artifacts.py` runs once per unique workspace, not once per repo.
@@ -327,6 +338,14 @@ after all repos complete.
 as its first positional arg. No shared state between calls. The
 `cmd_push()` workspace stamp check is read-only — multiple repos can
 verify the same `.artifacts-promoted` stamp.
+
+**land_branch.py stamp modification:** `cmd_stamp()` currently writes the
+stamp commit but does not push. The stamp must be pushed so remote
+branches show as closed (unstamped remote branches look live to hygiene
+scan and audit tools). Modification: after writing the stamp commit,
+push the work branch to the fork remote (`--force-with-lease`). This
+matches `merge_slot()`'s behaviour (slot_manager.py:938-943) where the
+stamp is pushed immediately after being written.
 
 **merge_slot() bypass:** The new Execute orchestrator bypasses
 `slot_manager.py`'s monolithic `merge_slot()`. `merge_slot()` remains
@@ -610,12 +629,12 @@ The SKILL.md does NOT describe:
 | `work_end_execute.py` | 3 | Per-repo orchestrator |
 | `verify_slot_close.py` | 4 | Unified verification gate |
 
-### Retained scripts (unchanged)
+### Retained scripts
 
 | Script | Called by | Purpose |
 |--------|----------|---------|
 | `close_artifacts.py` | Execute | Promotion + blog publish |
-| `land_branch.py` | Execute | Rebase + push + stamp |
+| `land_branch.py` | Execute | Rebase + push + stamp (modified: `cmd_stamp` adds push) |
 | `verify_stamp.py` | land_branch.py | Content landing verification |
 | `verify_promotion.py` | Execute (post-promote) + Verify | Artifact destination check |
 | `artifact_promote.py` | close_artifacts.py | Individual promotion ops |

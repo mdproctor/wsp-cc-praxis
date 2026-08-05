@@ -229,10 +229,26 @@ conditional within Execute (see Step 3), governed by Sweep decisions.
 
 ### Step 3 — Execute
 
-**Nature:** Mechanical orchestrator script with LLM subagent calls for
-code review and squash analysis.
+**Nature:** SKILL.md-orchestrated phase. The SKILL.md calls LLM subagents
+for code review and squash analysis, and calls `work_end_execute.py` for
+the mechanical per-repo loop. The script cannot dispatch LLM subagents or
+prompt the user — those remain SKILL.md responsibilities.
 
-**New script:** `work_end_execute.py` — the core orchestrator. Tracks
+**New script:** `work_end_execute.py` — mechanical per-repo operations
+(promote, rebase, push, stamp). Called by the SKILL.md between LLM steps.
+
+**LLM vs script boundary:**
+
+| Responsibility | Owner | Why |
+|---------------|-------|-----|
+| Code review | SKILL.md (LLM subagent) | Requires Agent() invocation |
+| Squash analysis | SKILL.md (LLM subagent) | Requires commit classification |
+| Blessed repo prompt | SKILL.md (interactive) | Requires user input |
+| Build verification level | SKILL.md (interactive) | Requires user input |
+| Per-repo promote/rebase/push/stamp | `work_end_execute.py` | Mechanical; core multi-repo fix |
+| Issue closing | `work_end_execute.py` | Mechanical; once after all repos |
+| Journal merge execution | `work_end_execute.py` | Mechanical; decision from Sweep |
+| Progress tracking | `work_end_execute.py` | `.execute-progress` file | Tracks
 sub-step progress via `.execute-progress` file (analogous to
 `merge_slot()`'s `.merge-progress`). On crash recovery, the lifecycle
 state machine identifies the major step; within Execute, the progress
@@ -268,28 +284,34 @@ file identifies the sub-step and repo to resume from.
 ```python
 repos = parse_slot(slot_dir / ".slot")  # from .slot file
 primary = repos[0]  # marked (primary) in .slot
+promoted_workspaces: set[Path] = set()
 
 for repo in repos:
-    # Steps 1-4, 6-11 run per-repo
+    ws = resolve_workspace(repo)
+    # Steps 2-3 run once per unique workspace (skip if already promoted)
+    if ws not in promoted_workspaces:
+        promote_and_publish(ws, repo.project, context)
+        promoted_workspaces.add(ws)
+    # Steps 1, 4, 6-11 run per-repo
     execute_repo(repo, context)
 
-# Step 5 runs ONCE after all repos
-close_issues(context.covers, context.issue_repo)
-
-# Step 12 runs ONCE — stamp all workspace branches
-stamp_workspace(slot_dir, context)
+# Post-loop steps (ONCE)
+close_issues(context.covers, context.issue_repo)       # Step 5
+stamp_workspace(slot_dir, context)                      # Step 12
+write_landed_marker(slot_dir, repos, landed_shas)       # Step 14 (slot mode)
 ```
 
-Issue closing and workspace stamping run once after all per-repo work.
-Workspace branches are not project repos and are not in `.slot` — they
-must be stamped separately. In non-slot mode, the single workspace branch
-is stamped after the project branch.
+Issue closing, workspace stamping, and `.landed` marker write run once
+after all per-repo work. Workspace branches are not project repos and
+are not in `.slot` — they must be stamped separately. In non-slot mode,
+the single workspace branch is stamped after the project branch; no
+`.landed` marker is written (it is a slot-mode concept).
 
 **Existing scripts reused (not rewritten):**
 
 | Script | Called by Execute | Per-repo? |
 |--------|------------------|-----------|
-| `close_artifacts.py` | Promotion + blog publish | Yes (different project= per repo) |
+| `close_artifacts.py` | Promotion + blog publish | Once per unique workspace |
 | `land_branch.py rebase` | Step 7 | Yes |
 | `land_branch.py push` | Step 10 | Yes |
 | `land_branch.py stamp` | Step 11 | Yes |
@@ -297,12 +319,13 @@ is stamped after the project branch.
 | `artifact_promote.py` | Called by close_artifacts.py | Yes (internal) |
 | `blog_dest.py` | Called by close_artifacts.py | No (once) |
 
-**close_artifacts.py per-repo calling:** The Execute orchestrator calls
-`close_artifacts.py` per-repo WITHOUT passing `covers=`. Issue closing
-is handled directly by the orchestrator (Step 5) after all per-repo
-work completes. `close_artifacts.py` already handles missing `covers`
-gracefully (skips issue closing when `covers` is empty). The script is
-unchanged — only the calling convention changes.
+**close_artifacts.py per-workspace calling:** In multi-repo slots,
+`close_artifacts.py` runs once per unique workspace, not once per repo.
+Workspace artifacts belong to the workspace; promoting the same artifacts
+into multiple project repos creates duplicates. Each unique workspace is
+promoted once, targeting the primary project for that workspace. `covers=`
+is never passed — issue closing is handled by the orchestrator (Step 5)
+after all repos complete.
 
 **land_branch.py per-repo calling:** Each subcommand takes a project path
 as its first positional arg. No shared state between calls. The
@@ -362,9 +385,41 @@ rebase+squash, BEFORE push. Currently Step 8k runs after 8j which includes
 push — meaning build failures leave pushed-but-broken code. Pre-push
 placement means a failed build has nothing to roll back.
 
+**Build failure recovery:** In non-slot mode, the rebase (step 7) modifies
+the local base branch (main), not the work branch. The work branch retains
+its original commits throughout. If the build fails after rebase+squash:
+
+1. Reset base branch: `git reset --hard origin/<base_branch>`
+2. Fix the build issue on the work branch
+3. Re-run Execute from step 7 (progress journal skips steps 1-6)
+
+The base branch has not been pushed, so remote state is unaffected. No
+pre-squash backup ref is needed — the work branch is the backup. In slot
+mode, the same principle applies: slot clone's main can be reset to
+`origin/main` (the original repo's main), and the work branch in the
+clone is untouched.
+
+**Per-repo progress tracking:** `work_end_execute.py` maintains an
+`.execute-progress` file in the slot directory (or workspace design/
+for non-slot mode). Records which repos have completed each sub-step:
+
+```
+soredium=promoted
+soredium=rebased
+soredium=pushed:abc1234
+casehub=promoted
+casehub=rebased
+```
+
+On crash recovery, the script reads this file and skips completed steps.
+Analogous to `merge_slot()`'s `.merge-progress` mechanism. The file is
+deleted on successful completion of all repos.
+
 ### Step 4 — Verify
 
-**Nature:** Mechanical script — the core fix for the multi-repo bug.
+**Nature:** Mechanical script — defense-in-depth audit for the
+multi-repo close sequence. The primary fix for the multi-repo bug is
+Execute's mechanical per-repo loop; Verify catches bugs in Execute itself.
 
 **New script:** `verify_slot_close.py`
 
@@ -426,6 +481,23 @@ cannot rationalize past a script that reads git state across all repos.
 - `phase_b_gate.py` — logic absorbed (script removed)
 - Slot completion gate (current SKILL.md S9 checklist) — logic absorbed
 
+**Recovery on failure:** If Verify reports `VERIFIED=no`, the SKILL.md
+presents the per-check failure list and offers recovery actions:
+
+| Failure | Recovery |
+|---------|----------|
+| Branch not merged | Re-run Execute rebase+push for the affected repo |
+| Branch not stamped | Re-run Execute stamp for the affected repo |
+| Landing SHA invalid | Investigate: squash may have rewritten SHAs |
+| Main not pushed | Re-run push for the affected repo |
+| Artifact missing | Re-run close_artifacts.py for the affected repo |
+| Issue still open | Re-run issue close |
+| Build not recorded | Re-run build verification |
+
+Most failures are recoverable by re-running the affected Execute sub-step.
+The `.execute-progress` file preserves what succeeded; only the failing
+step needs to re-run. After recovery, re-run Verify to confirm.
+
 **Protocol compliance:** Satisfies `archive-requires-promotion-verification`
 protocol — the `.artifacts-promoted` stamp is checked as part of the
 verification pass.
@@ -460,13 +532,13 @@ testable in isolation with temp git repo fixtures.
 
 | Test | Input | Assert |
 |------|-------|--------|
-| Context: clean state | Valid branch, clean tree, no queue | Exit 0, JSON with all context fields |
-| Context: branch divergence | Branch behind base | Exit 1, error=BRANCH_MISMATCH |
-| Context: queue gate active | plan_manager detect returns active | Exit 1, queue gate blocks |
-| Context: dirty working tree | Uncommitted changes | Exit 1, error=DIRTY_TREE |
-| Context: .meta missing | No .meta file | Exit 0, graceful degradation (HAS_META=no) |
-| Context: .meta exists | .meta with valid SHA | Exit 0, PROJECT_SHA populated |
-| Context: pause stack active | Branch in pause stack | Exit 0, PAUSED=yes in output |
+| Context: clean state | Valid branch, clean tree, no queue | Exit 0, all preconditions status=pass |
+| Context: branch divergence | Branch behind base | Exit 0, branch_divergence status=needs_input |
+| Context: queue gate mid-queue | plan_manager detect returns active | Exit 0, queue_gate status=needs_input |
+| Context: dirty working tree | Uncommitted changes | Exit 0, clean_tree status=fail |
+| Context: .meta missing | No .meta file | Exit 0, meta_exists status=needs_input |
+| Context: .meta exists | .meta with valid SHA | Exit 0, meta_exists status=pass, PROJECT_SHA populated |
+| Context: pause stack active | Branch in pause stack | Exit 0, pause_stack status=pass with info |
 | Context: bad arguments | Missing project path | Exit 1, usage error |
 | Workspace branch → workspace main | Artifact file on branch | File on main, commit exists |
 | Workspace main → project main | Artifact on ws main, routing=project | File in project repo |
@@ -486,6 +558,11 @@ testable in isolation with temp git repo fixtures.
 | Journal conditional | No journal entries | Journal merge skipped silently |
 | Journal conditional | Journal entries exist | Journal merge runs |
 | Build pre-push | Rebase+squash done, push not | mvn install succeeds on working tree |
+| Execute resume | Failure at step 8, repo 2 of 4 | Re-run skips steps 1-7 for repo 2, all steps for repo 1 |
+| .landed marker | Slot mode, all repos pushed | .landed exists with correct SHAs and timestamp |
+| Workspace dedup | 3 repos, 2 share workspace | close_artifacts.py called twice, not thrice |
+| Stamp push (non-slot) | land_branch.py stamp completes | Work branch pushed to origin with stamp |
+| --fix verify | UNSTAMPED branch, squashed commit | verify_stamp.py rejects bad SHA, stamp rolled back |
 
 `verify_slot_close.py` IS the test assertions extracted into a runtime gate.
 
@@ -544,7 +621,7 @@ The SKILL.md does NOT describe:
 | `close_artifacts.py` | Execute | Promotion + blog publish |
 | `land_branch.py` | Execute | Rebase + push + stamp |
 | `verify_stamp.py` | land_branch.py | Content landing verification |
-| `verify_promotion.py` | Verify | Artifact destination check |
+| `verify_promotion.py` | Execute (post-promote) + Verify | Artifact destination check |
 | `artifact_promote.py` | close_artifacts.py | Individual promotion ops |
 | `blog_dest.py` | close_artifacts.py | Blog destination resolver |
 | `workspace_artifacts.py` | close_artifacts.py | Artifact path resolver |
@@ -565,10 +642,15 @@ The SKILL.md does NOT describe:
 
 ## Risks
 
-**merge_slot() bypass:** The new Execute orchestrator bypasses
-`slot_manager.py`'s `merge_slot()`. If other code paths call `merge_slot()`,
-they continue using the old flow. Verify: grep for `merge_slot` callers
-before removing.
+**merge_slot() bypass and .phase-a-complete callers:** The new Execute
+orchestrator bypasses `slot_manager.py`'s `merge_slot()`. Analysis of
+callers: `merge_slot()` is callable via the `slot_manager.py merge-slot`
+CLI subcommand (manual use). `scan_ready()` uses `.phase-a-complete` to
+list merge-ready slots and is callable via the `scan-ready` subcommand.
+No other skills call `merge_slot()` directly — the current work-end
+SKILL.md implements its own slot close sequence (S3-S8) with inline git
+commands. The compatibility marker must be retained for `scan_ready()`
+until `slot_manager.py` is updated (implementation step 6).
 
 **Routing implicit disable:** The routing vocabulary does not support an
 explicit disable value. Absence of files in a category directory serves
@@ -585,3 +667,41 @@ when Execute skips the merge.
 GE-20260721-94263a). The Execute sequence enforces this: squash (step 8)
 before stamp (step 11). The current SKILL.md already has this ordering
 but the per-repo loop makes it explicit.
+
+---
+
+## Issue #95 Cross-reference
+
+Issue #95 ("Mechanize LLM-executed state-changing operations across
+skills") identifies 10 HIGH-severity findings for work-end. This
+restructure addresses a subset:
+
+| # | Finding | Status |
+|---|---------|--------|
+| 1 | Slot stamp commits (inline git) | **Addressed** — `land_branch.py stamp` per repo |
+| 2 | Slot merge+push (inline git) | **Addressed** — `land_branch.py rebase/push` per repo |
+| 3 | Hygiene scan stamp (inline git) | **Not addressed** — remains inline in SKILL.md |
+| 4 | Journal merge commit/push | **Not addressed** — remains inline in SKILL.md |
+| 5 | Blessed repo push | **Partially addressed** — fork push via `land_branch.py push`; blessed repo delivery remains interactive |
+
+Findings 3-4 remain as open items in issue #95. This restructure does
+not attempt to close #95 — it addresses the multi-repo bug and skill
+complexity, which overlap with #95's scope.
+
+---
+
+## Worklog Integration
+
+The existing scripts already emit worklog events:
+- `land_branch.py cmd_stamp()` calls `_wl.record_work_end()`
+- `slot_manager.py merge_slot()` calls `_wl.record_slot_merge()`
+- `lifecycle.py commit_transition()` calls `_emit_to_worklog()`
+
+The restructured architecture preserves these:
+- `land_branch.py` continues to emit `record_work_end` on stamp (unchanged)
+- Lifecycle transitions continue to emit via `commit_transition()` (unchanged)
+- `merge_slot()` worklog emission is NOT needed — work-end bypasses it;
+  `land_branch.py` and lifecycle transitions cover the same events
+
+`work_end_execute.py` does not need its own worklog emission — it
+delegates to scripts that already emit. No worklog gaps introduced.

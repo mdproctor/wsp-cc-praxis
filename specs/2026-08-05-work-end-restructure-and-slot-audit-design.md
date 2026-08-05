@@ -248,11 +248,7 @@ prompt the user — those remain SKILL.md responsibilities.
 | Per-repo promote/rebase/push/stamp | `work_end_execute.py` | Mechanical; core multi-repo fix |
 | Issue closing | `work_end_execute.py` | Mechanical; once after all repos |
 | Journal merge execution | `work_end_execute.py` | Mechanical; decision from Sweep |
-| Progress tracking | `work_end_execute.py` | `.execute-progress` file | Tracks
-sub-step progress via `.execute-progress` file (analogous to
-`merge_slot()`'s `.merge-progress`). On crash recovery, the lifecycle
-state machine identifies the major step; within Execute, the progress
-file identifies the sub-step and repo to resume from.
+| Progress tracking | `work_end_execute.py` | Crash recovery via `.execute-progress` |
 
 **Sequence (per-repo in slot mode):**
 

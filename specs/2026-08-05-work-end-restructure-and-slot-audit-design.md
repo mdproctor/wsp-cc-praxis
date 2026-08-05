@@ -98,8 +98,7 @@ not inside scripts — same as the current architecture:
 | Context | `work_end` | closing:review | Entry; if already closing:*, resume from that gate |
 | Execute (code review pass) | `review_pass` | closing:verified | |
 | Execute (promotion done) | `promote_pass` | closing:promoted | Forward-only from here |
-| Execute (push done) | `push_pass` | closing:pushed | |
-| Execute (merge+stamp done) | `merge_pass` → `stamp_pass` | closing:merged → closing:stamped | |
+| Execute (land phase done) | `push_pass` → `merge_pass` → `stamp_pass` | closing:pushed → closing:merged → closing:stamped | Rapid sequence after Land |
 | Close | `cleanup_pass` | idle | |
 
 **Crash recovery:** On re-entry, `META_STATE` from ctx.py tells the
@@ -109,7 +108,37 @@ what already happened. Post-promotion states are forward-only
 (`abort_close` is rejected by the transition table).
 
 **Abort:** Available from `closing:review` and `closing:verified` only.
-Fires `abort_close` → returns to `active`.
+Fires `abort_close` → returns to `active`. The `clear_closing_markers`
+effect also deletes `.execute-progress` as a defensive cleanup, even
+though this file cannot exist at abort-eligible states (it is created
+post-promotion, and abort is blocked post-promotion).
+
+**Lifecycle event semantics:** Events are abstract milestones, not
+descriptions of individual git operations. Each event has a semantic
+meaning that is stable across execution modes:
+
+| Event | Semantic meaning |
+|-------|-----------------|
+| `promote_pass` | Artifacts promoted to all destinations |
+| `push_pass` | Work branch content safely on at least one remote |
+| `merge_pass` | Content verified on authoritative remote base branch |
+| `stamp_pass` | All branches stamped and stamps pushed |
+
+In non-slot mode, `push_pass` fires after the fork push and `merge_pass`
+fires after the blessed-repo push — the local rebase (step 7) lands
+content on the local base branch but is NOT `merge_pass`; it is an
+internal sub-step within the `closing:promoted` phase. In slot mode,
+the per-repo loop processes all repos' push + merge + stamp before
+returning to the SKILL.md.
+
+In both modes, `push_pass`, `merge_pass`, and `stamp_pass` fire in
+rapid succession after the Land phase script returns. The intermediate
+lifecycle states (`closing:pushed`, `closing:merged`) are transient but
+preserve the transition chain required by `lifecycle.py`. Fine-grained
+recovery within the Land phase is handled by `.execute-progress`, not
+by lifecycle state transitions. `verify_content_landed` (effect of
+`merge_pass`) fires after all repos have been pushed to GitHub — always
+verifiable against the remote.
 
 ### Step 1 — Context
 
@@ -155,6 +184,14 @@ Exit code 1 only for operational errors (bad args, missing dirs).
 The SKILL.md handles interactive resolution for `needs_input` conditions
 (queue gate options, .meta degradation flow, branch divergence choices).
 `fail` conditions are non-interactive hard stops (dirty tree, etc.).
+
+**Crash recovery contract:** Context does NOT expose `.execute-progress`.
+The lifecycle state (`META_STATE`) tells the SKILL.md which major phase
+to resume from; `.execute-progress` is internal to `work_end_execute.py`
+and tells the script which repos to skip within a phase. On re-entry,
+the SKILL.md re-invokes the same script call; the script reads its own
+progress file and resumes. This separation keeps Context as a pure
+status-gathering step and Execute as a self-contained recovery unit.
 
 **Scripts removed:** `phase_a_complete.py` (marker write absorbed into
 Execute), `phase_b_gate.py` (verification logic absorbed into Verify).
@@ -242,12 +279,15 @@ prompt the user — those remain SKILL.md responsibilities.
 | Responsibility | Owner | Why |
 |---------------|-------|-----|
 | Code review | SKILL.md (LLM subagent) | Requires Agent() invocation |
-| Squash analysis | SKILL.md (LLM subagent) | Requires commit classification |
+| Squash analysis (Phase B) | SKILL.md (LLM per-repo loop) | Requires commit classification; writes `.squash-plan-<repo>.json` |
+| Squash plan writing | SKILL.md | Writes subagent output to plan files for Phase C |
 | Blessed repo prompt | SKILL.md (interactive) | Requires user input |
 | Build verification level | SKILL.md (interactive) | Requires user input |
-| Per-repo promote/rebase/push/stamp | `work_end_execute.py` | Mechanical; core multi-repo fix |
-| Issue closing | `work_end_execute.py` | Mechanical; once after all repos |
-| Journal merge execution | `work_end_execute.py` | Mechanical; decision from Sweep |
+| Phase A: Rebase all repos | `work_end_execute.py rebase` | Mechanical; single call |
+| Phase C: Apply squash + build + push + stamp | `work_end_execute.py land` | Mechanical; reads plan files; core multi-repo fix |
+| Per-workspace promote | `work_end_execute.py promote` | Mechanical; once per unique workspace |
+| Issue closing | `work_end_execute.py land` | Mechanical; once after all repos |
+| Journal merge execution | `work_end_execute.py promote` | Mechanical; decision from Sweep |
 | Progress tracking | `work_end_execute.py` | Crash recovery via `.execute-progress` |
 
 **Sequence (per-repo in slot mode):**
@@ -262,18 +302,51 @@ prompt the user — those remain SKILL.md responsibilities.
 5. Close issues         — all COVERS issues via gh (ONCE, not per-repo)
 6. Journal merge        — conditional: execute the merge decision from Sweep
                           (create, update, skip, etc.); mechanical only
+
+--- Per-repo phases (eliminates LLM/script interleaving) ---
+
+Phase A — Rebase (single script call, all repos):
 7. Rebase               — branch onto base branch
-8. Squash               — LLM subagent for commit classification
-9. Build verification   — Java: mvn install; others: skip
+
+Phase B — Squash analysis (SKILL.md LLM loop, per-repo):
+8. Squash analysis      — LLM subagent for commit classification;
+                          writes .squash-plan-<repo>.json per repo.
+                          Resumable: repos with existing plan files
+                          are skipped on restart.
+
+Phase C — Land (single script call, all repos):
+9. Apply squash plan    — mechanical: applies Phase B plan via git rebase
+10. Build verification  — Java: mvn install; others: skip
                           (PRE-PUSH — if build fails, nothing pushed yet)
-10. Push                — fork first (mandatory), then blessed repo (prompt)
-11. Stamp + push stamp  — verify_stamp.py first, then stamp commit,
-                          then push work branch to origin (--force-with-lease)
-12. Stamp workspace     — stamp workspace branch (ONCE after per-repo loop)
-13. Write .phase-a-complete marker (slot mode compatibility)
-14. Write .landed marker — slot mode only; records branch, repos, landed
+11. Push                — fork first (mandatory), then blessed repo (prompt)
+12. Stamp + push stamp  — verify_stamp.py first, then stamp commit,
+                          then push work branch to origin (--force-with-lease);
+                          idempotent: skips if branch tip is already a
+                          "chore: branch closed" commit
+
+--- Post-loop (ONCE) ---
+
+13. Stamp workspace     — stamp workspace branch (ONCE after per-repo loop)
+14. Write .phase-a-complete marker (slot mode compatibility)
+15. Write .landed marker — slot mode only; records branch, repos, landed
                           SHAs, timestamp (matches merge_slot() format)
 ```
+
+**Three-phase rationale:** The per-repo steps are organized into three
+phases to eliminate LLM/script interleaving in the SKILL.md's control
+flow. The SKILL.md makes two script calls with an LLM loop between them:
+
+| Phase | Steps | Owner | Per-repo? |
+|-------|-------|-------|-----------|
+| A — Rebase | 7 | `work_end_execute.py rebase` | All repos, single call |
+| B — Squash | 8 | SKILL.md LLM per-repo loop | Yes — but pure LLM, no script interleaving |
+| C — Land | 9-12 | `work_end_execute.py land` | All repos, single call |
+
+Phase B is the only per-repo loop in the SKILL.md. It is pure analysis
+(no script calls between iterations). The SKILL.md writes each subagent's
+output to `.squash-plan-<repo>.json` in the slot directory (or workspace
+`design/` for non-slot mode). Phase C reads these plan files and applies
+them mechanically.
 
 **Slot mode per-repo looping:**
 
@@ -297,14 +370,23 @@ for repo in repos:
 # Step 6: journal merge — ONCE (decision from Sweep)
 journal_merge(context)
 
-# Steps 7-11: rebase/squash/build/push/stamp — per-repo
-for repo in repos:
-    execute_repo(repo, context)
+# Phase A: Rebase all repos (single script call)
+work_end_execute("rebase", repos, context)              # Step 7
+
+# Phase B: Squash analysis — LLM per-repo loop
+for repo in repos:                                      # Step 8
+    if not squash_plan_exists(repo):
+        plan = squash_analysis_subagent(repo)
+        write_squash_plan(repo, plan)  # .squash-plan-<repo>.json
+
+# Phase C: Land all repos (single script call)
+# Applies squash plans, builds, pushes, stamps           Steps 9-12
+work_end_execute("land", repos, context)
 
 # Post-loop steps (ONCE)
 close_issues(context.covers, context.issue_repo)       # Step 5
-stamp_workspace(slot_dir, context)                      # Step 12
-write_landed_marker(slot_dir, repos, landed_shas)       # Step 14 (slot mode)
+stamp_workspace(slot_dir, context)                      # Step 13
+write_landed_marker(slot_dir, repos, landed_shas)       # Step 15 (slot mode)
 ```
 
 Issue closing, workspace stamping, and `.landed` marker write run once
@@ -359,33 +441,41 @@ original repo, not a GitHub remote. `land_branch.py`'s `detect_topology()`
 would resolve the wrong remotes.
 
 Instead, the Execute orchestrator implements the slot-specific sequence
-directly per-repo (matching the current `merge_slot()` flow):
+directly, using the three-phase structure:
 
 ```
-Per-repo (slot clone):
-  a. Rebase onto origin/main:
-     git -C <slot>/<repo> fetch origin main
-     git -C <slot>/<repo> rebase origin/main
-  b. Squash (LLM subagent — same as non-slot)
-  c. Build verify (if applicable — same as non-slot)
+Phase A — Rebase (script, all repos):
+  Per-repo (slot clone):
+    a. Rebase onto origin/main:
+       git -C <slot>/<repo> fetch origin main
+       git -C <slot>/<repo> rebase origin/main
 
-Per-repo (sync slot → original → GitHub):
-  d. Push branch from slot clone to original:
-     git -C <slot>/<repo> push origin <branch> --force-with-lease
-  e. Land in original (fetch + ff-only merge):
-     git -C <original>/<repo> fetch origin
-     git -C <original>/<repo> merge --ff-only <branch>
-  f. Push original to GitHub:
-     git -C <original>/<repo> push origin main
-  g. Stamp in slot clone:
-     git -C <slot>/<repo> commit --allow-empty \
-       -m "chore: branch closed — landed as <SHA> on main"
-     git -C <slot>/<repo> push origin <branch> --force-with-lease
+Phase B — Squash analysis (LLM, per-repo):
+    b. Squash (LLM subagent — same as non-slot)
+       Writes .squash-plan-<repo>.json
+
+Phase C — Land (script, all repos):
+  Per-repo (slot clone):
+    c. Apply squash plan (mechanical)
+    d. Build verify (if applicable — same as non-slot)
+
+  Per-repo (sync slot → original → GitHub):
+    e. Push branch from slot clone to original:
+       git -C <slot>/<repo> push origin <branch> --force-with-lease
+    f. Land in original (fetch + ff-only merge):
+       git -C <original>/<repo> fetch origin
+       git -C <original>/<repo> merge --ff-only <branch>
+    g. Push original to GitHub:
+       git -C <original>/<repo> push origin main
+    h. Stamp in slot clone (idempotent — skips if tip is already stamped):
+       git -C <slot>/<repo> commit --allow-empty \
+         -m "chore: branch closed — landed as <SHA> on main"
+       git -C <slot>/<repo> push origin <branch> --force-with-lease
 ```
 
-If `--ff-only` fails or push fails at step (e) or (f), retry from (a) —
-max 3 attempts, matching `merge_slot()` behaviour. After 3 failures,
-hard stop with manual instructions.
+If `--ff-only` fails or push fails at step (f) or (g), retry from (e)
+for the affected repo — max 3 attempts, matching `merge_slot()` behaviour.
+After 3 failures, hard stop with manual instructions.
 
 `land_branch.py` is used only in non-slot mode (single-repo and two-repo),
 where the project repo has standard GitHub remote topology.
@@ -421,14 +511,36 @@ for non-slot mode). Records which repos have completed each sub-step:
 ```
 soredium=promoted
 soredium=rebased
+soredium=squashed
+soredium=built
 soredium=pushed:abc1234
+soredium=stamped
 casehub=promoted
 casehub=rebased
 ```
 
+Phase B (squash analysis) progress is tracked by the existence of
+`.squash-plan-<repo>.json` files rather than `.execute-progress` entries.
+The SKILL.md owns these files; the script reads them in Phase C.
+
 On crash recovery, the script reads this file and skips completed steps.
 Analogous to `merge_slot()`'s `.merge-progress` mechanism. The file is
 deleted on successful completion of all repos.
+
+**Stamp idempotency:** Before creating a stamp commit, the script checks
+if the branch tip is already a `chore: branch closed` commit. If so, the
+stamp step is skipped (only the push is retried if needed). This prevents
+duplicate stamp commits on retry. The `repo=stamped` progress entry
+provides the primary guard; the tip-check is defense-in-depth.
+
+**Recovery contract:** `.execute-progress` is internal to
+`work_end_execute.py`. The SKILL.md does not read or interpret it.
+The lifecycle state tells the SKILL.md which phase to re-invoke; the
+script handles per-repo granularity. `.execute-progress` cannot exist
+at abort-eligible lifecycle states (created post-promotion; abort is
+blocked post-promotion by the transition table). The `clear_closing_markers`
+effect deletes `.execute-progress` and `.squash-plan-*.json` as a
+defensive cleanup on abort.
 
 ### Step 4 — Verify
 
@@ -573,7 +685,8 @@ testable in isolation with temp git repo fixtures.
 | Journal conditional | No journal entries | Journal merge skipped silently |
 | Journal conditional | Journal entries exist | Journal merge runs |
 | Build pre-push | Rebase+squash done, push not | mvn install succeeds on working tree |
-| Execute resume | Failure at step 8, repo 2 of 4 | Re-run skips steps 1-7 for repo 2, all steps for repo 1 |
+| Execute resume (Phase B) | Squash analysis fails on repo 2 of 4 | Phase A skipped (all rebased), Phase B skips repo 1 (plan file exists), re-analyzes repo 2 |
+| Execute resume (Phase C) | Push fails on repo 2 of 4 | Phases A-B skipped, Phase C skips repo 1 (stamped in progress file), resumes repo 2 from push |
 | .landed marker | Slot mode, all repos pushed | .landed exists with correct SHAs and timestamp |
 | Workspace dedup | 3 repos, 2 share workspace | close_artifacts.py called twice, not thrice |
 | Stamp push (non-slot) | land_branch.py stamp completes | Work branch pushed to origin with stamp |

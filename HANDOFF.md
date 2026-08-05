@@ -2,15 +2,15 @@
 
 ## Last Session
 
-Implemented the full work-end restructure (#184): 10-task plan executed,
-3 new scripts (work_end_context.py, work_end_execute.py, verify_slot_close.py),
-SKILL.md rewritten from 1399 to 314 lines, 2 vestigial scripts removed,
-67 tests passing. Branch merged, stamped, pushed, issue closed.
+Three slot infrastructure fixes landed directly on main (#185, #186, #187).
+Maven settings path mangling in `.mvn/maven.config`, missing preflight
+check in `merge_slot()`, and filesystem-only HANDOFF.md detection in
+`work_router.py`. All TDD'd. Garden entry GE-20260805-ffef3b captured
+for the Maven bug.
 
 ## Immediate Next Step
 
-Run `audit_slot_merges.py --fix` against casehub to remediate the 27
-legacy slots with missing stamps (Deliverable 1 from the spec).
+*Unchanged — `git show HEAD~1:HANDOFF.md`*
 
 ## What's Left
 

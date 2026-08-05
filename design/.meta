@@ -1,0 +1,10 @@
+branch: issue-184-work-end-restructure
+state: scaffolded
+project-sha: adca1170528e8eef09ead26b2ff4568b7c2ba1c4
+date: 2026-08-05
+issue: 184
+issue-repo: Hortora/soredium
+covers: 184
+flyway-next-v: none
+design-repo: workspace
+design-section-hashes: 

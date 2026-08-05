@@ -8,3 +8,4 @@
 | [2026-07-07-mdp01-two-tools-one-grid.md](2026-07-07-mdp01-two-tools-one-grid.md) | 2026-07-07 | Final-review mode completes the four-phase pipeline; depth-scaled adversarial review complements per-commit code-review |
 | [2026-07-24-mdp01-the-gate-that-shouldnt-have-been.md](2026-07-24-mdp01-the-gate-that-shouldnt-have-been.md) | 2026-07-24 | Mechanical close-out operations extracted from LLM skill to Python scripts |
 | [2026-07-28-mdp01-one-slot-one-epic-many-sessions.md](2026-07-28-mdp01-one-slot-one-epic-many-sessions.md) | 2026-07-28 | Epic-driven slots: batch planning, cross-session state tracking, deterministic work routing |
+| [2026-08-05-mdp01-the-gaps-nobody-noticed.md](2026-08-05-mdp01-the-gaps-nobody-noticed.md) | 2026-08-05 | Closing epic #182: parent epic closure bug, worklog MCP server design (Python stdio vs Quarkus always-on), and fixing work-end sweep skip rationalizations |

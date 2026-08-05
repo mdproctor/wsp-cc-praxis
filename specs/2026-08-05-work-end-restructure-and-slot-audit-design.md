@@ -536,11 +536,12 @@ provides the primary guard; the tip-check is defense-in-depth.
 **Recovery contract:** `.execute-progress` is internal to
 `work_end_execute.py`. The SKILL.md does not read or interpret it.
 The lifecycle state tells the SKILL.md which phase to re-invoke; the
-script handles per-repo granularity. `.execute-progress` cannot exist
-at abort-eligible lifecycle states (created post-promotion; abort is
-blocked post-promotion by the transition table). The `clear_closing_markers`
-effect deletes `.execute-progress` and `.squash-plan-*.json` as a
-defensive cleanup on abort.
+script handles per-repo granularity. `.execute-progress` may exist at
+`closing:verified` (created during the `promote` subcommand, before
+`promote_pass` fires). At `closing:promoted` and later, abort is blocked
+by the transition table. The `clear_closing_markers` effect deletes
+`.execute-progress` and `.squash-plan-*.json` on abort, covering the
+`closing:verified` window where the file may already exist.
 
 ### Step 4 — Verify
 

@@ -1,6 +1,6 @@
 # Unified Work State — Design Spec
 
-**Issue:** TBD (file after spec approval)
+**Issue:** #188
 **Addresses:** #118 (Evaluate splitting HANDOFF.md roles: history, state, and planning)
 **Date:** 2026-08-06
 **Status:** Draft
@@ -547,11 +547,15 @@ applied to a different operation.
 | 8 | Crash recovery — .pausing/.resuming intent files | Phase 2 |
 | 9 | Wrap-scope and close-scope checks in work_health.py — replace handover epic hygiene, verify_slot_close.py | Phase 2 + 6 |
 | 10 | Update audit_slot_merges.py to use is_closed() | Phase 1 |
+| 11 | Persistent scratchpad — NOTES.md + handover/resume integration | Phase 5 |
+| 12 | Trellis worklog bridge — JDBC reader + WorklogModelProvider (Hortora/trellis) | Phase 2 |
 
 Phases 1, 6, 10 can run in parallel (is_closed + dependents).
 Phases 2-5 are sequential (each builds on the previous).
 Phase 8 is independent after Phase 2.
 Phase 9 is independent after Phases 2 + 6.
+Phase 11 depends on Phase 5 (HANDOFF.md slim format must land first so NOTES.md doesn't overlap).
+Phase 12 is a separate repo (Hortora/trellis), independent after Phase 2 establishes the validation layer.
 
 ## Migration
 
@@ -584,6 +588,94 @@ covers:` now reads `.plan` `[x]` items via `plan_manager.py`.
 | Handover resume issue cross-check | `work_health.py --scope entry` |
 | Handover ARC42 stale scan (Step 2c) | `work_health.py --scope wrap` |
 | verify_slot_close.py (standalone) | `work_health.py --scope close` |
+
+### Component 5: Persistent scratchpad — `$WORKSPACE/NOTES.md`
+
+Cross-session state has three lifetimes, and the first two have clear homes:
+
+| Lifetime | Home | Example |
+|----------|------|---------|
+| Branch-scoped | `.meta`, `.plan`, `JOURNAL.md` | "Issue #123 is blocked on API change" |
+| Session-scoped | HANDOFF.md | "Tried approach X, failed because Y" |
+| Persistent | **nowhere today** | "Remember to check if trellis reads worklog.db" |
+
+Persistent items — things to come back to later, observations that span
+sessions, notes that aren't actionable enough to be issues yet — currently
+have no home. They end up in HANDOFF.md (overwritten next session), CLAUDE.md
+(wrong purpose — project conventions, not scratch notes), or auto-memory
+(behavioural, not task-level).
+
+**`$WORKSPACE/NOTES.md`** fills this gap:
+
+- **Append-only** — new items added at the top, never overwritten
+- **Committed to workspace main** — survives across sessions and branches
+- **Not a queue** — no checkboxes, no ordering, no validation. Free-form
+  text with timestamps
+- **Promotion path** — items that become actionable get filed as GitHub
+  issues and optionally added to `.plan`. Items that become conventions
+  get moved to CLAUDE.md or protocols
+
+**Format:**
+
+```markdown
+# Notes — soredium
+
+## 2026-08-06
+- Check if trellis reads worklog.db — may need JDBC bridge
+- The handover commit-to-main dance (8 git operations) is fragile —
+  revisit if HANDOFF.md write-once-per-session isn't enough
+
+## 2026-08-04
+- audit_slot_merges.py --fix only handles UNSTAMPED, not UNMERGED
+```
+
+**Integration:**
+- Handover wrap checklist adds an optional item: "Anything to note for
+  later?" — appends to NOTES.md if the user has items
+- `work_health.py --scope entry` surfaces recent notes (last 7 days)
+  in the resume output so they don't disappear
+- `idea-log` skill can append to NOTES.md instead of maintaining a
+  separate file (consolidation, not duplication)
+
+**What NOTES.md is NOT:**
+- Not a backlog (that's `.plan` + GitHub issues)
+- Not a design journal (that's `JOURNAL.md`)
+- Not project conventions (that's CLAUDE.md)
+- Not a session narrative (that's HANDOFF.md)
+
+### Component 6: Trellis worklog bridge
+
+Trellis (Quarkus UI sidecar) currently has no reader for soredium's
+`worklog.db`. The Python MCP server (#157) gives Claude Code agents
+read access, but trellis — which displays the work timeline UI — reads
+only its own filesystem scanner state.
+
+**Gap:** `worklog.db` captures structured lifecycle events (branch starts,
+pauses, closes, issue completions) via `worklog.py`. Trellis's
+`FileWatcherService` captures filesystem snapshots (slot directories,
+branch existence). These are complementary views of the same work, but
+trellis never sees the lifecycle events.
+
+**Design:**
+- **JDBC reader in trellis sidecar** — direct SQLite read via JDBC.
+  No REST layer needed since `worklog.db` is local
+  (`~/.claude/worklog.db`)
+- **Read-only** — trellis never writes to `worklog.db`. Writes go
+  through `lifecycle.py` → `worklog.py` (Python side)
+- **Schema contract** — document the `worklog.db` schema in a shared
+  location so the Python writer and Java reader stay in sync. The schema
+  is simple (work_items, work_events tables) but cross-language contracts
+  need explicit documentation
+- **ModelProvider integration** — a `WorklogModelProvider` in trellis
+  that exposes lifecycle events through the existing `ModelProvider` SPI,
+  making worklog data available to the MCP tools and SSE push
+
+**Scope:** This is a Hortora/trellis concern, not a soredium change. Filed
+here as a downstream dependency of the unified work state design — once
+`work_health.py` is the validation layer and `.plan` is the queue,
+trellis benefits from reading the same structured data.
+
+**Issue:** File on Hortora/trellis after this spec is approved.
 
 ## Open Design Points
 

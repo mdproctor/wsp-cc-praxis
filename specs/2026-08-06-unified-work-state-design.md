@@ -9,8 +9,8 @@
 
 The work lifecycle system has 13 state locations tracking overlapping facts
 with no consistency guarantees between them. Five places track "is this issue
-done?" Four track "is this branch closed?" Three track "what should I work on
-next?" Each is maintained independently. When external actors change state
+done?" Five track "is this branch closed?" Three provide cross-cutting
+validation that re-derives the same facts. Each is maintained independently. When external actors change state
 (another session closes an issue, another context merges a branch), the caches
 go stale silently. Validation is scattered across skills that run at different
 lifecycle moments, covering different slices with different logic.
@@ -314,7 +314,9 @@ No state cache in the file. GitHub issue state is queried live by
 The `[x]` markers in Queue are a completion record written by
 `plan_manager.py` when an issue advances — not a cache of GitHub state.
 `plan_manager.py` is the sole writer of `.plan` content (Queue and Session
-State sections).
+State sections). `work_health.py`'s `plan_state` auto-fix delegates to
+`plan_manager.py` for the actual file write — `work_health.py` never
+writes `.plan` directly.
 
 #### Resume flow
 
@@ -381,6 +383,13 @@ When a branch closes, its `.plan` is marked closed (`write_plan_closed`).
 Uncompleted items remain as open GitHub issues. Main `.plan` is independently
 curated — branch close does not automatically append items to it.
 
+**Single-repo mode protection:** In single-repo mode (`workspace == project`),
+the branch `.plan` at `design/.plan` would be merged to main during the
+rebase-merge in `land_branch.py`, overwriting main's `.plan`. To prevent this,
+`work_end_execute.py` restores main's `.plan` after the rebase:
+`git checkout HEAD@{1} -- design/.plan` (retrieves main's pre-rebase version).
+This is a mechanical step in the Land phase, not a user decision.
+
 #### HANDOFF.md shrinks to session context
 
 ```markdown
@@ -414,6 +423,24 @@ single write at session end.
 
 Intent marker files track in-progress operations. Detected by `work_health.py`
 on next session start.
+
+**Atomic writes:** Intent file updates use the same write-to-temp-then-rename
+pattern as `lifecycle.py`'s `write_state()`: write to `.pausing.tmp`, then
+`os.replace()` (POSIX atomic rename). If an intent file exists but is
+unparseable (truncated by a crash during a non-atomic write in older code),
+treat as "operation in progress at step 0" — offer full recovery or full
+abort. The YAML parser must not crash on malformed input.
+
+**Pre-condition validation before offering recovery:** Before presenting
+recovery options, validate that recovery actions are still applicable:
+- For `.pausing`: check if the branch is still checked out AND the stack
+  entry is missing. If the branch is not checked out and the stack entry
+  exists, the pause completed successfully — remove the stale intent file
+  silently with a log message.
+- For `.resuming`: check if the session is on main AND the stack entry is
+  still present. If the session is already on the feature branch and the
+  stack entry is absent, the resume completed — remove the intent file.
+This prevents spurious recovery offers after manual resolution.
 
 **Intent files are untracked working-directory files** — never `git add`ed,
 never committed. This is critical: untracked files persist across `git
@@ -458,7 +485,14 @@ wip_reset: pending|done
 
 **Recovery on detection:**
 - Offer to complete resume (checkout, rebase, reset WIP)
-- Or abort (re-push stack entry, stay on main)
+- Or abort — **state-dependent steps:**
+  - If `checkout: pending`: re-push stack entry, stay on main (no branch switch needed)
+  - If `checkout: done`: switch both project and workspace repos back to
+    main/base (`git checkout main`), then re-push stack entry. Handle
+    asymmetric state: if only one repo's checkout completed (crash between
+    the two checkouts in `resume_exec.py`), switch only that repo back.
+  - If `rebase: done`: switch back to main, re-push stack entry. The
+    rebase is on the feature branch and does not affect main.
 
 **Why intent files, not lifecycle states:** The alternative is adding
 `pausing` and `resuming` as transient states to the lifecycle state machine

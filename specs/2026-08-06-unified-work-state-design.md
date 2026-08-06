@@ -106,11 +106,16 @@ def is_closed(project: str, branch: str,
 **Checks (all local git, sub-second):**
 
 1. Branch exists? `git -C <project> branch --list <branch>`
-2. Commits ahead of main? `git -C <project> log --oneline <base>...<branch>`
+2. Commits ahead of main? `git -C <project> log --oneline <base>..<branch>`
    — filter out commits starting with `chore: branch closed`
 3. Stamp commit? Last commit starts with `chore: branch closed`
 4. Landing SHA valid? If stamp contains `landed as <SHA>`,
-   run `git merge-base --is-ancestor <SHA> <base>`
+   run `git merge-base --is-ancestor <SHA> <base>`.
+   **Advisory only** — a mismatch is logged as a warning but does not
+   alter the returned `ClosureState`. Known cases include landing SHAs
+   rewritten by post-stamp squash (pre-ordering fix, now prevented by
+   Execute's stamp-after-squash sequence). `work_health.py` logs
+   mismatches at `STATUS=warn` for investigation.
 5. Workspace branch? If workspace provided, check workspace branch
    with same logic
 
@@ -118,7 +123,24 @@ def is_closed(project: str, branch: str,
 - `verify_slot_close.py` checks 1-3 (branch_merged, branch_stamped, landing_sha)
 - `audit_slot_merges.py` merged/stamped logic
 - Handover epic hygiene checks 7+8 (unrecovered artifacts, unstamped branches)
-- Implicit closure checks in work_router.py
+- Handover resume Step R2b (EPIC-CLOSED.md open-branch detection)
+- `work_router.py` HANDOFF reference detection (infers branch liveness)
+
+**`STAMPED_UNMERGED` recovery:** This state means a stamp commit exists but
+content never landed on main — a corrupted close sequence. `work_health.py`
+reports it as a WARNING with: "Branch X is stamped but content appears not
+merged. Investigate whether content was cherry-picked to a different base or
+the stamp was premature." No auto-fix — the state is ambiguous and requires
+manual investigation. The user can either (a) remove the stamp and re-run
+work-end, or (b) verify the content did land (e.g., via squash-merge with
+different SHAs) and re-stamp with a valid landing SHA.
+
+**Scope: local git only.** `is_closed()` deliberately does not check remote
+refs (`git ls-remote`). All checks use local git state for sub-second
+performance and offline capability. `DELETED` means "no local branch ref" —
+callers that care about remote-only branches (e.g., cross-machine hygiene
+scans) supplement with their own remote check. The predicate's contract is
+local branch lifecycle, not distributed branch state.
 
 **EPIC-CLOSED.md eliminated.** The stamp commit on the project branch is the
 single closure signal. Work-end stops creating EPIC-CLOSED.md. All tools that
@@ -147,8 +169,8 @@ audit_slot_merges.py.
 
 | Check | What it validates | Scopes | Auto-fix |
 |-------|------------------|--------|----------|
-| `plan_state` | .plan items vs GitHub issue state (batch API call) | entry, wrap | Yes — mark closed items in .plan, report changes |
-| `branch_closure` | `is_closed()` on all known branches | entry, wrap, close | Yes — stamp MERGED_UNSTAMPED; report STAMPED_UNMERGED |
+| `plan_state` | .plan items vs GitHub issue state (batch API call) | entry, wrap | Yes — mark closed items `[x]` in .plan; report but do not remove queue entries |
+| `branch_closure` | `is_closed()` on known branches (`.pause-stack` + `.meta` branch + `.plan` refs) | entry, wrap, close | Report + offer stamp for MERGED_UNSTAMPED; report STAMPED_UNMERGED |
 | `pause_stack` | Each .pause-stack entry's branch exists | entry | Report — user decides |
 | `meta_consistency` | .meta state matches actual branch/git state | entry | Report |
 | `workspace_alignment` | Workspace and project on expected branches | entry | Report |
@@ -159,8 +181,9 @@ audit_slot_merges.py.
 | `journal_anchors` | Mid-epic journal entries have §Section anchors | wrap | Report |
 | `dirty_main` | Project main working tree has staged/unstaged changes | entry | Report |
 | `artifact_recovery` | Closed branches with unrecovered artifacts (blogs, specs not on main) | wrap | Report + offer cherry-pick |
-| `partial_pause` | `.pausing` intent file present | entry | Report + offer recovery |
-| `partial_resume` | `.resuming` intent file present | entry | Report + offer recovery |
+| `partial_pause` | `.pausing` intent file present (with pre-condition validation) | entry | Report + offer recovery |
+| `partial_resume` | `.resuming` intent file present (with pre-condition validation) | entry | Report + offer recovery |
+| `closing_recovery` | `.meta` state is `closing:*` — interrupted work-end | entry | Report gate + offer continue or abort (pre-promotion only) |
 
 **Invocation:**
 
@@ -180,18 +203,56 @@ CHECK=meta_consistency STATUS=ok
 FIXED=1 WARNINGS=0 ERRORS=0
 ```
 
-**Auto-fix policy:** Safe items (stamping a merged branch, removing a closed
-issue from .plan) are fixed automatically. Risky items (discarding a pause
-stack entry, archiving a slot) are reported for user decision.
+**Auto-fix policy:** Safe items (marking closed issues as `[x]` in .plan)
+are fixed automatically. Queue removal and branch stamping require user
+confirmation. Risky items (discarding a pause stack entry, archiving a
+slot) are reported for user decision.
 
 **`plan_state` batch validation:** One `gh issue list --repo R --state all
 --json number,state,title --limit 500` call returns all issue state. Compare
-against every `#N` in .plan. Sub-second for most repos.
+against every `#N` in .plan. After the batch call, any `.plan` issue numbers
+not present in the result set are validated individually via
+`gh issue view <N>`. This handles repos with >500 issues where older issues
+fall outside the batch window. Sub-second for most repos; individual
+lookups add latency only when needed.
+
+**Network failure handling:** The `plan_state` and `arc42_refs` checks
+require GitHub API access. On network timeout (5-second limit) or error:
+emit `CHECK=plan_state STATUS=skip DETAIL=network unavailable` and proceed.
+The stale `.plan` `[x]` markers are harmless — they reflect the last known
+state and are re-validated on the next successful session start. The
+3-second success criterion applies to the common case (network available);
+offline sessions skip API-dependent checks and run local-only checks. If any `.plan` item
+is not found in the batch result (possible for repos with 500+ issues),
+fall back to individual `gh issue view <N>` calls for unmatched items only.
+The common case (all items within the most recent 500) completes in one call;
+the edge case adds one call per unmatched item.
+
+**API failure graceful degradation:** If the GitHub API call fails (no
+network, rate limiting, expired token), `plan_state` reports
+`STATUS=skipped DETAIL=GitHub API unavailable` and the remaining checks
+proceed. Entry-scope is advisory, not a gate — session start must not
+block on API availability. The `.plan` queue is displayed from its last
+known state without live validation. A warning is shown: "GitHub
+unavailable — issue states not validated this session."
 
 **Integration points:**
 - `project` skill (session start) → `--scope entry`
 - `handover` skill (wrap) → `--scope wrap` (replaces epic hygiene + ARC42 scan)
 - `work-end` skill (close) → `--scope close` (replaces/wraps verify_slot_close.py)
+
+**Slot mode:** When running against a slot workspace, `work_health.py`
+reads `.slot` metadata to discover all repos in the slot. For each check:
+- `branch_closure` iterates over all slot repos, calling `is_closed()` on
+  each repo's branch (resolving to the original repo, not the slot clone)
+- `plan_state` validates the slot-level `.plan` (which lives at the slot
+  directory level, not per-repo)
+- `slot_state` verifies per-repo structural integrity (`.slot` valid,
+  repos exist on disk, branches exist)
+- `main_divergence` checks each repo's main independently
+
+The slot resolution uses the same `_resolve_clone_origin()` pattern from
+`pause_exec.py` — follow origin URL to the original on-disk repo.
 
 ### Component 3: `.plan` as single orchestration layer
 
@@ -207,12 +268,12 @@ ordered subset of open GitHub issues — not a parallel backlog.
 issue reference (`#N`). GitHub is authoritative for issue state (open/closed);
 `.plan` is authoritative for priority ordering. Items that are not GitHub
 issues cannot appear. `work_health.py` validates every `#N` against GitHub
-on session start and auto-removes closed items.
+on session start and marks closed items as `[x]`.
 
 **Curation model:** Items are added explicitly — during triage ("add #N to
 the queue"), when filing new issues ("file and queue"), or when the `work`
-skill on main offers to seed from open GitHub issues. Items are removed
-automatically when closed (via `plan_state` check) or manually by the user.
+skill on main offers to seed from open GitHub issues. Items are marked complete
+automatically when closed (via `plan_state` check) or removed manually by the user.
 Priority order is changed by the user or LLM during planning. This replaces
 the current model where HANDOFF.md's What's Left/What's Next are
 synthesised from conversational context at session end — a process that
@@ -255,20 +316,41 @@ The `[x]` markers in Queue are a completion record written by
 `plan_manager.py` is the sole writer of `.plan` content (Queue and Session
 State sections).
 
-#### Resume display
+#### Resume flow
 
-Instead of reading HANDOFF.md for work items, resume reads main `.plan` and
-runs `work_health.py --scope entry` to validate issue state live. The
-combined result is rendered as a human-readable summary:
+The resume path reads two sources in sequence and presents them as a
+combined output:
+
+1. **Slim HANDOFF.md** — read for session narrative context (Last Session,
+   Immediate Next Step, Cross-Module). This tells the next session *why*
+   things are the way they are.
+2. **Main `.plan`** — read for work queue state. `work_health.py --scope
+   entry` validates issue state live against GitHub before display. This
+   tells the next session *what* to work on.
+
+The combined resume output:
 
 ```
-Queue (3 items, 1 complete, 1 active):
+## Last Session
+Implemented is_closed() predicate and wrote 47 tests. Hit an edge
+case with superseded stamps — filed #189.
+
+## Immediate Next Step
+Start Phase 2: work_health.py entry-scope checks.
+
+## Queue (3 items, 1 complete, 1 active):
   ✅ #142 — some completed issue
   → #123 — active issue (current)
-  ⚠️  #155 — now CLOSED on GitHub — auto-removed
+  ⚠️  #155 — now CLOSED on GitHub (marked [x])
 
-  work_health: 1 item removed (CLOSED on GitHub)
+  work_health: 1 item marked complete (CLOSED on GitHub)
 ```
+
+HANDOFF.md sections appear first (session context), then .plan queue
+summary. If HANDOFF.md is missing or empty, only the queue is shown.
+If `.plan` doesn't exist yet (pre-Phase 4), the resume path falls back
+to the current HANDOFF.md-only flow — the skill reads whatever sections
+exist and presents them.
 
 #### What `.plan` replaces
 
@@ -278,6 +360,20 @@ Queue (3 items, 1 complete, 1 active):
 | HANDOFF.md What's Next | Main `.plan` | Curated queue with priority |
 | .meta `covers:` | Derived from `.plan` `[x]` items | `reconcile_covers()` removed |
 | HANDOFF.md Queue Progress | `.plan` Session State | Already exists |
+
+**"Trailing items become issues" is a deliberate process decision.** The
+current HANDOFF.md What's Left contains free-form items that aren't GitHub
+issues (e.g., "run audit script against casehub", "archive orphaned slots",
+"hygiene debt across 3 repos"). This spec mandates that all such items
+become GitHub issues before entering `.plan`. Rationale: free-form items
+in HANDOFF.md are exactly the kind of state that goes stale — they have
+no closure signal, no cross-session visibility, and no way to validate
+whether they're still relevant. Filing them as issues gives each item a
+lifecycle (open → closed), a repo home, and automated staleness detection
+via `plan_state`. Cross-repo operational tasks are filed in the repo that
+owns the tooling (e.g., soredium for hygiene scripts). This is a forcing
+function by design — the friction of filing an issue is the cost of
+trackability.
 
 #### Branch close — no flow-back
 
@@ -318,6 +414,16 @@ single write at session end.
 
 Intent marker files track in-progress operations. Detected by `work_health.py`
 on next session start.
+
+**Intent files are untracked working-directory files** — never `git add`ed,
+never committed. This is critical: untracked files persist across `git
+checkout` because git does not modify untracked files during branch switches.
+A `.pausing` file written while on a feature branch survives checkout to
+main. A `.resuming` file written while on main survives checkout to a feature
+branch. Even if a crash occurs mid-checkout (leaving HEAD in an indeterminate
+state), the untracked intent file remains in the working directory.
+`work_health.py --scope entry` checks for these files on the current working
+tree regardless of which branch HEAD points to.
 
 #### `.pausing` intent file
 
@@ -378,7 +484,7 @@ applied to a different operation.
 | 3 | .plan batch validation integration + human-readable resume display | Phase 2 |
 | 4 | Main .plan support — curated global queue | Phase 3 |
 | 5 | HANDOFF.md simplification — remove What's Left, What's Next | Phase 4 |
-| 6 | Remove EPIC-CLOSED.md — work-end stops creating, all tools use is_closed() | Phase 1 |
+| 6 | Stop creating EPIC-CLOSED.md — work-end Step 5.1 removed. Existing consumers unchanged until Phase 9 migrates them to `is_closed()` | Phase 1 |
 | 7 | Remove .meta covers — derive from .plan | Phase 3 |
 | 8 | Crash recovery — .pausing/.resuming intent files | Phase 2 |
 | 9 | Wrap-scope and close-scope checks in work_health.py — replace handover epic hygiene, verify_slot_close.py | Phase 2 + 6 |
@@ -420,15 +526,40 @@ now reads .plan instead. `reconcile_covers()` is removed.
 ## Open Design Points
 
 **Main .plan bootstrapping:** When main `.plan` doesn't exist yet, `work`
-on main should offer to create one — either empty (curate from scratch),
-seeded from GitHub open issues, or migrated from HANDOFF.md What's Next
-during the transition. Exact UX TBD during Phase 4 implementation.
+on main offers to create one via a single prompt:
+
+```
+No work queue found. Create one?
+  [S] Seed from open GitHub issues (fetches and presents for curation)
+  [E] Empty (curate from scratch)
+  [N] Not now (skip — ask again next session)
+```
+
+Option S fetches open issues, presents them, and lets the user select
+which to include and in what order. Option E creates the file with an
+empty Queue section. During the Phase 5 transition, the handover skill
+migrates any HANDOFF.md What's Next items to `.plan` automatically on
+first wrap after Phase 5 lands — one-time migration, not an ongoing
+process.
 
 **Close scope is a hard gate:** `work_health.py --scope close` inherits
 verify_slot_close.py's hard-gate semantics. Unlike entry/wrap scope
 (report + auto-fix), close scope returns `VERIFIED=yes|no` and work-end
 blocks on `VERIFIED=no`. The check registry distinguishes advisory checks
 (entry/wrap) from gate checks (close).
+
+Close scope runs exactly these checks (all must pass):
+- `branch_closure` — `is_closed()` returns `CLOSED` for project branch
+  (covers verify_slot_close.py's project_merged, project_stamped,
+  landing_sha checks)
+- `branch_closure` (workspace) — `is_closed()` returns `CLOSED` for
+  workspace branch (covers workspace_stamped check)
+- `main_divergence` — local main not ahead of origin/main (covers
+  main_pushed check)
+
+This is a complete superset of verify_slot_close.py's five checks. In
+slot mode, `branch_closure` iterates over all repos listed in `.slot`
+metadata — each repo's branch must be `CLOSED`.
 
 ## Success Criteria
 

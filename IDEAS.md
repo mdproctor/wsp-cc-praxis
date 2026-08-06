@@ -26,6 +26,23 @@ The slot creation prompt recommends a strategy based on the issue mix. Batch pla
 
 ---
 
+## 2026-08-07 — Episodic memory as a work experience graph
+
+**Priority:** medium
+**Status:** parked
+
+A structured, LLM-optimized record of work experiences stored in the soredium worklog DB. Each episode captures what happened, what was learned, and links to related artifacts (ADRs, specs, garden entries, other episodes, issues). The links column creates a traversable graph — starting from any node, you can build a picture of an epic, a recurring pattern, or a design evolution.
+
+Distinct from diary (human-facing narrative), garden (reusable semantic knowledge), and the worklog (mechanical tracking). Episodes would be the connective tissue — the experience of doing the work, written for LLM consumption.
+
+**Why parked:** The primary utility for an LLM is questionable. Claude can already understand "why things are the way they are" from existing artifacts (ADRs, garden entries, git log, specs). The genuinely useful piece — trajectory capture and "what next" recommendations — has been extracted into #190 (local enriched backlog) as the simpler, immediately practical approach.
+
+**Revisit when:** The enriched backlog (#190) is live and there's evidence that cross-episode graph traversal would add value that the existing artifact landscape doesn't provide. Neocortex memory API (ExperienceEvent, MemoryQuery, graph queries) is a natural fit if this gets promoted.
+
+**Context:** Emerged from a conversation about evolving handover. Handover was serving three functions: resume context, state capture, and synthesis/insight. State capture moved to structured files (.meta, .plan, lifecycle). Synthesis was aspirational but didn't have a strong LLM use case. The "what next" function was the genuinely valuable piece — extracted into #190.
+
+---
+
 ## 2026-05-27 — Hortora: framework registry for LLM-accelerated development
 
 **Priority:** high

@@ -245,8 +245,12 @@ unavailable — issue states not validated this session."
 reads `.slot` metadata to discover all repos in the slot. For each check:
 - `branch_closure` iterates over all slot repos, calling `is_closed()` on
   each repo's branch (resolving to the original repo, not the slot clone)
-- `plan_state` validates the slot-level `.plan` (which lives at the slot
-  directory level, not per-repo)
+- `plan_state` validates the slot-level `.plan` (which lives at
+  `$SLOT_WORKSPACE/design/.plan`, not per-repo). The slot-level `.plan`
+  uses the same format, parser, sole-writer constraint (`plan_manager.py`),
+  and GitHub-issue-reference requirement as workspace `.plan` — no
+  separate variant exists. `plan_manager.py detect()` receives the slot
+  workspace path and resolves `design/.plan` relative to it (line 499)
 - `slot_state` verifies per-repo structural integrity (`.slot` valid,
   repos exist on disk, branches exist)
 - `main_divergence` checks each repo's main independently
@@ -316,7 +320,13 @@ The `[x]` markers in Queue are a completion record written by
 `plan_manager.py` is the sole writer of `.plan` content (Queue and Session
 State sections). `work_health.py`'s `plan_state` auto-fix delegates to
 `plan_manager.py` for the actual file write — `work_health.py` never
-writes `.plan` directly.
+writes `.plan` directly. The delegation API:
+`plan_manager.mark_completed(plan_path, issue_number)` marks an issue
+`[x]` in the queue. The import is one-directional
+(`project/work_health.py` → `work-slot/plan_manager.py`); no reverse
+dependency exists. `plan_manager.py` already exposes the needed
+primitives: `parse_plan()`, `rewrite_plan()`, and the `_mark_completed()`
+internal (to be promoted to public API for `work_health.py`).
 
 #### Resume flow
 
@@ -379,15 +389,29 @@ trackability.
 
 #### Branch close — no flow-back
 
-When a branch closes, its `.plan` is marked closed (`write_plan_closed`).
-Uncompleted items remain as open GitHub issues. Main `.plan` is independently
-curated — branch close does not automatically append items to it.
+When a branch closes, the stamp commit is the sole closure signal — no
+separate `.plan` closure marker is needed. The `write_plan_closed` effect
+in the lifecycle transition table (`lifecycle.py` line 101) is vestigial:
+it has no implementation, and adding one would either require a commit after
+the stamp (breaking `is_closed()`) or reordering the transition table.
+Since this spec establishes the stamp commit as the single closure signal
+(Component 1), `write_plan_closed` should be removed from the transition
+table. Uncompleted `.plan` items remain as open GitHub issues. Main `.plan`
+is independently curated — branch close does not automatically append items
+to it.
 
 **Single-repo mode protection:** In single-repo mode (`workspace == project`),
 the branch `.plan` at `design/.plan` would be merged to main during the
 rebase-merge in `land_branch.py`, overwriting main's `.plan`. To prevent this,
-`work_end_execute.py` restores main's `.plan` after the rebase:
-`git checkout HEAD@{1} -- design/.plan` (retrieves main's pre-rebase version).
+the skill layer saves main's `.plan` content before calling `land_branch.py
+rebase`, then restores it after the rebase completes:
+`plan_manager.save_plan(plan_path)` returns the raw bytes;
+`plan_manager.restore_plan(plan_path, saved)` writes them back. This avoids
+reliance on reflog position (`HEAD@{1}`), which is fragile — `cmd_stamp()`
+in `land_branch.py` performs two additional `git checkout` operations (lines
+178, 193) and `cmd_land()` in `work_end_execute.py` performs a workspace
+checkout (line 183), any of which would shift the reflog entry and cause
+the restore to retrieve the wrong file.
 This is a mechanical step in the Land phase, not a user decision.
 
 #### HANDOFF.md shrinks to session context
@@ -540,8 +564,12 @@ any branch with EPIC-CLOSED.md but no stamp gets auto-stamped by
 Old-format HANDOFF.md files are still readable — the resume path gracefully
 handles missing sections.
 
-**.meta covers:** Phase 7 stops writing to covers. Any skill that read covers
-now reads .plan instead. `reconcile_covers()` is removed.
+**.meta covers:** Phase 7 stops writing to `.plan` instead of `.meta
+covers:`. Three removal targets in `plan_manager.py`: `reconcile_covers()`
+(line 477), `_update_meta_covers()` (line 443), and the
+`_update_meta_covers()` call in `advance()` (line 347). All `.meta
+covers:` writes are eliminated. Any skill that previously read `.meta
+covers:` now reads `.plan` `[x]` items via `plan_manager.py`.
 
 ## What Gets Deleted
 
@@ -600,7 +628,9 @@ metadata — each repo's branch must be `CLOSED`.
 - Single `is_closed()` call answers "is this branch done?" — no other tool
   implements its own closure check
 - Session start runs `work_health.py --scope entry` in under 3 seconds
-  (one GitHub API call + local git checks)
+  in the common case (network available; one GitHub API call + local git
+  checks). When GitHub is unavailable, API-dependent checks are skipped
+  and local-only checks complete in under 1 second
 - .plan on main is the single source of work priority — HANDOFF.md contains
   zero work items
 - Interrupted pause/resume detected and recovery offered on next session start

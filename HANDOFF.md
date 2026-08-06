@@ -2,28 +2,27 @@
 
 ## Last Session
 
-Three slot infrastructure fixes landed directly on main (#185, #186, #187).
-Maven settings path mangling in `.mvn/maven.config`, missing preflight
-check in `merge_slot()`, and filesystem-only HANDOFF.md detection in
-`work_router.py`. All TDD'd. Garden entry GE-20260805-ffef3b captured
-for the Maven bug.
+First-principles state analysis of the work lifecycle. Traced 13 scattered
+state locations, designed the unified work state architecture, adversarial
+design review (54 issues, 4 dimensions), then implemented Phases 1-5:
+is_closed() predicate, work_health.py with 8 entry-scope checks, plan_state
+batch validation, human-readable .plan resume display, main .plan support,
+and slim HANDOFF.md skill updates. 6 commits, 222 tests passing.
 
 ## Immediate Next Step
 
-*Unchanged — `git show HEAD~1:HANDOFF.md`*
+Run `/work` to continue on `issue-188-unified-work-state`. Phases 6-12
+remain: EPIC-CLOSED.md removal, .meta covers removal, crash recovery for
+pause/resume, wrap/close scope checks, audit_slot_merges migration, NOTES.md,
+trellis worklog bridge.
 
-## What's Left
+## Cross-Module
 
-- Run `audit_slot_merges.py --fix` against casehub (27 problem slots) · S · Low
-- WI 490 (work/issue-800) work-end interrupted — not merged, not stamped · M · Med
-- 4 orphaned active slots (1, 6, 84, 86) — should archive · S · Low
-- Hygiene debt: pages 113, iot 30, soc 6 unstamped branches · M · Low
+**Enabled** (downstream, not blocking):
+- `trellis` — worklog.db JDBC reader needed for timeline UI (file issue on Hortora/trellis)
 
-## What's Next
+## References
 
-| # | Description | Scale | Complexity | Notes |
-|---|-------------|-------|------------|-------|
-| #170 | Pre-merge hook for slot artifact promotion | M | Med | — |
-| #95 | Mechanize remaining LLM operations | L | High | Partially addressed by #184 |
-| #118 | Evaluate splitting HANDOFF.md roles | S | Low | — |
-| #92 | Add restore-slot command | M | Med | — |
+- Spec: `cc-praxis/specs/2026-08-06-unified-work-state-design.md`
+- Plan: `cc-praxis/plans/2026-08-06-unified-work-state-phases-1-5.md`
+- Review: `~/reviews/hortora-soredium/unified-work-state-*/tracker.md`

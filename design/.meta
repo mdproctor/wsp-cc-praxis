@@ -1,0 +1,10 @@
+branch: issue-196-slot-archive-prompt
+state: scaffolded
+project-sha: a638721c02ac7340bf262894a247d8a738238eb4
+date: 2026-08-07
+issue: 196
+issue-repo: Hortora/soredium
+covers: 196
+flyway-next-v: unknown
+design-repo: workspace
+design-section-hashes: 

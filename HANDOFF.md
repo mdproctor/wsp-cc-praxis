@@ -2,19 +2,19 @@
 
 ## Last Session
 
-Closed #95 (mechanize inline git operations — all 10 HIGH findings now
-addressed) and #189 (deferred items in .plan queues). Three scripts:
-garden_commit.py for forage, sync-main in branch_create.py for fork sync,
-_symlink_gitignored_assets in slot_manager.py for slot clones. Plus the
-deferred items feature with repo-scoped promote_deferred.
+Closed #198 (decision review + ordered dimensions + unified design pipeline).
+Six components: SOURCES.md per-project doc map, decision capture in
+brainstorming, three-tier approach exploration (quick/deep/multi-agent debate),
+decision review type in design-review framework, decision review integration
+in brainstorming, ordered dimensional reviews with cascading context. Ran the
+first ordered review on the spec itself — 4 dimensions, 55 issues, $38.43.
 
 ## Immediate Next Step
 
-Run `/work` to pick up next issue. Both #95 and #189 are closed. The
-deferred items UI flow (work next Step 5 prompt) needs live testing on
-a real .plan queue with deferred items — first real use will validate.
+Run `/work` to pick up next issue. Branch closed and verified.
 
 ## References
 
-- Diary: `hortora.github.io/_posts/2026-08-06-mdp02-mechanize-the-how-not-the-what.md`
-- Garden: `GE-20260806-f1e2c9` — git clone --shared drops gitignored build deps
+- Spec: `docs/specs/issue-198-ordered-dims-decision-val/2026-08-09-decision-review-ordered-dimensions-design.md`
+- Diary: `blog/2026-08-10-mdp07-decisions-before-specs.md`
+- Garden: `GE-20260810-d93e91`, `GE-20260810-c45190`, `GE-20260810-cc9129`

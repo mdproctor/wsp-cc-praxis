@@ -2,19 +2,23 @@
 
 ## Last Session
 
-Closed #198 (decision review + ordered dimensions + unified design pipeline).
-Six components: SOURCES.md per-project doc map, decision capture in
-brainstorming, three-tier approach exploration (quick/deep/multi-agent debate),
-decision review type in design-review framework, decision review integration
-in brainstorming, ordered dimensional reviews with cascading context. Ran the
-first ordered review on the spec itself — 4 dimensions, 55 issues, $38.43.
+Designed and partially implemented #202 (work command taxonomy). Brainstormed
+three verbs (continue/resume/brief), ran standard design review ($52, 59 issues),
+implemented Phase 1 (7 commits: lifecycle self-transition, handoff regex fix,
+plan_state in entry scope, work/SKILL.md routing+menu, work-resume CSO,
+handover update, README sync). Started Phase 2: ctx.py refactored to expose
+`resolve()` — 106 tests passing. Remaining: `brief.py`, `brief/SKILL.md`, validation.
 
 ## Immediate Next Step
 
-Run `/work` to pick up next issue. Branch closed and verified.
+Run `/work` to continue #202. Phase 2 Tasks 2-4 remain: create `brief/brief.py`
+(structured data aggregator), `brief/SKILL.md` (thin CLI wrapper), slash command,
+and validation. Plan at `plans/2026-08-10-work-command-taxonomy-phase2.md`.
 
 ## References
 
-- Spec: `docs/specs/issue-198-ordered-dims-decision-val/2026-08-09-decision-review-ordered-dimensions-design.md`
-- Diary: `blog/2026-08-10-mdp07-decisions-before-specs.md`
-- Garden: `GE-20260810-d93e91`, `GE-20260810-c45190`, `GE-20260810-cc9129`
+- Spec: `specs/2026-08-10-work-command-taxonomy-design.md`
+- Plans: `plans/2026-08-10-work-command-taxonomy-phase1.md`, `plans/2026-08-10-work-command-taxonomy-phase2.md`
+- Review: `~/reviews/hortora-soredium/work-command-taxonomy-*`
+- Journal: `design/JOURNAL.md`
+- Garden: `GE-20260810-71deb5`, `GE-20260810-3fc4fe`

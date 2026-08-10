@@ -364,7 +364,7 @@ When `HAS_HANDOFF=no` (first session, or HANDOFF.md missing):
    - **Step 0:** path resolution (already done by router)
    - **Step 2:** platform coherence — read platform doc, five coherence questions
    - **Step 3:** relevant protocols — scan and read applicable rules
-   - **Step 3b:** ARC42STORIES.MD context (if present)
+   - **Step 3b:** Garden search — spawn `garden-retriever` for domain context
    - **Step 3c:** design spec loading (mandatory)
    - **Step 11:** IntelliJ MCPs — hard stop if unavailable
 2. If `HAS_PLAN=yes` or `IN_SLOT=yes`: read plan/slot context

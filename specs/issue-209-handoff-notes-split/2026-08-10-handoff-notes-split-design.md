@@ -91,11 +91,37 @@ Flip handover item 8 from `[ ]` to `[x]`. Prompt: "anything to note for later?" 
 | `work-end/SKILL.md` | Surface NOTES.md after Step 5 close summary |
 | `brief/SKILL.md` | Include notes in orientation output |
 
+### Slot access
+
+Slots write to the original workspace's `.notes/NOTES.md` via `resolve_original_repo`. Filesystem append — no git involved until wrap time. The original workspace's `.notes/` worktree is always there regardless of what branch the original is on.
+
+### Commit cadence
+
+Notes are appended to the filesystem immediately. Committed to the orphan branch at wrap time (batch). Push is optional — convenience, not durability.
+
+### Pruning
+
+Manual. Delete entries when they're irrelevant. The file won't grow fast.
+
+## Lifecycle summary
+
+| Event | What happens |
+|-------|-------------|
+| workspace-init | Create orphan branch + worktree (idempotent) |
+| Mid-session | Filesystem append to `.notes/NOTES.md` |
+| Mid-slot | Append to original workspace's `.notes/NOTES.md` |
+| Wrap (handover) | Commit accumulated notes to orphan branch |
+| `work` (no issue) | Read and surface recent notes |
+| After work-end | Read and surface recent notes |
+| `/brief` | Include in orientation |
+| Pruning | Manual — delete when irrelevant |
+| Push | Optional — convenience, not durability |
+
 ## What this does NOT change
 
 - HANDOFF.md — stays ephemeral, overwritten each session
-- work-end — no changes (NOTES.md is not branch-scoped, not cleaned up)
-- slot_manager.py — no changes (notes worktree is on the original workspace, not in slot clones)
+- work-end — no changes to close sequence (NOTES.md not branch-scoped)
+- slot_manager.py — no changes (slots access original workspace directly)
 
 ## Test plan
 

@@ -45,9 +45,18 @@ git -C $WORKSPACE/.notes commit -m "init notes"
 - engine reindex needed after next schema change
 ```
 
-### Read at session start
+### Read when deciding what to do, not when already tasked
 
-work-start (Step 3c area) and work-continue read `$WORKSPACE/.notes/NOTES.md` if the worktree exists. Surface the most recent date section — don't dump the whole file.
+**Show notes when:**
+- `work` with no issue (what-next mode) — browsing, notes are context
+- After work-end completes — back on main, deciding what's next
+- `/brief` — orientation summary
+
+**Don't show notes when:**
+- `work start #N` — already have a task, notes are noise
+- `work continue` — resuming, HANDOFF.md has the context
+
+Surface the most recent date section — don't dump the whole file.
 
 ```
 Notes (2026-08-10):
@@ -78,8 +87,9 @@ Flip handover item 8 from `[ ]` to `[x]`. Prompt: "anything to note for later?" 
 |------|--------|
 | `workspace-init/SKILL.md` | Add orphan branch + worktree creation step |
 | `handover/SKILL.md` | Flip item 8 default to ON |
-| `work/SKILL.md` | Read NOTES.md in Step 4 continue path |
-| `work-start/SKILL.md` | Read NOTES.md in resume path |
+| `work/SKILL.md` | Read NOTES.md in Step 2a (what-next, no issue specified) |
+| `work-end/SKILL.md` | Surface NOTES.md after Step 5 close summary |
+| `brief/SKILL.md` | Include notes in orientation output |
 
 ## What this does NOT change
 

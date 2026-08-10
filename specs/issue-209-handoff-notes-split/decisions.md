@@ -12,13 +12,14 @@
 **Exploration:** deep-analysis
 **Status:** captured
 
-## D2: Read NOTES.md at session start
+## D2: Read NOTES.md when deciding what to do, not when already tasked
 
-**Choice:** work-start and work-continue read `$WORKSPACE/.notes/NOTES.md` if it exists, surface contents.
+**Choice:** Surface notes in what-next mode (`work` with no issue), after work-end, and in `/brief`. Don't surface during `work start #N` or `work continue`.
 **Alternatives:**
-- Read only on demand — notes are invisible and forgotten. Rejected.
-**Rationale:** The whole point is persistent context. If it's not surfaced, users put notes in HANDOFF.md instead.
-**Trade-offs:** One file read at session start. Negligible.
+- Always at session start — noise when you already have a task. Rejected.
+- Only on demand — notes are invisible and forgotten. Rejected.
+**Rationale:** Notes are context for "what should I do?" moments, not for "I know what I'm doing" moments.
+**Trade-offs:** Notes not visible when deep in a task. Acceptable — if it's urgent, it should be an issue.
 **Exploration:** quick
 **Status:** captured
 

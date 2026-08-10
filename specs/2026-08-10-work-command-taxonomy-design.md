@@ -95,11 +95,11 @@ auto-suggests the next action:
 
 **Mechanical definition:** "current issue is complete" = the active `.plan`
 leaf is marked `[x]` after `work_health.py --scope entry` runs `plan_state`
-validation. `plan_state` batch-validates all `.plan` issues against GitHub
-at session start (unified-work-state spec §Component 2) and marks closed
-issues via `plan_manager.mark_completed()`. By the time `continue` runs,
-`.plan` already reflects current GitHub state. No additional API call is
-needed — done-detection reads `.plan` directly.
+validation. `continue` runs health sync explicitly (behavioral spec step 2
+in both `HAS_HANDOFF` paths) before done-detection. `plan_state`
+batch-validates all `.plan` issues against GitHub and marks closed issues
+via `plan_manager.mark_completed()`. No additional API call is needed after
+health sync — done-detection reads `.plan` directly.
 
 **Implementation owner:** Done-detection lives in `work/SKILL.md`'s
 `continue` action, not in `work_router.py`. The router resolves routing
@@ -352,11 +352,12 @@ regardless of HANDOFF.md existence.
 
 When `HAS_HANDOFF=yes` (subsequent session):
 1. Read `$HANDOFF_PATH` — summarise last session's narrative
-2. If `HAS_PLAN=yes`: read `.plan` for queue progress and active issue
-3. If `IN_SLOT=yes` and `HAS_PLAN=no`: read `.slot` for issue context
-4. Load design specs (work-start Step 3c) — scan for specs, read them all
-5. Done-detection auto-suggest (D3) — if active issue is complete, suggest next/end
-6. Proceed to work
+2. Run `work_health.py --scope entry` — syncs `.plan` with GitHub, validates workspace state
+3. If `HAS_PLAN=yes`: read `.plan` for queue progress and active issue
+4. If `IN_SLOT=yes` and `HAS_PLAN=no`: read `.slot` for issue context
+5. Load design specs (work-start Step 3c) — scan for specs, read them all
+6. Done-detection auto-suggest (D3) — if active issue is complete, suggest next/end
+7. Proceed to work
 
 When `HAS_HANDOFF=no` (first session, or HANDOFF.md missing):
 1. Run work-start Steps 0, 2, 3, 3b, 3c, 11:
@@ -366,9 +367,10 @@ When `HAS_HANDOFF=no` (first session, or HANDOFF.md missing):
    - **Step 3b:** Garden search — spawn `garden-retriever` for domain context
    - **Step 3c:** design spec loading (mandatory)
    - **Step 11:** IntelliJ MCPs — hard stop if unavailable
-2. If `HAS_PLAN=yes` or `IN_SLOT=yes`: read plan/slot context
-3. Done-detection auto-suggest (D3)
-4. Proceed to work
+2. Run `work_health.py --scope entry` — syncs `.plan` with GitHub, validates workspace state
+3. If `HAS_PLAN=yes` or `IN_SLOT=yes`: read plan/slot context
+4. Done-detection auto-suggest (D3)
+5. Proceed to work
 
 The asymmetry is intentional: subsequent sessions skip environment pre-checks
 (platform coherence, protocols, IntelliJ) because the environment was verified

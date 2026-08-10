@@ -1,10 +1,10 @@
-branch: issue-202-work-command-taxonomy
-state: closing:stamped
-project-sha: 2fb8e448608b94a2a585eac64779ad9e9aade517
+branch: issue-204-work-lifecycle-fixes
+state: scaffolded
+project-sha: a741000460914fdf8e58b06718702525075156d5
 date: 2026-08-10
-issue: 202
+issue: 204
 issue-repo: Hortora/soredium
-covers: 202
+covers: 204,205,206,207,208
 flyway-next-v: unknown
 design-repo: workspace
 design-section-hashes: 

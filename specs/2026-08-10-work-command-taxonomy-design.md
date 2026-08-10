@@ -103,13 +103,17 @@ needed — done-detection reads `.plan` directly.
 
 **Implementation owner:** Done-detection lives in `work/SKILL.md`'s
 `continue` action, not in `work_router.py`. The router resolves routing
-state; the skill implements UX behavior. `continue` reads `.plan` via
-the router's `HAS_PLAN`/`PLAN_ACTIVE_ISSUE` output and checks if the
-active leaf is marked complete.
+state; the skill implements UX behavior. After health sync,
+`PLAN_ACTIVE_ISSUE` is empty when the current issue has been marked
+complete (`mark_completed()` removes the `← active` marker). The skill
+checks:
+- `PLAN_ACTIVE_ISSUE` empty + `PLAN_POSITION` has remaining → suggest `next`
+- `PLAN_ACTIVE_ISSUE` empty + all completed → suggest `end`
+- `PLAN_ACTIVE_ISSUE` set → in progress, no auto-suggest
 
-**When `HAS_PLAN=no`:** Done-detection is not available. `ISSUE_DONE` is not
-emitted by the router. `continue` proceeds directly to context loading
-without auto-suggest. This covers single-issue branches, branches started
+**When `HAS_PLAN=no`:** Done-detection is not available — no plan outputs
+are present. `continue` proceeds directly to context loading without
+auto-suggest. This covers single-issue branches, branches started
 before the plan system, and legacy epic branches. No degradation — these
 branches work exactly as today's resume path does.
 
@@ -136,6 +140,7 @@ concept.
 | `work resume` | On feature branch (not paused) | **Error** → "Not paused — use `continue` to keep working, or `work pause` first." |
 | `work continue` | On main, no stack | **Error** → "No active branch — use `work` to start new work." |
 | `work continue` | On main, with stack | **Error** → "No active branch — use `work` to start new work or `work resume` to return to a paused branch." |
+| `work continue` | workspace_dirty | **Error** → "Workspace is on a stale branch — run `work` to clean up." |
 | `work resume` | On main, no stack | **Error** → "Nothing to resume — pause stack is empty. Use `work` to start new work." (**Intentional behavioral change:** currently this falls through the router to `ROUTE=start` and redirects to work-start. The new behavior is semantically stricter — "resume" with nothing to resume is an error, not a silent redirect.) |
 
 **Alternatives:**
@@ -166,9 +171,12 @@ brief.py (structured data output)
 ```
 
 `brief.py` composes output from existing scripts: `ctx.py` + `work_router.py`
-+ `work_health.py` + HANDOFF.md parsing. It derives no new state from the
-first three — it calls each sequentially, collects their KEY=VALUE output,
-and emits a unified structured result. The only new logic is branch
++ `work_health.py` + HANDOFF.md parsing. It imports `ctx.resolve()`,
+`work_router.detect_state()`, and `work_health.run_checks()` as Python
+functions — direct calls, not subprocess shelling. `ctx.py` requires
+refactoring to support import (see Implementation Scope). It derives no
+new state from the first three — it calls each sequentially, collects
+their output, and emits a unified structured result. The only new logic is branch
 enumeration for the "main, no work" state (see D6) and HANDOFF.md summary
 extraction.
 
@@ -196,7 +204,7 @@ HAS_PLAN=yes|no
 PLAN_POSITION=<completed>/<total>
 PLAN_ACTIVE_ISSUE=<N>
 PLAN_BATCH=<batch name>
-ISSUE_DONE=yes|no                # GitHub-derived, see D3
+ISSUE_DONE=yes|no                # PLAN_ACTIVE_ISSUE empty + remaining items, see D3
 
 # Context fields
 HAS_HANDOFF=yes|no

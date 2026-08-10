@@ -204,7 +204,6 @@ HAS_PLAN=yes|no
 PLAN_POSITION=<completed>/<total>
 PLAN_ACTIVE_ISSUE=<N>
 PLAN_BATCH=<batch name>
-ISSUE_DONE=yes|no                # PLAN_ACTIVE_ISSUE empty + remaining items, see D3
 
 # Context fields
 HAS_HANDOFF=yes|no

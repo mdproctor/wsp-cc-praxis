@@ -94,10 +94,18 @@ auto-suggests the next action:
 - If queue is empty: "Current issue complete. `end` to close the branch?"
 
 **Mechanical definition:** "current issue is complete" = the active `.plan`
-leaf issue's GitHub state is CLOSED. Derivation: `gh issue view
-<PLAN_ACTIVE_ISSUE> --repo <OWNER_REPO> --json state --jq '.state'`. This
-aligns with the unified work state spec's principle: derive from the
-authoritative source (GitHub), don't cache.
+leaf is marked `[x]` after `work_health.py --scope entry` runs `plan_state`
+validation. `plan_state` batch-validates all `.plan` issues against GitHub
+at session start (unified-work-state spec §Component 2) and marks closed
+issues via `plan_manager.mark_completed()`. By the time `continue` runs,
+`.plan` already reflects current GitHub state. No additional API call is
+needed — done-detection reads `.plan` directly.
+
+**Implementation owner:** Done-detection lives in `work/SKILL.md`'s
+`continue` action, not in `work_router.py`. The router resolves routing
+state; the skill implements UX behavior. `continue` reads `.plan` via
+the router's `HAS_PLAN`/`PLAN_ACTIVE_ISSUE` output and checks if the
+active leaf is marked complete.
 
 **When `HAS_PLAN=no`:** Done-detection is not available. `ISSUE_DONE` is not
 emitted by the router. `continue` proceeds directly to context loading
@@ -157,10 +165,21 @@ brief.py (structured data output)
   └── Trellis frame (future — reads same structured output)
 ```
 
-`brief.py` aggregates from existing scripts: `ctx.py` + `work_router.py` +
-`work_health.py` + HANDOFF.md parsing. The pieces exist — `brief.py` is
-mostly composition, plus new branch enumeration logic for the "main, no work"
-state (see D6).
+`brief.py` composes output from existing scripts: `ctx.py` + `work_router.py`
++ `work_health.py` + HANDOFF.md parsing. It derives no new state from the
+first three — it calls each sequentially, collects their KEY=VALUE output,
+and emits a unified structured result. The only new logic is branch
+enumeration for the "main, no work" state (see D6) and HANDOFF.md summary
+extraction.
+
+**What `brief.py` adds beyond calling scripts directly:** a single structured
+data contract consumable by both the CLI skill and the future Trellis frame.
+Without it, every consumer replicates the composition logic.
+
+**Dependency diamond concern:** The scripts are called sequentially within
+a single invocation. No concurrent writer exists during `brief` execution —
+`.meta`, `.plan`, and git state do not change between calls. Inconsistent
+views are not possible in practice.
 
 **Output format:** KEY=VALUE lines for scalars, consistent with `ctx.py` and
 `work_router.py`. List data uses established section conventions:
@@ -220,8 +239,8 @@ both CLI (now) and Trellis (soon). The script pattern matches `ctx.py` and
 | State | What brief shows |
 |-------|-----------------|
 | Feature branch with `.meta` | Branch, issue, plan queue, recent commits, HANDOFF summary (if present), specs loaded, health checks |
-| Main with pause stack | Stack depth, paused branch summaries, what-next recommendations |
-| Main, no stack, no work | Recent completed branches, what-next recommendations |
+| Main with pause stack | Stack depth, paused branch summaries, open issue summary |
+| Main, no stack, no work | Recent completed branches, open issue summary |
 
 **"Recent completed branches" enumeration:** This requires new logic beyond
 composing existing scripts. `is_closed()` in `lifecycle.py` checks a specific
@@ -239,6 +258,11 @@ branch but doesn't enumerate. `brief.py` implements:
 **Rationale:** Orientation is useful in every state. The data is all available
 from existing scripts, except the branch enumeration which is new but
 straightforward.
+
+**Boundary with `work`:** `brief` on main is purely informational — it
+displays open issues and recent activity but does not offer to start work
+on them. Starting work is `work`'s job (Step 2a, `enrichment.py what-next`).
+`brief` shows state; `work` acts on it.
 
 **Exploration:** quick
 **Status:** captured
@@ -278,7 +302,7 @@ a separate command.
 | `work/SKILL.md` | Routing table: add `continue`, separate from `resume`. Step 4: replace "resume"/"start" with "continue". Add done-detection auto-suggest. Add wrong-context redirects (D4). Update CSO description to: `Use when the user says "work", "work end", "work pause", "work resume", "work continue", or "work next" — detects current branch state and routes to the correct work lifecycle skill automatically.` |
 | `work-resume/SKILL.md` | CSO description updated to: `Use when returning to a paused branch from the pause stack — user says "work-resume", "resume", or "go back to that branch". Pause-stack restoration only, not general branch continuation (use "work continue" for that).` |
 | `handover/SKILL.md` | Update resume section (Step R1-R3): note that `continue` subsumes automatic HANDOFF.md reading. `resume handover` remains as explicit manual invocation. |
-| `work_router.py` | Add `ISSUE_DONE=yes/no` output — emitted only when `HAS_PLAN=yes`. Checks active leaf issue's GitHub state via `gh issue view`. When `HAS_PLAN=no`, field is omitted entirely. |
+| `work_router.py` | Add `ISSUE_DONE=yes/no` output — emitted only when `HAS_PLAN=yes`. Derived from `.plan` active leaf's `[x]` state (set by `plan_state` at session start via `plan_manager.mark_completed()`). Read-only check, no GitHub API call — no new state derivation. When `HAS_PLAN=no`, field is omitted entirely. |
 
 ### New files
 
@@ -303,7 +327,7 @@ a separate command.
 
 ```
 1. continue — keep working (loads context automatically)
-2. switch — you have N paused branch(es) — resume one instead     ← only if STACK_DEPTH > 0
+2. resume — you have N paused branch(es) — restore one from stack     ← only if STACK_DEPTH > 0
 N. next — mark current issue done, advance to next in queue       ← only if HAS_PLAN=yes
 N+1. end — close this branch, merge, push, return to main
 N+2. pause — commit WIP, push to stack, switch to main
@@ -311,9 +335,35 @@ N+3. wrap — end session but keep branch open (write handover)
 ```
 
 The "resume"/"start" distinction is gone. `continue` is always option 1
-regardless of HANDOFF.md existence. Internally, `continue` reads
-HANDOFF.md if present, runs resume checks if not — same behavior as
-today, unified label.
+regardless of HANDOFF.md existence.
+
+**`continue` behavioral specification:**
+
+When `HAS_HANDOFF=yes` (subsequent session):
+1. Read `$HANDOFF_PATH` — summarise last session's narrative
+2. If `HAS_PLAN=yes`: read `.plan` for queue progress and active issue
+3. If `IN_SLOT=yes` and `HAS_PLAN=no`: read `.slot` for issue context
+4. Load design specs (work-start Step 3c) — scan for specs, read them all
+5. Done-detection auto-suggest (D3) — if active issue is complete, suggest next/end
+6. Proceed to work
+
+When `HAS_HANDOFF=no` (first session, or HANDOFF.md missing):
+1. Run work-start Steps 0, 2, 3, 3b, 3c, 11:
+   - **Step 0:** path resolution (already done by router)
+   - **Step 2:** platform coherence — read platform doc, five coherence questions
+   - **Step 3:** relevant protocols — scan and read applicable rules
+   - **Step 3b:** ARC42STORIES.MD context (if present)
+   - **Step 3c:** design spec loading (mandatory)
+   - **Step 11:** IntelliJ MCPs — hard stop if unavailable
+2. If `HAS_PLAN=yes` or `IN_SLOT=yes`: read plan/slot context
+3. Done-detection auto-suggest (D3)
+4. Proceed to work
+
+The asymmetry is intentional: subsequent sessions skip environment pre-checks
+(platform coherence, protocols, IntelliJ) because the environment was verified
+in the first session and the branch scaffold already exists. First sessions
+(no HANDOFF.md) run the full pre-check suite including the IntelliJ hard gate.
+`continue` preserves this existing behavior under a unified label.
 
 ---
 
@@ -329,5 +379,33 @@ today, unified label.
 | `work` / `work start` | → run router (Step 1b) |
 | `resume handover` | → handover skill directly (manual invocation) |
 
+**Wrong-context error handling (D4):** The routing table in `work/SKILL.md`
+owns all wrong-context errors. Before forwarding to a sub-skill:
+
+- `work resume` + `ON_MAIN=no` → error (not forwarded to work-resume)
+- `work resume` + `ON_MAIN=yes` + `STACK_DEPTH=0` → error (not forwarded)
+- `work continue` + `ON_MAIN=yes` → error (no branch to continue on)
+- `work start` + `resume_branch` → redirect to `continue` with note
+
+The errors are emitted by the router/skill layer, not by the sub-skills.
+`work-resume/SKILL.md` can assume it is invoked correctly (on main, with
+stack entries present).
+
 When router returns `resume_branch` and invocation was `work start`:
 redirect to `continue` with note "Already on `<branch>` — continuing."
+
+---
+
+## Implementation Phases
+
+D1-D4 (taxonomy, continue, wrong-context) and D5-D6 (brief) can be
+implemented independently — they touch different files with no shared code.
+
+| Phase | Decisions | Files touched | Depends on |
+|-------|-----------|--------------|-----------|
+| 1 — Taxonomy | D1, D2, D3, D4 | `work/SKILL.md`, `work-resume/SKILL.md`, `handover/SKILL.md`, `work_router.py` | Nothing |
+| 2 — Brief | D5, D6 | `brief/SKILL.md`, `brief/brief.py`, `brief/commands/brief.md` | Nothing (thematically linked to D1's verb table, no code dependency) |
+
+Phase 1 is the core fix — resolving the semantic overload. Phase 2 is a
+new feature that happens to be defined alongside its verb. Either can
+proceed, stall, or be reverted without affecting the other.

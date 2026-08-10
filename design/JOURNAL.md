@@ -1,1 +1,1 @@
-# Design Journal — issue-204-work-lifecycle-fixes
+# Design Journal — issue-210-slot-propagation-fix

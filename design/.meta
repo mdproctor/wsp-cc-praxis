@@ -1,10 +1,10 @@
-branch: issue-204-work-lifecycle-fixes
-state: closing:stamped
-project-sha: a741000460914fdf8e58b06718702525075156d5
+branch: issue-210-slot-propagation-fix
+state: scaffolded
+project-sha: a7b61a328c235a285ba5a45c2d9fd5f2c0251f8c
 date: 2026-08-10
-issue: 204
+issue: 210
 issue-repo: Hortora/soredium
-covers: 204,205,206,207,208
+covers: 210
 flyway-next-v: unknown
 design-repo: workspace
 design-section-hashes: 

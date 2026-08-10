@@ -254,11 +254,14 @@ both CLI (now) and Trellis (soon). The script pattern matches `ctx.py` and
 composing existing scripts. `is_closed()` in `lifecycle.py` checks a specific
 branch but doesn't enumerate. `brief.py` implements:
 
-1. List local branches: `git branch --list 'issue-*'` (convention-filtered)
-2. For each, call `is_closed(project, branch, workspace)` — sub-second per branch
-3. Filter for `CLOSED` or `MERGED_UNSTAMPED`
-4. Sort by last commit date, take most recent 5
+1. List branches sorted by recency: `git for-each-ref --sort=-committerdate --format='%(refname:short)' 'refs/heads/issue-*'`
+2. Take top 10 candidates (bounds the cost regardless of total branch count)
+3. For each, call `is_closed(project, branch, workspace)` — sub-second per branch
+4. Filter for `CLOSED` or `MERGED_UNSTAMPED`, take most recent 5
 5. Output as `CLOSED_BRANCH=<name> ISSUE=<N> CLOSED=<relative date>` lines
+
+Pre-sorting by committer date and capping at 10 candidates keeps the cost
+bounded (~30 git commands) even on workspaces with 50+ branches.
 
 **Alternatives:**
 - Feature branch only — misses the "picking up cold on main" use case
@@ -310,7 +313,9 @@ a separate command.
 | `work/SKILL.md` | Routing table: add `continue`, separate from `resume`. Step 4: replace "resume"/"start" with "continue". Add done-detection auto-suggest. Add wrong-context redirects (D4). Update CSO description to: `Use when the user says "work", "work end", "work pause", "work resume", "work continue", or "work next" — detects current branch state and routes to the correct work lifecycle skill automatically.` |
 | `work-resume/SKILL.md` | CSO description updated to: `Use when returning to a paused branch from the pause stack — user says "work-resume", "resume", or "go back to that branch". Pause-stack restoration only, not general branch continuation (use "work continue" for that).` |
 | `handover/SKILL.md` | Update resume section (Step R1-R3): note that `continue` subsumes automatic HANDOFF.md reading. `resume handover` remains as explicit manual invocation. |
-| `work_router.py` | Add `ISSUE_DONE=yes/no` output — emitted only when `HAS_PLAN=yes`. Derived from `.plan` active leaf's `[x]` state (set by `plan_state` at session start via `plan_manager.mark_completed()`). Read-only check, no GitHub API call — no new state derivation. When `HAS_PLAN=no`, field is omitted entirely. |
+| `work_router.py` | Fix `_handoff_references_branch()` substring match: use `re.search(rf'#{issue_num}\b', result.stdout)` for word-boundary matching (prevents #42 matching #421). No new outputs — D3 done-detection uses existing `PLAN_ACTIVE_ISSUE` + `PLAN_POSITION` after `work_health.py` sync. |
+| `project/ctx.py` | Refactor into importable library: wrap top-level code in `resolve() -> dict[str, str]` function, guard output with `if __name__ == '__main__'`. Enables `brief.py` to import context resolution directly instead of shelling out. |
+| `lifecycle.py` | Update `INVALID_MESSAGES[('active', 'work')]` to mention `continue`: "Already on an active branch. Use `work continue`, `work end`, `work pause`, or `work next`." No state machine changes. |
 
 ### New files
 
@@ -324,7 +329,6 @@ a separate command.
 
 | File | Why |
 |------|-----|
-| `lifecycle.py` | No state machine changes — the transitions are correct. The overloading was in the skill presentation layer, not the state machine. |
 | `work-pause/SKILL.md` | No changes — pause semantics are unchanged |
 | `work-end/SKILL.md` | No changes — end semantics are unchanged |
 | `work-start/SKILL.md` | No changes — start semantics are unchanged (it's the internal skill; the user-facing `start` redirect is handled in `work/SKILL.md`) |
@@ -393,6 +397,7 @@ owns all wrong-context errors. Before forwarding to a sub-skill:
 - `work resume` + `ON_MAIN=no` → error (not forwarded to work-resume)
 - `work resume` + `ON_MAIN=yes` + `STACK_DEPTH=0` → error (not forwarded)
 - `work continue` + `ON_MAIN=yes` → error (no branch to continue on)
+- `work continue` + `workspace_dirty` → error ("Workspace is on a stale branch — run `work` to clean up.")
 - `work start` + `resume_branch` → redirect to `continue` with note
 
 The errors are emitted by the router/skill layer, not by the sub-skills.

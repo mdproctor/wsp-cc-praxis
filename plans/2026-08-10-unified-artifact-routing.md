@@ -11,26 +11,37 @@
 
 **Goal:** Unify artifact routing so ADRs, specs, and blogs all promote
 to `docs/<type>/` in project repos, replace the blog-specific resolver
-with a unified artifact resolver, and add blog to the docs-prefix
-promotion path.
+with a unified artifact resolver, and fix the blog publish pipeline to
+work with the new layout.
 
-**Architecture:** Three changes: (1) replace `resolve_blog_dir.py` with
-`resolve_artifact_dir.py` that handles all artifact types, (2) add blog
-to `_docs_categories` in `close_artifacts.py` so it gets the `docs/`
-prefix on project promotion, (3) update all consuming skills to use the
-unified resolver.
+**Architecture:** Four concerns addressed: (1) replace
+`resolve_blog_dir.py` with `resolve_artifact_dir.py` that handles all
+artifact types for authoring path resolution, (2) add blog to
+`_docs_categories` in `close_artifacts.py` so it gets the `docs/`
+prefix on project promotion, (3) fix the blog publish pipeline to read
+from the correct directory regardless of routing, (4) update all
+consuming skills to use the unified resolver. `routing.py` (3-layer
+routing cascade) is untouched — it solves a different problem (workspace
+vs project destination).
 
 **Tech Stack:** Python 3.14, pytest, soredium skill markdown
 
 ## Global Constraints
 
-- All artifact types (adr, specs, blog, plans) live at root in
-  workspaces and under `docs/` in project repos
+- All artifact types (adr, specs, blog) live at root in workspaces and
+  under `docs/` in project repos
+- Plans are archived (not promoted) — they stay in the workspace and
+  move to `plans/attic/` at work-end. They are NOT in `_docs_categories`
 - Workspace authoring paths: `$WORKSPACE/<type>/`
 - Project promotion paths: `$PROJECT/docs/<type>/`
 - Slot-escape detection must be preserved
 - Backward compatibility with `**Blog directory:**` CLAUDE.md field
 - No breaking changes to `routing.py` (3-layer cascade is correct)
+- `routing.py` resolves WHERE an artifact goes (workspace vs project) —
+  a routing decision
+- `resolve_artifact_dir.py` resolves the authoring path on disk (which
+  directory to write to) — a path resolution concern
+- These are two separate concerns; do not conflate them
 
 ## Scope
 
@@ -48,15 +59,20 @@ directory for any artifact type.
 
 **Files:**
 - Create: `write-content/resolve_artifact_dir.py`
-- Delete: `write-content/resolve_blog_dir.py` (after all references updated)
 - Create: `tests/test_resolve_artifact_dir.py`
-- Delete: `tests/test_resolve_blog_dir.py` (after new tests cover all cases)
 
 **Interfaces:**
 - Produces: `resolve(artifact_type, workspace, claude_text, slot_root=None) -> str`
 - Produces: `resolve_with_warning(artifact_type, workspace, claude_text, slot_root=None) -> tuple[str, str]`
 - Produces: CLI: `python3 resolve_artifact_dir.py <type> <workspace> <claude_md_path> [slot_root=<path>]`
   Output: `ARTIFACT_DIR=<path>`
+
+Design note: This resolver handles path resolution — "what directory
+should I write this artifact to?" It parses optional `**<Type> directory:**`
+fields from CLAUDE.md (currently only `**Blog directory:**` exists in
+practice; the others will be used as projects adopt the convention).
+It does NOT handle routing decisions (workspace vs project) — that
+remains in `routing.py`.
 
 - [ ] **Step 1: Write failing tests for the unified resolver**
 
@@ -138,7 +154,9 @@ class TestSlotEscapeDetection:
     def test_absolute_path_in_slot_detected(self, tmp_path, artifact_type):
         slot_workspace = tmp_path / "slots" / "1" / "work"
         slot_workspace.mkdir(parents=True)
-        field_name = _field_name(artifact_type)
+        field_name = resolve_artifact_dir.FIELD_NAMES.get(
+            artifact_type, artifact_type.title()
+        )
         claude_text = f'**{field_name} directory:** `/external/path/`'
         result = resolve_artifact_dir.resolve(
             artifact_type, str(slot_workspace), claude_text,
@@ -150,7 +168,9 @@ class TestSlotEscapeDetection:
     def test_relative_path_in_slot_ok(self, tmp_path, artifact_type):
         slot_workspace = tmp_path / "slots" / "1" / "work"
         slot_workspace.mkdir(parents=True)
-        field_name = _field_name(artifact_type)
+        field_name = resolve_artifact_dir.FIELD_NAMES.get(
+            artifact_type, artifact_type.title()
+        )
         claude_text = f'**{field_name} directory:** `{artifact_type}/`'
         result = resolve_artifact_dir.resolve(
             artifact_type, str(slot_workspace), claude_text,
@@ -169,12 +189,35 @@ class TestSlotEscapeDetection:
         assert result == str(slot_workspace / "blog")
         assert "escapes slot boundary" in warning
 
+    def test_no_escape_returns_empty_warning(self, tmp_path):
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        claude_text = '**Blog directory:** `blog/`'
+        result, warning = resolve_artifact_dir.resolve_with_warning(
+            "blog", str(workspace), claude_text,
+        )
+        assert result == str(workspace / "blog")
+        assert warning == ""
 
-def _field_name(artifact_type: str) -> str:
-    """Map artifact type to CLAUDE.md field name."""
-    return {"adr": "ADR", "blog": "Blog", "specs": "Specs", "plans": "Plans"}.get(
-        artifact_type, artifact_type.title()
-    )
+
+class TestEdgeCases:
+    def test_trailing_slash_stripped(self, tmp_path):
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        claude_text = '**Blog directory:** `blog/`'
+        result = resolve_artifact_dir.resolve("blog", str(workspace), claude_text)
+        assert not result.endswith("/")
+
+    def test_tilde_expansion(self, tmp_path):
+        slot_workspace = tmp_path / "slots" / "1" / "work"
+        slot_workspace.mkdir(parents=True)
+        claude_text = '**Blog directory:** `~/claude/public/casehub/blog/`'
+        result = resolve_artifact_dir.resolve(
+            "blog", str(slot_workspace), claude_text,
+            slot_root=str(tmp_path / "slots" / "1"),
+        )
+        # ~ expands to home dir, which is outside the slot
+        assert result == str(slot_workspace / "blog")
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -192,6 +235,10 @@ resolve_artifact_dir.py — Unified artifact directory resolution with slot-esca
 Resolves the authoring directory for any artifact type (blog, adr, specs, plans)
 from CLAUDE.md content. When running inside a slot, detects absolute paths that
 escape the slot boundary and falls back to $WORKSPACE/<type>/.
+
+This is a PATH RESOLVER, not a ROUTING RESOLVER. It answers "what directory
+should I write to?" — not "should this go to workspace or project?" (that's
+routing.py's job).
 
 Replaces the blog-specific resolve_blog_dir.py.
 
@@ -257,8 +304,8 @@ def resolve_with_warning(
     if slot_root is not None:
         if not _is_inside(resolved, slot_root):
             warning = (
-                f"Artifact directory '{resolved}' escapes slot boundary '{slot_root}'. "
-                f"Falling back to {default}."
+                f"Artifact directory '{resolved}' escapes slot boundary "
+                f"'{slot_root}'. Falling back to {default}."
             )
             return default, warning
 
@@ -324,26 +371,38 @@ Refs #TBD"
 
 ---
 
-### Task 2: Add blog to docs-prefix promotion in close_artifacts.py
+### Task 2: Add blog to docs-prefix promotion + fix blog publish path
 
-The core routing fix: blog entries promoted to project repos must land
-at `docs/blog/`, not `blog/`.
+Two changes in `close_artifacts.py`:
+1. Add `"blog"` to `_docs_categories` so blog promotes to `docs/blog/`
+2. Fix the blog publish section to find blog entries regardless of
+   whether they're at `blog/` or `docs/blog/` in the scan source
+
+The blog publish pipeline (lines 261-311) is a separate concern from
+promotion — it copies entries to an external git repo (e.g.
+`hortora.github.io`). It should run whenever blog artifacts exist,
+regardless of routing. But the blog directory path on line 263
+(`scan_source / "blog"`) must handle the `docs/blog/` alt_path case.
 
 **Files:**
 - Modify: `work-end/close_artifacts.py:157` — add `"blog"` to `_docs_categories`
-- Modify: `tests/test_close_artifacts.py` — add test for blog→docs/blog/ promotion
+- Modify: `work-end/close_artifacts.py:262-263` — resolve blog dir from scan results, not hardcoded path
+- Modify: `tests/test_close_artifacts.py` — add tests
 
 **Interfaces:**
-- Consumes: existing `close_artifacts.py` API (no change)
-- Produces: blog artifacts now promoted to `$PROJECT/docs/blog/` instead of `$PROJECT/blog/`
+- Consumes: existing `close_artifacts.py` API (no signature change)
+- Produces: blog artifacts promoted to `$PROJECT/docs/blog/`
+- Produces: blog publish reads from whichever directory contains the entries
 
 - [ ] **Step 1: Write failing test for blog docs-prefix promotion**
+
+Add to `tests/test_close_artifacts.py`:
 
 ```python
 class TestBlogDocsPrefix:
     """Blog entries must land at project/docs/blog/, not project/blog/."""
 
-    SCRIPT = Path(__file__).parent.parent / "work-end" / "artifact_promote.py"
+    SCRIPT = Path(__file__).parent.parent / "work-end" / "close_artifacts.py"
 
     def _init_git(self, path):
         path.mkdir(parents=True, exist_ok=True)
@@ -362,6 +421,7 @@ class TestBlogDocsPrefix:
         (workspace / "blog").mkdir()
         (workspace / "blog" / "entry.md").write_text("# Blog\n")
 
+        # Create branch with blog committed
         subprocess.run(
             ["git", "-C", str(workspace), "checkout", "-b", "issue-42-test"],
             capture_output=True, check=True,
@@ -372,9 +432,9 @@ class TestBlogDocsPrefix:
             capture_output=True, check=True,
         )
 
-        # Default routing: blog → project
+        # Default routing: blog -> project (no CLAUDE.md override)
         result = subprocess.run(
-            [sys.executable, str(Path(__file__).parent.parent / "work-end" / "close_artifacts.py"),
+            [sys.executable, str(self.SCRIPT),
              str(workspace), str(project), "issue-42-test"],
             capture_output=True, text=True,
         )
@@ -393,7 +453,7 @@ class TestBlogDocsPrefix:
 Run: `python3 -m pytest tests/test_close_artifacts.py::TestBlogDocsPrefix -v`
 Expected: FAIL — blog lands at `blog/` not `docs/blog/`
 
-- [ ] **Step 3: Fix close_artifacts.py**
+- [ ] **Step 3: Fix close_artifacts.py — add blog to _docs_categories**
 
 Change line 157:
 ```python
@@ -404,47 +464,143 @@ _docs_categories = {"specs", "adr"}
 _docs_categories = {"specs", "adr", "blog"}
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 4: Fix blog publish section to use scan results for path**
+
+The blog publish section (line 262-263) hardcodes `scan_source / "blog"`.
+After adding `alt_paths` for blog (Task 6), the scanner may find entries
+at `docs/blog/` instead. The publish step should derive the blog
+directory from the artifact paths found by the scanner.
+
+Change lines 262-263:
+```python
+# Before:
+    if artifacts["blog"]:
+        blog_dir = scan_source / "blog"
+
+# After:
+    if artifacts["blog"]:
+        # Derive blog dir from first scanned entry (handles blog/ and docs/blog/)
+        first_blog = artifacts["blog"][0]
+        blog_dir = scan_source / Path(first_blog).parent
+```
+
+- [ ] **Step 5: Run test to verify it passes**
 
 Run: `python3 -m pytest tests/test_close_artifacts.py::TestBlogDocsPrefix -v`
 Expected: PASS
 
-- [ ] **Step 5: Run full close_artifacts test suite for regressions**
+- [ ] **Step 6: Run full close_artifacts test suite for regressions**
 
 Run: `python3 -m pytest tests/test_close_artifacts.py -v`
 Expected: ALL PASS
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git -C /Users/mdproctor/claude/hortora/soredium add work-end/close_artifacts.py tests/test_close_artifacts.py
-git -C /Users/mdproctor/claude/hortora/soredium commit -m "fix: promote blog to docs/blog/ in project repos, not root blog/
+git -C /Users/mdproctor/claude/hortora/soredium commit -m "fix: promote blog to docs/blog/ in project repos, fix publish path
 
-Blog was excluded from _docs_categories, causing it to land at
-project root instead of docs/blog/ alongside specs and adr.
+Blog was excluded from _docs_categories, causing it to land at project
+root instead of docs/blog/ alongside specs and adr. Also fixed blog
+publish to derive the source directory from scan results instead of
+hardcoding 'blog/'.
 
 Refs #TBD"
 ```
 
 ---
 
-### Task 3: Update diary form to use unified resolver
+### Task 3: Add alt_paths for blog and specs in workspace_artifacts.py
+
+The scanner has `alt_paths` for ADR (`docs/adr`) but not for blog or
+specs. All three docs-prefix types need `alt_paths` so the scanner
+discovers entries authored directly in `docs/<type>/`.
 
 **Files:**
-- Modify: `write-content/forms/diary.md:80-83` — replace `resolve_blog_dir.py` with `resolve_artifact_dir.py`
+- Modify: `work-end/workspace_artifacts.py:20,23` — add `alt_paths` for specs and blog
+- Modify: `tests/test_workspace_artifacts.py` — add tests
 
 **Interfaces:**
-- Consumes: `resolve_artifact_dir.resolve("blog", ...)` from Task 1
+- Consumes: existing scanner API (no change)
+- Produces: scanner finds entries in both `<type>/` and `docs/<type>/`
+
+- [ ] **Step 1: Write failing tests**
+
+```python
+def test_finds_blog_in_docs_blog(self, tmp_path):
+    """Blog entries in docs/blog/ are discovered via alt_paths."""
+    (tmp_path / "docs" / "blog").mkdir(parents=True)
+    (tmp_path / "docs" / "blog" / "entry.md").write_text("# Blog\n")
+    result = scan(tmp_path)
+    assert "docs/blog/entry.md" in result["blog"]
+
+def test_finds_specs_in_docs_specs(self, tmp_path):
+    """Spec entries in docs/specs/ are discovered via alt_paths."""
+    (tmp_path / "docs" / "specs").mkdir(parents=True)
+    (tmp_path / "docs" / "specs" / "design.md").write_text("# Spec\n")
+    result = scan(tmp_path)
+    assert "docs/specs/design.md" in result["specs"]
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Expected: FAIL — `docs/blog/entry.md` and `docs/specs/design.md` not found
+
+- [ ] **Step 3: Add alt_paths**
+
+```python
+# Line 20 — before:
+"specs":     {"ext": ".md",  "exclude_names": {"INDEX.md"}, "exclude_dirs": set()},
+
+# After:
+"specs":     {"ext": ".md",  "exclude_names": {"INDEX.md"}, "exclude_dirs": set(),
+              "alt_paths": ["docs/specs"]},
+
+# Line 23 — before:
+"blog":      {"ext": ".md",  "exclude_names": {"INDEX.md"}, "exclude_dirs": set()},
+
+# After:
+"blog":      {"ext": ".md",  "exclude_names": {"INDEX.md"}, "exclude_dirs": set(),
+              "alt_paths": ["docs/blog"]},
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+- [ ] **Step 5: Run full workspace_artifacts test suite**
+
+Run: `python3 -m pytest tests/test_workspace_artifacts.py -v`
+
+- [ ] **Step 6: Commit**
+
+```bash
+git -C /Users/mdproctor/claude/hortora/soredium add work-end/workspace_artifacts.py tests/test_workspace_artifacts.py
+git -C /Users/mdproctor/claude/hortora/soredium commit -m "feat: scan docs/blog/ and docs/specs/ as alt_paths
+
+Matches existing alt_paths pattern for adr (docs/adr/). All three
+docs-prefix artifact types now discovered in both locations.
+
+Refs #TBD"
+```
+
+---
+
+### Task 4: Update diary form to use unified resolver
+
+**Files:**
+- Modify: `write-content/forms/diary.md:80-86` — replace `resolve_blog_dir.py` with `resolve_artifact_dir.py`
+
+**Interfaces:**
+- Consumes: `resolve_artifact_dir.py blog` from Task 1
 
 - [ ] **Step 1: Update diary.md Step 1**
 
-Change lines 80-83 from:
+Change lines 80-86 from:
 ```markdown
 **Resolve blog directory:**
 
-\`\`\`bash
+` `` bash
 python3 ~/.claude/skills/write-content/resolve_blog_dir.py <WORKSPACE> <CLAUDE_MD_PATH> [slot_root=<SLOT_ROOT>]
-\`\`\`
+` ``
 
 Read `BLOG_DIR` from output. Resolve to an absolute path.
 ```
@@ -453,9 +609,9 @@ To:
 ```markdown
 **Resolve blog directory:**
 
-\`\`\`bash
+` `` bash
 python3 ~/.claude/skills/write-content/resolve_artifact_dir.py blog <WORKSPACE> <CLAUDE_MD_PATH> [slot_root=<SLOT_ROOT>]
-\`\`\`
+` ``
 
 Read `ARTIFACT_DIR` from output. Resolve to an absolute path.
 ```
@@ -466,7 +622,8 @@ Read `ARTIFACT_DIR` from output. Resolve to an absolute path.
 grep -rn "resolve_blog_dir" ~/claude/hortora/soredium/ --include="*.md" --include="*.py" | grep -v __pycache__ | grep -v test_resolve_blog
 ```
 
-Update any remaining references.
+Update any remaining references (e.g. diary-retrospective.md if it
+references the script).
 
 - [ ] **Step 3: Commit**
 
@@ -479,17 +636,24 @@ Refs #TBD"
 
 ---
 
-### Task 4: Update ADR skill to use unified resolver
+### Task 5: Update ADR skill routing — keep routing.py, use unified path resolver
 
-The ADR skill currently has its own routing cascade in Step 1 that
-duplicates the logic in `routing.py` and `resolve_artifact_dir.py`.
-Simplify to use the unified resolver.
+The ADR skill currently has its own 3-layer routing cascade in Step 1
+that duplicates routing logic. Simplify, but preserve the two-concern
+separation:
+- `routing.py` (via `ctx.py`) determines workspace vs project
+- `resolve_artifact_dir.py` determines the authoring directory path
+
+Do NOT replace the routing decision with the path resolver — they solve
+different problems.
 
 **Files:**
-- Modify: `adr/SKILL.md:28-54` — replace custom routing with unified resolver call
+- Modify: `adr/SKILL.md:28-54` — simplify routing step
 
 **Interfaces:**
-- Consumes: `resolve_artifact_dir.py adr` from Task 1
+- Consumes: `ctx.py` for workspace/project paths
+- Consumes: `routing.py` for routing decision (workspace vs project)
+- Consumes: `resolve_artifact_dir.py adr` for path resolution
 
 - [ ] **Step 1: Update adr/SKILL.md Step 1**
 
@@ -498,24 +662,34 @@ Replace the three-layer routing cascade (lines 30-54) with:
 ```markdown
 ### Step 1 — Resolve write destination
 
-Resolve the ADR directory using the unified artifact resolver:
+Resolve paths and routing:
 
-\`\`\`bash
+` `` bash
 python3 ~/.claude/skills/project/ctx.py
-\`\`\`
+` ``
 
 Use `WORKSPACE` and `PROJECT` from the output as concrete strings.
 
-\`\`\`bash
+Resolve routing (workspace vs project):
+
+` `` bash
+python3 ~/.claude/skills/project/routing.py ~/.claude/CLAUDE.md <WORKSPACE>/CLAUDE.md adr
+` ``
+
+Read `DESTINATION` from output (`workspace` or `project`).
+
+Resolve authoring directory:
+
+` `` bash
 python3 ~/.claude/skills/write-content/resolve_artifact_dir.py adr <WORKSPACE> <WORKSPACE>/CLAUDE.md [slot_root=<SLOT_ROOT>]
-\`\`\`
+` ``
 
 Read `ARTIFACT_DIR` from output.
 
-| Context | Write to | git -C path |
-|---------|----------|-------------|
-| Workspace | `$WORKSPACE/adr/` | `$WORKSPACE` |
-| Project (default) | `$PROJECT/docs/adr/` | `$PROJECT` |
+| Routing destination | Write to | git -C path |
+|---------------------|----------|-------------|
+| `workspace` | `$WORKSPACE/adr/` | `$WORKSPACE` |
+| `project` (default) | `$PROJECT/docs/adr/` | `$PROJECT` |
 
 Use `git -C <resolved-path>` for all git operations — never bare `git add/commit`.
 ```
@@ -524,16 +698,18 @@ Use `git -C <resolved-path>` for all git operations — never bare `git add/comm
 
 ```bash
 git -C /Users/mdproctor/claude/hortora/soredium add adr/SKILL.md
-git -C /Users/mdproctor/claude/hortora/soredium commit -m "refactor: ADR skill uses unified resolve_artifact_dir.py
+git -C /Users/mdproctor/claude/hortora/soredium commit -m "refactor: ADR skill uses ctx.py + routing.py + resolve_artifact_dir.py
 
-Removes duplicated 3-layer routing cascade in favour of the shared resolver.
+Replaces duplicated 3-layer routing cascade with the canonical tools.
+Routing decision (routing.py) and path resolution (resolve_artifact_dir.py)
+are kept as separate concerns.
 
 Refs #TBD"
 ```
 
 ---
 
-### Task 5: Delete resolve_blog_dir.py and its tests
+### Task 6: Delete resolve_blog_dir.py and its tests
 
 Now that all consumers use `resolve_artifact_dir.py`, remove the
 blog-specific resolver.
@@ -542,16 +718,14 @@ blog-specific resolver.
 - Delete: `write-content/resolve_blog_dir.py`
 - Delete: `tests/test_resolve_blog_dir.py`
 
-**Interfaces:**
-- Consumes: confirmation that no references remain (from Task 3 Step 2)
-
 - [ ] **Step 1: Verify no remaining references**
 
 ```bash
 grep -rn "resolve_blog_dir" ~/claude/hortora/soredium/ --include="*.md" --include="*.py" | grep -v __pycache__
 ```
 
-Expected: no results (or only the files being deleted)
+Expected: only the two files being deleted (or nothing if already
+removed from all consumers).
 
 - [ ] **Step 2: Delete files**
 
@@ -567,7 +741,7 @@ Expected: ALL PASS (no imports of resolve_blog_dir remain)
 - [ ] **Step 4: Commit**
 
 ```bash
-git -C /Users/mdproctor/claude/hortora/soredium add -A
+git -C /Users/mdproctor/claude/hortora/soredium add write-content/resolve_blog_dir.py tests/test_resolve_blog_dir.py
 git -C /Users/mdproctor/claude/hortora/soredium commit -m "chore: remove resolve_blog_dir.py — replaced by resolve_artifact_dir.py
 
 Refs #TBD"
@@ -575,82 +749,73 @@ Refs #TBD"
 
 ---
 
-### Task 6: Update workspace_artifacts.py to scan docs/blog/ as alt_path
+### Task 7: Verify update_blog_index.py is path-safe
 
-The scanner already has `alt_paths` for ADR (`docs/adr`). Add the same
-for blog so that blog entries authored directly in `docs/blog/` (which
-can happen in project repos) are also discovered.
+`update_blog_index.py` takes a file path argument and writes INDEX.md
+to the same directory as the blog file. It does NOT hardcode `blog/`.
+Verify this is true and add a regression test.
 
 **Files:**
-- Modify: `work-end/workspace_artifacts.py:23` — add `alt_paths` for blog
-- Modify: `tests/test_workspace_artifacts.py` — add test
+- Modify: `tests/test_resolve_artifact_dir.py` — add integration test
+  (or a new test file if appropriate)
 
-- [ ] **Step 1: Write failing test**
+- [ ] **Step 1: Read update_blog_index.py and verify**
 
-```python
-def test_finds_blog_in_docs_blog(self, tmp_path):
-    """Blog entries in docs/blog/ are discovered via alt_paths."""
-    (tmp_path / "docs" / "blog").mkdir(parents=True)
-    (tmp_path / "docs" / "blog" / "entry.md").write_text("# Blog\n")
-    result = scan(tmp_path)
-    assert "docs/blog/entry.md" in result["blog"]
-```
+Confirm that `update_blog_index.py`:
+- Takes `<blog-file>` as argument (line 83)
+- Writes INDEX.md to `blog_file.parent / "INDEX.md"` (line 66)
+- Does NOT hardcode any path
 
-- [ ] **Step 2: Run test to verify it fails**
+Expected: confirmed safe — uses `blog_file.parent`, not a hardcoded path.
 
-Expected: FAIL — `docs/blog/entry.md` not in results
-
-- [ ] **Step 3: Add alt_paths for blog**
+- [ ] **Step 2: Write a test confirming it works in docs/blog/**
 
 ```python
-# Line 23 — before:
-"blog":      {"ext": ".md",  "exclude_names": {"INDEX.md"}, "exclude_dirs": set()},
+def test_update_index_in_docs_blog(self, tmp_path):
+    """update_blog_index works in docs/blog/ not just blog/."""
+    blog_dir = tmp_path / "docs" / "blog"
+    blog_dir.mkdir(parents=True)
+    entry = blog_dir / "2026-08-10-test.md"
+    entry.write_text("---\ntitle: Test\ndate: 2026-08-10\n---\n# Test\n")
 
-# After:
-"blog":      {"ext": ".md",  "exclude_names": {"INDEX.md"}, "exclude_dirs": set(),
-              "alt_paths": ["docs/blog"]},
+    update_index(entry, summary="Test entry")
+
+    index = blog_dir / "INDEX.md"
+    assert index.exists()
+    assert "2026-08-10-test.md" in index.read_text()
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
-
-- [ ] **Step 5: Run full workspace_artifacts test suite**
-
-Run: `python3 -m pytest tests/test_workspace_artifacts.py -v`
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 3: Run test and commit**
 
 ```bash
-git -C /Users/mdproctor/claude/hortora/soredium add work-end/workspace_artifacts.py tests/test_workspace_artifacts.py
-git -C /Users/mdproctor/claude/hortora/soredium commit -m "feat: scan docs/blog/ as alt_path for blog artifacts
+git -C /Users/mdproctor/claude/hortora/soredium add tests/
+git -C /Users/mdproctor/claude/hortora/soredium commit -m "test: verify update_blog_index works in docs/blog/ path
 
-Matches existing alt_paths pattern for adr (docs/adr/).
+Regression guard for unified artifact routing.
 
 Refs #TBD"
 ```
 
 ---
 
-### Task 7: Update SOURCES.md and CLAUDE.md references
+### Task 8: Update SOURCES.md and CLAUDE.md references
 
 Update documentation to reflect the unified artifact layout.
 
 **Files:**
-- Modify: `SOURCES.md` — update Blog row
-- Modify: `CLAUDE.md` — update Blog section and Project Artifacts table
+- Modify: `SOURCES.md` — add Blog row for project location
+- Modify: `CLAUDE.md` — add `docs/blog/` to Project Artifacts table
 
 - [ ] **Step 1: Update SOURCES.md**
 
-The Blog row currently says `hortora.github.io/_posts/`. This is the
-publish destination, not the project location. Update or add a row:
-
+Add a row:
 ```markdown
 | Blog | docs/blog/ | Project diary entries (promoted from workspace) |
 ```
 
 - [ ] **Step 2: Update CLAUDE.md Project Artifacts table**
 
-Add `docs/blog/` to the table:
-
+Add row:
 ```markdown
 | `docs/blog/` | Project diary / blog entries |
 ```
@@ -666,6 +831,32 @@ Refs #TBD"
 
 ---
 
+### Task 9: Explicitly document brainstorming and writing-plans scope
+
+The `brainstorming` and `writing-plans` skills write to
+`$WORKSPACE/specs/` and `$WORKSPACE/plans/` respectively. They do NOT
+use `resolve_blog_dir.py` or any resolver — they hardcode the workspace
+path. This is correct: during authoring, artifacts always go to the
+workspace. Promotion to project `docs/` happens at work-end.
+
+No code changes needed. This task exists to document the decision and
+verify no hidden references exist.
+
+**Files:** none
+
+- [ ] **Step 1: Verify no resolver references in brainstorming or writing-plans**
+
+```bash
+grep -rn "resolve_blog_dir\|resolve_artifact_dir" ~/claude/hortora/soredium/brainstorming/ ~/claude/hortora/soredium/writing-plans/ 2>/dev/null
+```
+
+Expected: no results. These skills use `$WORKSPACE/specs/` and
+`$WORKSPACE/plans/` directly, which is correct.
+
+- [ ] **Step 2: No commit needed — verification only**
+
+---
+
 ## Subsequent Plans (Not This Session)
 
 ### Phase 2: Migration of existing entries
@@ -678,7 +869,7 @@ Refs #TBD"
 ### Phase 3: Historical backfill
 - Copy entries from `public/casehub/<project>/blog/` into
   `casehub/<project>/docs/blog/` where missing
-- Attribute 57 unattributed entries in `casehub/work/blog/` to primary
+- Attribute unattributed entries in `casehub/work/blog/` to primary
   projects with cross-project labels
 - Deduplicate across project/workspace/public
 

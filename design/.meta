@@ -1,0 +1,10 @@
+branch: issue-202-work-command-taxonomy
+state: scaffolded
+project-sha: 2fb8e448608b94a2a585eac64779ad9e9aade517
+date: 2026-08-10
+issue: 202
+issue-repo: Hortora/soredium
+covers: 202
+flyway-next-v: unknown
+design-repo: workspace
+design-section-hashes: 

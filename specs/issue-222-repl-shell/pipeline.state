@@ -1,11 +1,11 @@
 format_version: 1
-state: DECISION_CAPTURE
+state: PLANNING
 entered: 2026-08-11T00:00:00Z
-decision_count: 10
-dimensions_completed: 0
-dimensions_total: 0
+decision_count: 12
+dimensions_completed: 4
+dimensions_total: 4
 ordered: false
-dimensions_done:
+dimensions_done: coherence,structure,robustness,crosscutting
 current_dimension:
 workspace_structure:
 workspace_coherence:

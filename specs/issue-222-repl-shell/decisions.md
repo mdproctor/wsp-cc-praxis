@@ -125,3 +125,16 @@
 **Depends on:** D7 (guided UX — home screen extends the action-panel pattern to repo/slot selection), D8 (panels — home screen is another panel layout)
 **Exploration:** quick
 **Status:** captured
+
+## D12: Multi-session management via tmux
+
+**Choice:** Use tmux sessions as the multiplexing layer for concurrent CLI sessions across repos/slots
+**Alternatives:**
+- Single-active-context — one session at a time, go back to home to switch. Simple but loses the "see all sessions" value that makes the home screen useful.
+- CLI-specific remote APIs — depend on each CLI having attach/detach support (Claude --resume, etc.). Fragile, varies per tool.
+- Embedded terminal emulator per slot — run multiple CLI sessions inside TUI panels. Most ambitious, requires terminal emulation.
+**Rationale:** The home screen's value is seeing "slot 3 has Claude running, slot 7 is idle" and jumping between them. Tmux is the standard solution for session multiplexing — it works with any CLI, is universally available, and handles attach/detach natively. The TUI creates named tmux sessions per slot (`tmux new-session -d -s slot-7-issue-222 claude`), shows their status on the home screen, and attaches on selection.
+**Trade-offs:** Adds tmux as a runtime dependency. Users need basic tmux familiarity (Ctrl-b d to detach). The TUI suspends while attached — you can't see the home screen and a CLI session simultaneously (that would require embedded terminals, future scope).
+**Depends on:** D11 (home screen provides the multi-repo/slot view), D9 (SessionProvider gets a TmuxProvider implementation alongside SuspendingProvider)
+**Exploration:** quick
+**Status:** captured

@@ -192,14 +192,16 @@ soredium/
       __main__.py            # Entry point: python -m tui.python (TUI mode)
       app.py                 # Textual App subclass
       ui/
-        header.py            # Branch, state, queue position
-        action_panel.py      # Context-sensitive action list
-        content.py           # Scrollable output area
-        footer.py            # Keybinding hints
+        home.py              # Home View — repo/slot list with session status
+        header.py            # Branch, state, queue position (Project View)
+        action_panel.py      # Context-sensitive action list (Project View)
+        content.py           # Scrollable output area (Project View)
+        footer.py            # Keybinding hints (both views)
         modals.py            # Input overlays (issue numbers, messages)
       session/
         __init__.py          # SessionProvider protocol
-        suspend.py           # Default: suspend TUI, run CLI
+        suspend.py           # Suspend TUI, run CLI inline
+        tmux.py              # Default: tmux-managed background sessions
       styles/
         app.tcss             # Textual CSS
     java/                    # Follow-on issue (empty for now)
@@ -362,7 +364,171 @@ For multi-step commands, `CommandFailed.step` identifies where the
 failure occurred. The TUI uses `recoverable` to decide whether to
 offer retry/abort or just display the error.
 
-## UI Layout
+## Navigation Model
+
+The TUI has two views: **Home View** (workspace manager) and
+**Project View** (lifecycle operations). The Home View is the entry
+point — run `soredium`, see all repos and slots, pick where to work.
+
+### Home View
+
+```
+┌─ soredium ────────────────────────────────────────┐
+│ Repos & Slots                                      │
+│                                                    │
+│ > casehub/engine        [main] idle            ○   │
+│   casehub/platform      [issue-180] active     ●   │
+│   hortora/soredium      slot/7  [issue-222]    ●   │
+│   hortora/soredium      slot/3  [issue-198]    ◐   │
+│   hortora/engine        [main] idle            ○   │
+│                                                    │
+├────────────────────────────────────────────────────┤
+│ ↑↓ select  Enter open  s new session  q quit       │
+│ ● running  ◐ paused  ○ idle                        │
+└────────────────────────────────────────────────────┘
+```
+
+Each row shows: repo name, slot (if any), branch, lifecycle state,
+and tmux session status indicator. Arrow keys to navigate, Enter to
+open the Project View for that repo/slot. Escape from Project View
+returns to Home View.
+
+**Discovery.** The Home View discovers repos and slots by scanning
+configured paths. Default: `~/claude/` (recursive scan for directories
+containing `.git` and `CLAUDE.md`). Override via config:
+
+```toml
+# ~/.soredium/config.toml
+[workspace]
+scan_paths = ["~/claude/", "~/projects/"]
+```
+
+Slot directories are detected via `.slot` marker files (same detection
+as `topology.py`). Each discovered repo/slot gets a context resolution
+via `ctx.resolve()` to populate branch, state, and plan info.
+
+**Context switching.** When the user enters a repo/slot, the TUI sets
+the active context (project path, workspace path) and switches to the
+Project View. All command layer calls use the active context. When the
+user returns to Home View, the active context is cleared and the
+repo/slot list is refreshed.
+
+### Tmux Session Management
+
+The Home View shows tmux session status for each repo/slot. Sessions
+are created when the user selects `session` from the Project View —
+the TUI creates a named tmux session instead of (or in addition to)
+the suspend/resume flow.
+
+**Session lifecycle:**
+
+1. **Create** — user selects `session` in Project View. The
+   `TmuxProvider` creates a named session:
+   `tmux new-session -d -s soredium-<repo>-<slot> <cli_command>`
+   with cwd set to the project path.
+2. **Attach** — from Home View, Enter on a row with ● attaches to
+   the tmux session. TUI suspends, tmux takes over.
+3. **Detach** — user presses `Ctrl-b d` (tmux default). TUI resumes,
+   refreshes state for that repo/slot.
+4. **Kill** — from Home View, `k` on a row with ● kills the tmux
+   session after confirmation.
+5. **Status** — the Home View polls `tmux has-session -t <name>` on
+   refresh to detect session state.
+
+**TmuxProvider** — a SessionProvider implementation alongside
+SuspendingProvider:
+
+```python
+class TmuxProvider:
+    """Manage LLM CLI sessions via tmux."""
+
+    def __init__(self, cli_command: str = "claude"):
+        self.cli_command = cli_command
+        self._session_name: str | None = None
+
+    def session_name(self, context: IssueContext) -> str:
+        repo = context.project_path.split("/")[-1]
+        return f"soredium-{repo}-{context.issue or 'main'}"
+
+    async def start(self, context: IssueContext) -> None:
+        self._session_name = self.session_name(context)
+        subprocess.run([
+            "tmux", "new-session", "-d",
+            "-s", self._session_name,
+            "-c", context.project_path,
+            self.cli_command,
+        ])
+
+    def is_active(self) -> bool:
+        if not self._session_name:
+            return False
+        result = subprocess.run(
+            ["tmux", "has-session", "-t", self._session_name],
+            capture_output=True,
+        )
+        return result.returncode == 0
+
+    async def stop(self) -> None:
+        if self._session_name:
+            subprocess.run(["tmux", "kill-session", "-t", self._session_name])
+            self._session_name = None
+```
+
+**Attach from Home View** — when the user selects a row with an active
+tmux session, the TUI suspends and attaches:
+```python
+async def attach_session(self, session_name: str):
+    with self.suspend():
+        subprocess.run(["tmux", "attach-session", "-t", session_name])
+    # On return: refresh all repo/slot states
+    await self.refresh_home()
+```
+
+**Session provider selection.** The config determines which provider
+is used:
+
+```toml
+# ~/.soredium/config.toml
+[session]
+provider = "tmux"       # "tmux" (default) or "suspend"
+cli = "claude"
+```
+
+`tmux` provider creates persistent background sessions visible from
+the Home View. `suspend` provider (the original design) suspends the
+TUI inline — no Home View session tracking.
+
+### Home View Events
+
+```python
+@dataclass
+class RepoSlotInfo:
+    repo: str                    # "casehub/engine"
+    slot: str | None             # "slot/7" or None
+    branch: str                  # "issue-222-repl-shell"
+    state: str                   # "active", "idle", "paused", etc.
+    issue: int | None
+    plan_position: str | None    # "1/3"
+    tmux_session: str | None     # tmux session name if active
+    project_path: str
+    workspace_path: str | None
+
+@dataclass
+class HomeReady:
+    repos: list[RepoSlotInfo]
+
+@dataclass
+class ContextSwitched:
+    repo: str
+    slot: str | None
+    project_path: str
+    workspace_path: str | None
+```
+
+`HomeReady` is emitted on startup and after returning from Project
+View. `ContextSwitched` is emitted when the user enters a repo/slot.
+
+## UI Layout — Project View
 
 Four persistent zones:
 
@@ -893,6 +1059,9 @@ operation.
   soredium codebase.
 
 **Runtime (optional):**
+- `tmux` — required for multi-session management (Home View session
+  indicators, background CLI sessions). If absent, falls back to
+  `SuspendingProvider` and Home View shows no session status.
 - `worklog` SQLite database — required by `what-next` for enrichment
   recommendations. Created by `worklog.connect()`. If absent or empty,
   `what-next` displays "No enrichment data available" and returns an
@@ -917,15 +1086,20 @@ SOREDIUM_PROJECT=<path>           # Override project path detection
 SOREDIUM_WORKSPACE=<path>         # Override workspace path detection
 
 # Or config file: ~/.soredium/config.toml
+[workspace]
+scan_paths = ["~/claude/"]       # Directories to scan for repos/slots
+
 [session]
+provider = "tmux"                # "tmux" (default) or "suspend"
 cli = "claude"
 
 [paths]
-project = "/path/to/project"     # Optional override
+project = "/path/to/project"     # Optional override (single-project mode)
 workspace = "/path/to/workspace" # Optional override
 ```
 
-Defaults: `cli = "claude"`, paths auto-detected via `topology.resolve()`.
+Defaults: `provider = "tmux"`, `cli = "claude"`, `scan_paths = ["~/claude/"]`,
+paths auto-detected via `topology.resolve()`.
 
 ## Decisions Reference
 
@@ -941,7 +1115,5 @@ Key decisions:
 - **D8:** Persistent panels over scrolling
 - **D9:** Pluggable SessionProvider SPI (CLI-agnostic)
 - **D10:** Suspend/resume as default, automated/embedded as future
-
-Follow-on scope (not in this issue):
 - **D11:** Home screen as multi-repo/slot workspace manager
 - **D12:** Multi-session management via tmux

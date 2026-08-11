@@ -92,7 +92,7 @@ skips execution of these effects.
 | `pre_close_sweep` | effect | no-op (LLM-only) |
 | `record_review` | effect | no-op (LLM-only) |
 | `write_promotion_stamp` | effect | `close_artifacts.close()` |
-| `verify_content_landed` | effect | `land_branch.verify()` |
+| `verify_content_landed` | effect | `verify_promotion.verify()` |
 | `write_stamp` | effect | `land_branch.stamp()` |
 | `write_plan_closed` | effect | `plan_manager.close()` |
 | `clear_closing_markers` | effect | `close_artifacts.clear_markers()` |

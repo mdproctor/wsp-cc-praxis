@@ -23,10 +23,14 @@ same topology. `_find_design_file()` is the single search function for
 
 ## Global Constraints
 
-- CLI output format unchanged: `python3 ctx.py` → KEY=VALUE (same keys)
-- All SKILL.md files unchanged — they call `python3 ctx.py`
+- CLI output format: `python3 ctx.py` → KEY=VALUE. All existing keys preserved. WorkState fields (ROUTE, ON_MAIN, STACK_DEPTH, HAS_HANDOFF, HANDOFF_PATH, IN_SLOT, SLOT_PATH) added to ctx.py output so work/SKILL.md can read everything from one source.
+- work/SKILL.md MUST be updated to read from `python3 ctx.py` instead of `python3 work_router.py` (F1 critical fix)
+- brief/brief.py (NOT work/brief.py — F2 path fix) MUST be refactored for the new interface
 - lifecycle.py, plan_manager.py, slot_manager.py untouched
-- Tests use `tmp_path` with `git init` — same pattern as existing test_ctx.py
+- Tests use subprocess to call ctx.py (same pattern as existing test_ctx.py) — NOT sys.path + importlib.reload (F8 fragility fix)
+- CLAUDE_OK answers "is the project configured?" — reads from topo.project, not CWD (F5 semantic clarification)
+- HANDOFF detection must check `HANDOFF-{project_name}.md` before `HANDOFF.md` (F4 project-specific handoffs)
+- find_design_file lives in topology.py, not ctx.py (F7 — avoids circular import)
 
 ---
 
@@ -760,24 +764,26 @@ def detect(topo: Topology) -> WorkState:
                 epic_batch = f"{current} of {total}" if total else ""
                 epic_active_issue = str(epic_info.get("current_issue", ""))
 
-    # Handoff detection
+    # Handoff detection — project-specific first (F4 fix)
     has_handoff = False
     handoff_path = ""
-    handoff_file = find_design_file("HANDOFF.md", topo)
-    if handoff_file is None:
-        # HANDOFF.md lives at workspace root, not design/
+    project_name = topo.project.name
+    handoff_file = None
+    for name in [f"HANDOFF-{project_name}.md", "HANDOFF.md"]:
         for base in [topo.workspace, topo.workspace_root]:
-            candidate = base / "HANDOFF.md"
+            candidate = base / name
             if candidate.exists():
                 handoff_file = candidate
                 break
         if handoff_file is None:
             rc = subprocess.run(
-                ["git", "-C", workspace, "cat-file", "-e", "main:HANDOFF.md"],
+                ["git", "-C", workspace, "cat-file", "-e", f"main:{name}"],
                 capture_output=True,
             ).returncode
             if rc == 0:
-                handoff_file = topo.workspace / "HANDOFF.md"
+                handoff_file = topo.workspace / name
+        if handoff_file:
+            break
 
     if handoff_file:
         handoff_path = str(handoff_file)
@@ -855,17 +861,20 @@ Refs #220"
 
 ---
 
-### Task 4: Rewrite ctx.py — field collector using topology + work_state
+### Task 4: Rewrite ctx.py + wire callers — field collector using topology + work_state
 
 **Files:**
 - Rewrite: `project/ctx.py`
 - Rewrite: `tests/test_ctx.py`
 - Delete: `work/work_router.py`
-- Modify: `work/brief.py` (import work_state instead of work_router)
+- Delete: `tests/test_work_router.py`
+- Modify: `brief/brief.py` (F2: correct path, refactor from dict to WorkState dataclass)
+- Modify: `work/SKILL.md` (F1: replace `python3 work_router.py` with `python3 ctx.py`)
 
 **Interfaces:**
-- Consumes: `topology.resolve()`, `topology.find_design_file()`, `work_state.detect()`, `plan_manager.detect()`, `lifecycle.read_state()`
-- Produces: `resolve(cwd) -> dict[str, str]` — same KEY=VALUE output as before
+- Consumes: `topology.resolve()`, `topology.find_design_file()`, `work_state.detect()`
+- Produces: `resolve(cwd) -> dict[str, str]` — all existing keys PLUS WorkState fields:
+  `ROUTE`, `ON_MAIN`, `IN_SLOT`, `SLOT_PATH`, `STACK_DEPTH`, `HAS_HANDOFF`, `HANDOFF_PATH`
 
 - [ ] **Step 1: Write failing tests for the audit findings**
 
@@ -914,44 +923,116 @@ class TestCtxAuditFixes:
         assert data["HAS_BLOG_ROUTING"] == "yes"
 ```
 
-- [ ] **Step 2: Rewrite ctx.py**
+- [ ] **Step 2: Rewrite ctx.py resolve()**
 
-Replace the entire `resolve()` function body. Import topology and work_state. Use `_find_design_file` for .meta. Use `_parse_meta` with both `: ` and `:` separators. All CLAUDE.md fields from `topo.project`. File checks include `topo.workspace_root`. Add `IN_SLOT` to output. Guard BRANCH_MISMATCH against empty branch strings.
+Import topology and work_state. The output dict MUST include these WorkState fields (F3 fix):
 
-The KEY=VALUE output dict must have identical keys to the current version. Add `IN_SLOT` as a new key.
+```python
+# WorkState → ctx.py KEY=VALUE mapping (F3 — every field enumerated)
+"ROUTE": state.route,
+"ON_MAIN": "yes" if state.on_main else "no",
+"IN_SLOT": "yes" if state.in_slot else "no",
+"SLOT_PATH": str(topo.slot_dir / ".slot") if topo.slot_dir else "",
+"STACK_DEPTH": str(state.stack_depth),
+"HAS_HANDOFF": "yes" if state.has_handoff else "no",
+"HANDOFF_PATH": state.handoff_path,
+# These were already in ctx.py from the old code — now sourced from WorkState:
+"HAS_PLAN": "yes" if state.has_plan else "no",
+"PLAN_PATH": state.plan_path,
+"PLAN_ACTIVE_ISSUE": state.plan_active_issue,
+"PLAN_POSITION": state.plan_position,
+"PLAN_BATCH": state.plan_batch,
+"META_STATE": state.meta_state,
+"META_IS_TRANSIENT": "yes" if state.meta_is_transient else "no",
+"IS_EPIC": "yes" if state.is_epic else "no",
+"EPIC_PATH": state.epic_path,
+"EPIC_BATCH": state.epic_batch,
+"EPIC_ACTIVE_ISSUE": state.epic_active_issue,
+```
+
+CLAUDE.md parsing: ALL fields from `topo.project / "CLAUDE.md"` (F5 fix).
+File checks: include `topo.workspace_root` alongside project and workspace (F5).
+BRANCH_MISMATCH: guard against empty branch string from git failure (F6).
+.meta parsing: handle both `: ` and `:` separators.
 
 - [ ] **Step 3: Run full test suite**
 
 Run: `python3 -m pytest tests/test_topology.py tests/test_work_state.py tests/test_ctx.py -v`
 Expected: ALL PASS
 
-- [ ] **Step 4: Delete work_router.py and update brief.py**
+- [ ] **Step 4: Update work/SKILL.md (F1 critical fix)**
 
-Delete `work/work_router.py`. Update `work/brief.py` to import `work_state.detect` from `project/work_state.py` instead of `work_router.detect_state`.
+Replace the CLI invocation:
 
-- [ ] **Step 5: Run the full test suite including work_router tests**
+```markdown
+# OLD — calls deleted file:
+python3 ~/.claude/skills/work/work_router.py \
+  $CURRENT_BRANCH $PROJECT $WORKSPACE
 
-Run: `python3 -m pytest tests/ -v -k "ctx or topology or work_state or brief"`
-Expected: ALL PASS (work_router tests should be deleted or migrated)
-
-- [ ] **Step 6: Verify CLI output unchanged**
-
-```bash
-python3 project/ctx.py
-# Compare output keys against the known list — all existing keys must be present
-# IN_SLOT is the only new key
+# NEW — all fields from ctx.py:
+python3 ~/.claude/skills/project/ctx.py
+# Read ROUTE, ON_MAIN, STACK_DEPTH, HAS_HANDOFF, HANDOFF_PATH,
+# IN_SLOT, SLOT_PATH from output (alongside existing fields)
 ```
 
-- [ ] **Step 7: Commit**
+Update every reference to work_router output keys in work/SKILL.md to
+note they now come from ctx.py. The key names are identical — only the
+source script changes.
+
+- [ ] **Step 5: Refactor brief/brief.py (F2 critical fix)**
+
+Path is `brief/brief.py` (NOT `work/brief.py`). The interface changes:
+
+```python
+# OLD:
+from work_router import detect_state
+router = detect_state(current_branch, project, workspace)
+has_plan = router.get("HAS_PLAN") == "yes"
+
+# NEW — brief.py should call ctx.resolve() which already includes
+# both topology and work_state fields:
+sys.path.insert(0, str(Path(__file__).parent.parent / "project"))
+from ctx import resolve as ctx_resolve
+ctx = ctx_resolve(cwd=cwd)
+has_plan = ctx["HAS_PLAN"] == "yes"
+route = ctx["ROUTE"]
+# All keys available from one dict — no separate router call
+```
+
+- [ ] **Step 6: Delete work_router.py + tests**
 
 ```bash
-git -C <PROJECT> add project/ctx.py project/work_state.py tests/
 git -C <PROJECT> rm work/work_router.py
-git -C <PROJECT> commit -m "feat(#220): rewrite ctx.py as field collector on topology + work_state
+git -C <PROJECT> rm tests/test_work_router.py
+```
 
-All 14 addressed audit findings resolved. CLAUDE.md fields unified.
-_find_design_file replaces all fallback chains. work_router.py deleted.
-IN_SLOT field added.
+- [ ] **Step 7: Run full test suite**
+
+Run: `python3 -m pytest tests/ -v -k "ctx or topology or work_state or brief"`
+Expected: ALL PASS
+
+- [ ] **Step 8: Verify CLI output — all keys present**
+
+```bash
+python3 project/ctx.py 2>&1 | sort
+# Must include ALL of these keys (existing + new):
+# ROUTE, ON_MAIN, IN_SLOT, SLOT_PATH, STACK_DEPTH,
+# HAS_HANDOFF, HANDOFF_PATH (new from WorkState)
+# Plus all 48 existing keys unchanged
+```
+
+- [ ] **Step 9: Commit**
+
+```bash
+git -C <PROJECT> add project/ctx.py brief/brief.py work/SKILL.md tests/
+git -C <PROJECT> rm work/work_router.py tests/test_work_router.py
+git -C <PROJECT> commit -m "feat(#220): rewrite ctx.py + wire callers
+
+ctx.py is now a field collector on topology + work_state. WorkState
+fields merged into ctx output (F3). work/SKILL.md reads from ctx.py
+not work_router.py (F1). brief/brief.py refactored (F2). HANDOFF
+detection checks project-specific files first (F4). work_router.py
+deleted.
 
 Closes #220"
 ```

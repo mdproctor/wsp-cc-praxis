@@ -1,0 +1,10 @@
+branch: issue-215-ctx-single-repo-slots
+state: closing:review
+project-sha: eb6ea565feeeb13c4d7cb9b716f61733e86c6cb4
+date: 2026-08-10
+issue: 215
+issue-repo: Hortora/soredium
+covers: 215
+flyway-next-v: none
+design-repo: workspace
+design-section-hashes: 

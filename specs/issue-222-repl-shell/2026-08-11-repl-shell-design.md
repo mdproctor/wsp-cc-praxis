@@ -75,6 +75,7 @@ soredium/
         end.py             # mechanical close
         pause.py           # WIP commit + stack push
         resume.py          # stack pop + rebase
+        continue_.py       # keep working on current branch
         brief.py           # context summary
         quick_fix.py       # ephemeral branch landing
         what_next.py       # enrichment recommendations
@@ -161,12 +162,46 @@ class QuickFixLanded:
     message: str
 
 @dataclass
+class Recommendation:
+    issue: int
+    title: str
+    strategic_role: str | None   # "quick-win", "load-bearing", etc.
+    readiness: str | None        # "ready", "needs-design", etc.
+    reason: str | None
+
+@dataclass
 class WhatNextReady:
-    recommendations: list[dict]
+    recommendations: list[Recommendation]
 
 @dataclass
 class StatusReady:
-    context: dict[str, str]     # Full ctx.resolve() output
+    branch: str
+    state: str
+    on_main: bool
+    in_slot: bool
+    has_plan: bool
+    plan_position: str | None    # "2/3"
+    stack_depth: int
+    owner_repo: str | None
+    base_branch: str
+
+@dataclass
+class ContinueReady:
+    issue: int | None
+    branch: str
+    state: str
+    handoff_summary: str | None  # Last Session narrative, if HANDOFF.md present
+    done_detected: bool          # True if active plan issue is complete
+    suggest_next: bool           # True if queue has remaining items
+    suggest_end: bool            # True if queue is exhausted
+
+@dataclass
+class CommandFailed:
+    command: str                 # "end", "start", "resume", etc.
+    step: str | None             # For multi-step commands: which step failed
+    error: str                   # Machine-readable error code
+    detail: str                  # Human-readable message
+    recoverable: bool            # True if retry or abort is possible
 
 # Multi-step progress
 @dataclass
@@ -191,8 +226,16 @@ Every state-changing command emits `StateChanged` as its final event.
 `StateChanged.available_actions` drives the action panel.
 `StateChanged.suggested_action` highlights the recommended next step.
 
+Informational commands (`brief`, `what-next`, `status`) do NOT emit
+`StateChanged` — they read state without changing it.
+
 Multi-step commands (end, start) emit `StepProgress` events as each
 step completes — the content panel updates in real time.
+
+When any command fails, the command layer emits `CommandFailed`.
+For multi-step commands, `CommandFailed.step` identifies where the
+failure occurred. The TUI uses `recoverable` to decide whether to
+offer retry/abort or just display the error.
 
 ## UI Layout
 
@@ -230,6 +273,23 @@ What-next shows ranked recommendations.
 
 **Footer** — keybinding hints. Context-sensitive.
 
+### Bootstrap Sequence
+
+On startup, the TUI runs a deterministic initialisation before accepting
+user input:
+
+1. Resolve topology — call `topology.resolve()` for project/workspace paths
+2. Detect work state — call `work_state.detect(topo)` for routing, plan, stack
+3. Read lifecycle state — call `lifecycle.read_state(meta_path)` (None → idle)
+4. Derive initial available actions from the state (same logic as `StateChanged`)
+5. Populate header (branch, state, queue position) from the detection results
+6. Populate action panel from available actions; highlight suggested action
+7. Content panel starts empty — displays a welcome line with branch/state summary
+
+The bootstrap emits a synthetic `StateChanged` event internally (not from
+a command) to drive the initial UI render. No command runs automatically —
+the user chooses their first action from the panel.
+
 ### Action Panel Derivation
 
 The lifecycle state machine defines valid transitions. The action
@@ -237,10 +297,27 @@ panel maps state to available actions:
 
 | State | Available actions |
 |-------|-------------------|
-| `main` (no work) | start, what-next, status, resume (if stack) |
-| `scaffolded` / `active` | brief, next (if queue), pause, end, session, status |
+| `main` (no work) | start, quick-fix, what-next, status, resume (if stack) |
+| `scaffolded` / `active` | continue, brief, next (if queue), pause, end, session, status |
+| `transitioning` | _(no user actions — progress indicator while context refreshes; auto-resolves to `active`)_ |
 | `paused` (on main) | resume, start, what-next, status |
-| `closing:*` | remaining close steps, status |
+| `closing:review` | abort, status |
+| `closing:verified` | abort, status |
+| `closing:promoted` | status _(no abort — artifacts already promoted)_ |
+| `closing:pushed` | status _(no abort — branch pushed)_ |
+| `closing:merged` | status _(no abort — content merged)_ |
+| `closing:stamped` | status _(cleanup only — auto-completes)_ |
+
+The `end` command runs the full closing sequence automatically —
+individual `closing:*` sub-states are not user-driven. The action
+panel shows the current close step as a progress indicator. `abort`
+is available only in `closing:review` and `closing:verified` (before
+artifacts are promoted), matching the lifecycle's `abort_close` transitions.
+
+Transient states (`scaffolded`, `transitioning`) auto-resolve via
+lifecycle events (`auto_setup`, `auto_refresh`). The TUI shows a
+progress indicator during these states. `scaffolded` appears
+momentarily during `start` before auto-transitioning to `active`.
 
 ### Input Modals
 
@@ -300,12 +377,20 @@ class SuspendingProvider:
         self._active = False
 ```
 
+After `start()` returns, the command layer must re-detect state before
+emitting `SessionEnded` + `StateChanged`. The CLI session may have
+advanced the plan, closed the branch, or changed lifecycle state.
+Re-detection sequence: re-read `.meta`, call `work_state.detect()`,
+derive new available actions. The resulting `StateChanged` reflects
+the post-session state.
+
 Future implementations:
 - **AutomatedProvider** — drives a third-party CLI via I/O (reading
   output, submitting prompts programmatically)
 - **EmbeddedProvider** — native conversation panel inside the TUI
 
-Configuration via environment or config file:
+Configuration via environment or config file (precedence: env > config
+file > default):
 ```
 SOREDIUM_SESSION_CLI=claude          # default
 SOREDIUM_SESSION_CLI=aider
@@ -367,7 +452,7 @@ def land_branch(project: Path, branch: str,
 | `project/work_state.py` | `detect()` | Already importable — no change |
 | `project/work_health.py` | `run_checks()` | Already importable — no change |
 | `project/topology.py` | `resolve()` returns `Topology` | Already importable — no change |
-| `project/stack.py` | Stack operations | Already importable — no change |
+| `project/stack.py` | `cmd_*()` via sys.argv, prints KEY=value | Expose `read_entries(path) -> list[StackEntry]`, `push_entry(path, entry) -> int`, `pop_entry(path, branch) -> tuple[bool, int]` — pure data functions without stdout |
 | `work-start/scaffold.py` | `main()` via sys.argv | `scaffold(workspace, issue, branch, covers) -> ScaffoldResult` |
 | `work-start/branch_create.py` | `main()` via sys.argv | `create(project, workspace, branch, issues) -> CreateResult` |
 | `work-end/work_end_execute.py` | `main()` via sys.argv | `promote(opts) -> PromoteResult`, `rebase(opts) -> RebaseResult`, `land(opts) -> LandResult` |
@@ -386,16 +471,21 @@ def land_branch(project: Path, branch: str,
 
 | Command | Script calls | Events emitted |
 |---------|-------------|----------------|
-| `brief` | `ctx.resolve()`, `work_health.run_checks()` | `BriefReady`, `StateChanged` |
-| `start #N [#M]` | `branch_create.create()`, `scaffold.scaffold()`, `plan_manager.create()` | `StepProgress` × N, `BranchCreated`, `StateChanged` |
+| `brief` | `ctx.resolve()`, `work_health.run_checks()` | `BriefReady` |
+| `continue` | `ctx.resolve()`, `work_health.run_checks()`, HANDOFF.md parse, `plan_manager.detect()` | `ContinueReady`, `StateChanged` |
+| `start #N [#M]` | `branch_create.create_branches()`, `scaffold.scaffold()`, `plan_manager.create_main_plan()` | `StepProgress` × N, `BranchCreated`, `StateChanged` |
 | `next` | `plan_manager.advance()`, `lifecycle.transition()` | `PlanAdvanced`, `StateChanged` |
 | `end` | `close_artifacts.close()`, `land_branch.rebase()`, `land_branch.push()`, `land_branch.stamp()`, `branch_cleanup.cleanup()` | `StepProgress` × N, `WorkEnded`, `StateChanged` |
-| `pause` | `pause_exec.commit_wip()`, `stack.push()` | `WipCommitted`, `Paused`, `StateChanged` |
-| `resume` | `stack.pop()`, `resume_exec.checkout_branches()`, `resume_exec.rebase()` | `Resumed`, `StateChanged` |
+| `pause` | `pause_exec.commit_wip()`, `pause_exec.push_and_stack()` | `WipCommitted`, `Paused`, `StateChanged` |
+| `resume` | `stack.pop()`, `resume_exec.checkout_branches()`, `resume_exec.rebase()`, `resume_exec.reset_wip()` | `Resumed`, `StateChanged` |
 | `quick-fix` | `quick_fix.run()` | `QuickFixLanded`, `StateChanged` |
 | `what-next` | `enrichment.what_next()` | `WhatNextReady` |
 | `status` | `ctx.resolve()` | `StatusReady` |
 | `session` | `SessionProvider.start()` | `SessionStarted`, `SessionEnded`, `StateChanged` |
+
+Any command may emit `CommandFailed` instead of its success events if
+an error occurs. For multi-step commands (`end`, `start`), partial
+`StepProgress` events may precede the `CommandFailed`.
 
 ## What the TUI Skips (LLM-only)
 
@@ -415,6 +505,27 @@ push, stamp, close issues. Commits stay as-is unless the user
 pre-squashes. These LLM operations can be invoked via the session
 SPI when the user selects `session`.
 
+## Slot-Specific Workflows
+
+The lifecycle state machine supports slot creation via
+`('idle', 'slot_create')`. Slot-specific features (epic management,
+batch cycling) operate within the same lifecycle states but add
+context:
+
+- The TUI's `start` command detects slot context via `topology.resolve()`.
+  In a slot workspace, `start` fires `slot_create` instead of `work`;
+  the lifecycle transition table handles the distinction.
+- The header shows slot context when `in_slot` is true: queue position
+  includes batch info from `work_state.detect()` (e.g., "Queue: 1/3
+  Batch: 2 of 4").
+- Epic/plan detection in `work_state.py` already resolves
+  `epic_batch`, `epic_active_issue`, `plan_batch` — the TUI header
+  and `BriefReady` event surface these fields.
+- `slot_manager.py` orchestration (68KB) requires library API
+  extraction as noted in the refactoring table. The TUI command layer
+  calls the extracted functions; detailed slot management TUI (batch
+  cycling, epic dashboard) is a follow-on issue.
+
 ## Stateless CLI Mode
 
 The same command layer supports stateless invocation for scripting
@@ -431,6 +542,12 @@ soredium what-next
 Entry point: `python -m tui.python start 42` detects non-interactive
 mode (no TTY or explicit `--cli` flag), runs the command, prints
 JSON events to stdout, exits.
+
+The `soredium` command is installed via `pyproject.toml`:
+```toml
+[project.scripts]
+soredium = "tui.python.__main__:main"
+```
 
 ## Testing Strategy
 
@@ -462,6 +579,8 @@ JSON events to stdout, exits.
 
 ## Configuration
 
+Precedence: environment variable > config file > default.
+
 ```
 # Environment variables
 SOREDIUM_SESSION_CLI=claude       # CLI to launch for LLM sessions
@@ -476,6 +595,8 @@ cli = "claude"
 project = "/path/to/project"     # Optional override
 workspace = "/path/to/workspace" # Optional override
 ```
+
+Defaults: `cli = "claude"`, paths auto-detected via `topology.resolve()`.
 
 ## Decisions Reference
 

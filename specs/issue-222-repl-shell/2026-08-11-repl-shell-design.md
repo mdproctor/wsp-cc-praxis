@@ -124,44 +124,50 @@ layer auto-fires through them before emitting `StateChanged`.
 
 ```
 soredium/
+  commands/                  # Portable command layer — TUI and CLI both import this
+    __init__.py              # Command registry + refresh()
+    events.py                # All typed event dataclasses
+    start.py                 # start #N [#M ...]
+    next.py                  # advance plan
+    end.py                   # mechanical close
+    pause.py                 # WIP commit + stack push
+    resume.py                # stack pop + rebase
+    continue_.py             # keep working on current branch
+    brief.py                 # context summary
+    quick_fix.py             # ephemeral branch landing
+    what_next.py             # enrichment recommendations
+    status.py                # full context dump
   tui/
     python/
-      __main__.py          # Entry point: python -m tui.python
-      app.py               # Textual App subclass
+      __main__.py            # Entry point: python -m tui.python (TUI mode)
+      app.py                 # Textual App subclass
       ui/
-        header.py          # Branch, state, queue position
-        action_panel.py    # Context-sensitive action list
-        content.py         # Scrollable output area
-        footer.py          # Keybinding hints
-        modals.py          # Input overlays (issue numbers, messages)
-      commands/
-        __init__.py        # Command registry
-        start.py           # start #N [#M ...]
-        next.py            # advance plan
-        end.py             # mechanical close
-        pause.py           # WIP commit + stack push
-        resume.py          # stack pop + rebase
-        continue_.py       # keep working on current branch
-        brief.py           # context summary
-        quick_fix.py       # ephemeral branch landing
-        what_next.py       # enrichment recommendations
-        status.py          # full context dump
-      events.py            # All typed event dataclasses
+        header.py            # Branch, state, queue position
+        action_panel.py      # Context-sensitive action list
+        content.py           # Scrollable output area
+        footer.py            # Keybinding hints
+        modals.py            # Input overlays (issue numbers, messages)
       session/
-        __init__.py        # SessionProvider protocol
-        suspend.py         # Default: suspend TUI, run CLI
+        __init__.py          # SessionProvider protocol
+        suspend.py           # Default: suspend TUI, run CLI
       styles/
-        app.tcss           # Textual CSS
-    java/                  # Follow-on issue (empty for now)
-  project/                 # Existing — refactored for import
-  work-start/              # Existing — refactored for import
-  work-end/                # Existing — refactored for import
-  work-slot/               # Existing — refactored for import
-  work-pause/              # Existing — refactored for import
-  work-resume/             # Existing — refactored for import
-  quick-fix/               # Existing — refactored for import
-  scripts/                 # Existing — enrichment.py etc.
+        app.tcss             # Textual CSS
+    java/                    # Follow-on issue (empty for now)
+  cli/
+    __main__.py              # Entry point: python -m cli (stateless CLI mode)
+  project/                   # Existing — refactored for import
+  work-start/                # Existing — refactored for import
+  work-end/                  # Existing — refactored for import
+  work-slot/                 # Existing — refactored for import
+  work-pause/                # Existing — refactored for import
+  work-resume/               # Existing — refactored for import
+  quick-fix/                 # Existing — refactored for import
+  scripts/                   # Existing — enrichment.py etc.
 ```
+
+The command layer is physically separate from the TUI — both `tui/python/`
+and `cli/` import from `commands/`. The Java port reimplements `commands/`
+natively; neither Python package ships to Java.
 
 ## Event Model
 
@@ -524,6 +530,21 @@ def land_branch(project: Path, branch: str,
     ...
 ```
 
+**`decide_fn` bridging.** This is a deliberate callback-in-event-model
+hybrid. Scripts call `decide_fn` synchronously; the TUI and CLI
+provide different implementations:
+
+- **TUI mode:** Commands run in Textual `Worker` threads. The
+  command layer provides a `decide_fn` that calls
+  `asyncio.run_coroutine_threadsafe()` to show a modal dialog on
+  the Textual event loop, then blocks the worker thread until the
+  user responds. The script is unaware of the async bridge.
+- **CLI mode (interactive):** `decide_fn` prints the prompt to
+  stderr and reads y/n from stdin.
+- **CLI mode (non-interactive / `--yes`):** `decide_fn` is `None`.
+  Scripts treat `None` as auto-approve (proceed without
+  confirmation). The `--no-confirm` flag explicitly sets this.
+
 ### Scripts to Refactor
 
 | Script | Current API | Library API needed |
@@ -567,6 +588,17 @@ def land_branch(project: Path, branch: str,
 Any command may emit `CommandFailed` instead of its success events if
 an error occurs. For multi-step commands (`end`, `start`), partial
 `StepProgress` events may precede the `CommandFailed`.
+
+### Worklog Integration
+
+The command layer centralizes worklog emission. When the command layer
+calls `lifecycle.commit_transition()`, the lifecycle's built-in
+`_emit_to_worklog()` fires automatically (it's part of the commit
+protocol). Script library functions (the refactored APIs) do NOT emit
+worklog events — only their CLI entry points do, for backward
+compatibility with Claude Code skills. This avoids double-emission
+when the command layer calls library functions that the lifecycle
+also records.
 
 ## Error Recovery
 
@@ -665,15 +697,43 @@ soredium end
 soredium what-next
 ```
 
-Entry point: `python -m tui.python start 42` detects non-interactive
-mode (no TTY or explicit `--cli` flag), runs the command, prints
-JSON events to stdout, exits.
+Entry point: `python -m cli start 42` runs the command, prints
+JSON events to stdout, exits. The TUI entry point (`python -m tui.python`)
+is always interactive.
 
 The `soredium` command is installed via `pyproject.toml`:
 ```toml
 [project.scripts]
-soredium = "tui.python.__main__:main"
+soredium = "cli.__main__:main"
+soredium-tui = "tui.python.__main__:main"
 ```
+
+### JSON Event Format
+
+Each event is a JSON object on a single line (JSON Lines), with a `type`
+field matching the dataclass name:
+
+```json
+{"type": "StepProgress", "command": "end", "step": "promoted", "detail": null}
+{"type": "StepProgress", "command": "end", "step": "rebased", "detail": null}
+{"type": "WorkEnded", "branch": "issue-42", "issues_closed": [42]}
+{"type": "StateChanged", "old_state": "closing:stamped", "new_state": "idle", "available_actions": ["start", "what-next", "status"], "suggested_action": "start"}
+```
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Command completed successfully |
+| 1 | Command failed (a `CommandFailed` event is also emitted to stdout) |
+| 2 | Invalid arguments or unknown command |
+
+### Confirmations
+
+In interactive CLI mode (TTY attached), `decide_fn` prompts on stderr
+and reads from stdin. With `--yes` or no TTY, `decide_fn` is `None`
+(scripts auto-proceed). Error events are always emitted to stdout
+as JSON — stderr is reserved for prompts and diagnostics.
 
 ## Concurrency
 

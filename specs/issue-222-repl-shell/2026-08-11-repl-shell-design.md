@@ -19,19 +19,18 @@ event-driven command layer, panel-based TUI, pluggable session provider.
 
 ## Architecture
 
-Four layers. The command layer is the portable core — everything above
-and below it changes between Python and Java.
+Three layers. The command layer is the portable core — everything above
+and below it changes between Python and Java. The Session SPI is a
+TUI-owned adapter, not a separate architectural layer.
 
 ```
 ┌─────────────────────────────────┐
 │  TUI (Textual / Tamboui)        │  tui/python/  tui/java/ (follow-on)
 │  Panels, action list, events    │
-├─────────────────────────────────┤
-│  Session SPI                    │  Suspend / Automated / Embedded
-│  Pluggable LLM CLI handoff      │
+│  SessionProvider (adapter)      │  Suspend / Automated / Embedded
 ├─────────────────────────────────┤
 │  Command Layer (event-driven)   │  Portable orchestration
-│  start(), next(), end(), etc.   │
+│  start(), next(), end(), etc.   │  Lifecycle state machine executor
 ├─────────────────────────────────┤
 │  Script Layer (existing)        │  project/, work-start/, work-end/,
 │  Refactored for library import  │  work-slot/, work-pause/, etc.
@@ -40,19 +39,86 @@ and below it changes between Python and Java.
 
 **TUI** — Textual widget tree (Python) or Tamboui toolkit (Java).
 Subscribes to events from the command layer. Renders panels. Handles
-keyboard/mouse input. Never calls scripts directly.
+keyboard/mouse input. Never calls scripts directly. Owns the
+SessionProvider adapter for LLM CLI handoff — suspends, launches the
+configured CLI, resumes, then asks the command layer to refresh state.
 
-**Session SPI** — pluggable interface for LLM CLI handoff. The TUI calls
-the SPI when the user wants to start a reasoning session. Default
-implementation: suspend TUI, launch configured CLI, resume on exit.
-
-**Command Layer** — orchestrates script calls, emits typed events.
-Language-agnostic concepts (BranchCreated, PlanAdvanced, WorkEnded).
-This is what gets ported to Java.
+**Command Layer** — orchestrates script calls by executing lifecycle
+transitions, emits typed events. Language-agnostic concepts
+(BranchCreated, PlanAdvanced, WorkEnded). This is what gets ported to
+Java. The command layer is the effect executor for the lifecycle state
+machine (see § Lifecycle Integration below).
 
 **Script Layer** — existing Python scripts refactored with library APIs.
 CLI entry points preserved for backward compatibility with Claude Code
 skills. Java port reimplements this layer natively.
+
+### Lifecycle Integration
+
+The command layer is the effect executor for `lifecycle.py`'s state
+machine. The lifecycle TRANSITION_TABLE is the single source of truth
+for valid transitions and their effects. Every state-changing command
+follows the three-phase commit protocol:
+
+1. `lifecycle.transition(meta_path, event)` — validate, return `TransitionResult`
+2. Execute effects listed in `TransitionResult.effects` by calling script library functions
+3. `lifecycle.commit_transition(meta_path, result)` — verify state unchanged, write atomically
+4. Execute `TransitionResult.post_commit_effects` (branch switches, stack operations)
+
+The command layer maps abstract effect names from the transition table
+to concrete script library calls:
+
+| Effect | Script call |
+|--------|------------|
+| `create_branch` | `branch_create.create()` |
+| `write_meta` | `scaffold.scaffold()` |
+| `build_plan` | `plan_manager.create()` |
+| `advance_issue` | `plan_manager.advance()` |
+| `update_meta` | `scaffold.update_meta()` |
+| `wip_commit` | `pause_exec.commit_wip()` |
+| `push_stack` | `stack.push()` |
+| `pop_stack` | `stack.pop()` |
+| `reset_wip` | `resume_exec.reset_wip()` |
+| `write_promotion_stamp` | `close_artifacts.close()` |
+| `write_stamp` | `land_branch.stamp()` |
+| `write_plan_closed` | `plan_manager.close()` |
+| `return_to_main` | `branch_cleanup.cleanup()` |
+
+**Multi-step commands.** The `end` command fires sequential lifecycle
+transitions through the closing substates: `work_end` →
+`review_pass` → `promote_pass` → `push_pass` → `merge_pass` →
+`stamp_pass` → `cleanup_pass`. Each transition follows the three-phase
+protocol. `StepProgress` events are emitted between transitions.
+The TUI's mechanical close skips LLM-only effects (`pre_close_sweep`,
+`record_review`) — these transitions still fire to advance state, but
+the effects are no-ops.
+
+**Transient states.** `scaffolded` and `transitioning` are auto-fired
+by the command layer — the user never sees these states. When `start`
+reaches `scaffolded`, the command layer immediately fires `auto_setup`
+to reach `active`. When `next` reaches `transitioning`, the command
+layer immediately fires `auto_refresh`. Both auto-transitions emit
+`StepProgress` events for their effects.
+
+### Action Derivation
+
+The command layer owns the mapping from lifecycle state to available
+actions. After every state change, it computes `available_actions` and
+`suggested_action` based on the lifecycle TRANSITION_TABLE and includes
+them in the `StateChanged` event. The TUI renders whatever the command
+layer provides — it has no independent derivation logic.
+
+| State | Available actions | Suggested |
+|-------|-------------------|-----------|
+| `idle` (no stack) | start, what-next, status | start |
+| `idle` (stack > 0) | start, resume, what-next, status | resume |
+| `active` (has queue) | brief, next, pause, end, session, status | next |
+| `active` (no queue) | brief, pause, end, session, status | end |
+| `paused` | resume, start, what-next, status | resume |
+| `closing:*` | (continue close sequence), status | (next close step) |
+
+`scaffolded` and `transitioning` are never surfaced — the command
+layer auto-fires through them before emitting `StateChanged`.
 
 ## Directory Structure
 
@@ -208,7 +274,14 @@ class CommandFailed:
 class StepProgress:
     command: str                # "end", "start"
     step: str                   # "promoted", "rebased", "pushed", "stamped"
-    success: bool
+    detail: str | None
+
+@dataclass
+class StepFailed:
+    command: str
+    step: str
+    error: str
+    recoverable: bool           # True if retry/resume is possible
     detail: str | None
 
 # Session lifecycle

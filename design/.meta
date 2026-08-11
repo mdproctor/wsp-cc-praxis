@@ -1,0 +1,10 @@
+branch: issue-216-work-end-tree-path-fix
+state: scaffolded
+project-sha: 836383843702a7bda980f301fd943379362c654e
+date: 2026-08-11
+issue: 216
+issue-repo: Hortora/soredium
+covers: 216,212,199
+flyway-next-v: none
+design-repo: workspace
+design-section-hashes: 

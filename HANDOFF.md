@@ -1,32 +1,17 @@
-# HANDOFF — soredium
+# HANDOFF — soredium slot/7
 
 ## Last Session
 
-Design and planning for ISX isolation for slots (#223). Brainstormed,
-captured 10 decisions, wrote design spec with 2 review rounds, wrote
-7-task implementation plan with 1 review round. Work moved to Slot 8
-for isolated implementation.
-
-Also rebased local incus-spawn fork to upstream v0.2.21, upgraded
-Homebrew install, fixed `git-remote-isx` on PATH.
+Designed and began implementing the soredium TUI (#222) — a Textual-based terminal application exposing the work/slot lifecycle without an LLM. Brainstormed through 12 design decisions, ran a 4-dimension adversarial design review (68 issues, 0 unresolved), wrote a 7-task implementation plan, and completed Tasks 1-3: events module (21 event types), script refactoring (15 scripts with typed library APIs), and the full command layer (registry, action derivation, 10 command modules). 72 new tests, all passing, no regressions against the 151 existing lifecycle tests.
 
 ## Immediate Next Step
 
-**Slot 8 created for #223.** Open a CLI in
-`/Users/mdproctor/claude/hortora/slots/8/soredium` and run `/work`.
-work-start detects the scaffold and runs the resume path. The slot
-has the full spec and plan — jump to `executing-plans`, Task 1.
-
-## What's Next
-
-| Item | Scale / Complexity | Notes |
-|------|--------------------|-------|
-| #223 ISX isolation for slots | M / Med | Slot 8, plan ready, 7 tasks |
+Run `work continue` on branch `issue-222-repl-shell`. Resume at Task 4 of the implementation plan (`plans/2026-08-11-soredium-tui.md`). Task 4 builds the Textual Project View — app shell, header, action panel, content area, footer, CSS.
 
 ## References
 
-- Slot: `/Users/mdproctor/claude/hortora/slots/8/`
-- Spec: `specs/issue-223-isx-isolation-for-slots/2026-08-12-isx-isolation-for-slots-design.md`
-- Decisions: `specs/issue-223-isx-isolation-for-slots/decisions.md`
-- Plan: `plans/2026-08-12-isx-isolation-for-slots.md`
-- ISX fork sync branch: `mdproctor/sync-extension` in `~/claude/incus-spawn`
+- Spec: `specs/issue-222-repl-shell/2026-08-11-repl-shell-design.md`
+- Decisions: `specs/issue-222-repl-shell/decisions.md` (D1–D12)
+- Plan: `plans/2026-08-11-soredium-tui.md` (Tasks 1-3 done, 4-7 pending)
+- Journal: `design/JOURNAL.md`
+- Blog: `blog/2026-08-11-mdp02-soredium-without-the-llm.md`

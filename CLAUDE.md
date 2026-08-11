@@ -19,14 +19,12 @@ Run `add-dir /Users/mdproctor/claude/hortora/soredium` before any other work.
 | adr | `adr/` |
 | write-content | `blog/` |
 
-**Spec path override:** The brainstorming skill defaults to `docs/superpowers/specs/` in the project repo. This project overrides that: specs promote to `docs/specs/` (not `docs/superpowers/specs/`). When writing a spec, use `docs/specs/YYYY-MM-DD-<topic>-design.md`.
-
 ## Structure
 
 - `HANDOFF.md` — session handover (single file, overwritten each session)
 - `IDEAS.md` — idea log (single file)
-- `specs/` — brainstorming / design specs (superpowers output)
-- `plans/` — implementation plans (superpowers output)
+- `specs/` — brainstorming / design specs
+- `plans/` — implementation plans
 - `snapshots/` — design snapshots with INDEX.md
 - `adr/` — architecture decision records with INDEX.md
 - `blog/` — project diary entries with INDEX.md
@@ -55,13 +53,11 @@ git -C /Users/mdproctor/claude/hortora/soredium add <file>     # project artifac
 |------------|-------------|-------|
 | adr        | project     | lands in `docs/adr/` — promoted at work end |
 | specs      | project     | lands in `docs/specs/` — promoted at work end |
-| blog       | workspace   | staged here; routed via publish-blog and blog-routing.yaml at epic close |
+| blog       | project     | lands in `docs/blog/` — promoted at work end |
 | plans      | workspace   | stay in workspace permanently |
 | design     | workspace   | work journal stays in workspace |
 | snapshots  | workspace   | stay in workspace permanently |
 | handover   | workspace   | |
-
-**Blog directory:** `~/claude/hortora/hortora.github.io/_posts/`
 
 ---
 
@@ -399,8 +395,6 @@ Some skills in this repository are **developer-only** — they require a cloned 
 
 ## Blog
 
-**Blog directory:** `docs/_posts/`
-
 Blog posts are Jekyll posts published at `hortora.github.io/`. Each post needs frontmatter: `layout: post`, `title`, `date`, `type`.
 
 ## Writing Style Guide — Mandatory for Blog Content
@@ -593,7 +587,7 @@ When you identify a problem and prepare a solution, STOP and consider:
 ## Workspace Model
 
 Skills write methodology artifacts to a companion workspace, not the project repo.
-Full design: `docs/superpowers/specs/2026-04-09-workspace-model-design.md`
+Full design: `docs/specs/2026-04-09-workspace-model-design.md`
 
 - **soredium workspace:** `~/claude/public/cc-praxis/` → GitHub: `mdproctor/wsp-cc-praxis`
 - Claude opens in the workspace; project loaded via `add-dir` in workspace CLAUDE.md

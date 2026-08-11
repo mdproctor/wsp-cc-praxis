@@ -110,10 +110,10 @@ layer provides — it has no independent derivation logic.
 
 | State | Available actions | Suggested |
 |-------|-------------------|-----------|
-| `idle` (no stack) | start, what-next, status | start |
-| `idle` (stack > 0) | start, resume, what-next, status | resume |
-| `active` (has queue) | brief, next, pause, end, session, status | next |
-| `active` (no queue) | brief, pause, end, session, status | end |
+| `idle` (no stack) | start, quick-fix, what-next, status | start |
+| `idle` (stack > 0) | start, quick-fix, resume, what-next, status | resume |
+| `active` (has queue) | continue, brief, next, pause, end, session, status | next |
+| `active` (no queue) | continue, brief, pause, end, session, status | end |
 | `paused` | resume, start, what-next, status | resume |
 | `closing:*` | (continue close sequence), status | (next close step) |
 

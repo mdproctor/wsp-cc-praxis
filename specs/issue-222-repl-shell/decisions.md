@@ -113,3 +113,15 @@
 **Depends on:** D9 (SPI defines the contract), D1 (Textual supports suspend natively; Tamboui needs small extension — author is accessible)
 **Exploration:** quick
 **Status:** captured
+
+## D11: Home screen — multi-repo/slot workspace manager
+
+**Choice:** Home view as the TUI's entry point, listing all repos and slots with state
+**Alternatives:**
+- Single-project only — user must cd to a repo and run soredium there; no cross-project navigation
+- CLI argument to select project — `soredium --project casehub/engine`; functional but not guided
+**Rationale:** The user works across multiple repos and slots. A home screen that discovers and lists them all — showing branch, lifecycle state, and slot assignment — lets you pick where to work without leaving the TUI. Enter a repo/slot → lifecycle view. Escape → back to home. This is the natural `soredium` entry point: run it, see everything, pick where to work.
+**Trade-offs:** Needs a discovery mechanism (configured paths or auto-scan of ~/claude/). Adds a navigation layer to the TUI (screen stack or view switching). The lifecycle view we've designed becomes one level deeper.
+**Depends on:** D7 (guided UX — home screen extends the action-panel pattern to repo/slot selection), D8 (panels — home screen is another panel layout)
+**Exploration:** quick
+**Status:** captured

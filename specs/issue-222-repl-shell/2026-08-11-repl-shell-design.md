@@ -107,6 +107,34 @@ transitions through the closing substates: `work_end` →
 `stamp_pass` → `cleanup_pass`. Each transition follows the three-phase
 protocol. `StepProgress` events are emitted between transitions.
 
+**Closing operation mapping.** The `end` command performs git operations
+between lifecycle transitions. The lifecycle state names track logical
+phases, not git operations — `push_pass` fires after the local
+ff-only merge (branch content "pushed" to local main), and
+`merge_pass` fires after the remote push (content "merged" into
+remote main):
+
+| Lifecycle transition | Command-layer operation | Script call |
+|---------------------|------------------------|-------------|
+| `work_end` → `closing:review` | _(no-op: pre_close_sweep)_ | — |
+| `review_pass` → `closing:verified` | _(no-op: record_review)_ | — |
+| `promote_pass` → `closing:promoted` | Promote artifacts | `close_artifacts.close()` |
+| _(between transitions)_ | Rebase onto base branch | `work_end_execute.rebase()` |
+| _(between transitions)_ | FF-only merge branch into local main | `work_end_execute.merge_to_main()` |
+| `push_pass` → `closing:pushed` | _(state marker — no effects)_ | — |
+| _(between transitions)_ | Push main to remote (3 retries) | `work_end_execute.push_to_remote()` |
+| `merge_pass` → `closing:merged` | Verify content on remote | `verify_promotion.verify()` |
+| `stamp_pass` → `closing:stamped` | Stamp branch | `land_branch.stamp()` |
+| _(between transitions)_ | Handle workspace branch | `work_end_execute.handle_workspace()` |
+| `cleanup_pass` → `idle` | Close plan, return to main | `plan_manager.close()`, `branch_cleanup.cleanup()` |
+
+The lifecycle state is the single source of truth for crash recovery
+during closing. If the TUI crashes mid-sequence, restart reads the
+lifecycle state and resumes from the corresponding transition.
+`.execute-progress` is used internally by `push_to_remote()` for
+retry tracking only — it does not duplicate the lifecycle's
+high-level progress.
+
 **Transient states.** `scaffolded` and `transitioning` are auto-fired
 by the command layer — the user never sees these states. When `start`
 reaches `scaffolded`, the command layer immediately fires `auto_setup`
@@ -372,10 +400,15 @@ What-next shows ranked recommendations.
 While a command is running, the action panel is disabled — items are
 visually dimmed and key/mouse input is rejected. The content panel
 shows a progress indicator (spinner + step-by-step output for
-multi-step commands). The footer switches to "Running... Esc cancel".
-When the command completes or fails, the action panel re-enables
-with the updated state. This prevents double-execution: pressing
-Enter twice on `end` cannot spawn concurrent close sequences.
+multi-step commands). The footer switches to "Running...".
+Commands are non-cancellable — operations are fast (git operations
+complete in seconds) and partial cancellation would leave state
+inconsistent. For the closing sequence, abort is available BEFORE
+running `end` (via the `abort` action in `closing:review` and
+`closing:verified`), but once `end` starts it runs to completion
+or failure. When the command completes or fails, the action panel
+re-enables with the updated state. This prevents double-execution:
+pressing Enter twice on `end` cannot spawn concurrent close sequences.
 
 ### Bootstrap Sequence
 
@@ -561,7 +594,7 @@ provide different implementations:
 | `project/stack.py` | `cmd_*()` via sys.argv, prints KEY=value | Expose `read_entries(path) -> list[StackEntry]`, `push_entry(path, entry) -> int`, `pop_entry(path, branch) -> tuple[bool, int]` — pure data functions without stdout |
 | `work-start/scaffold.py` | `main()` via sys.argv | `scaffold(workspace, issue, branch, covers) -> ScaffoldResult` |
 | `work-start/branch_create.py` | `main()` via sys.argv | `create(project, workspace, branch, issues) -> CreateResult` |
-| `work-end/work_end_execute.py` | `main()` via sys.argv | `promote(opts) -> PromoteResult`, `rebase(opts) -> RebaseResult`, `land(opts) -> LandResult` |
+| `work-end/work_end_execute.py` | `main()` via sys.argv | `promote(opts) -> PromoteResult`, `rebase(project, branch, base) -> RebaseResult`, `merge_to_main(project, branch, base) -> MergeResult`, `push_to_remote(project, base, max_retries=3) -> PushResult`, `handle_workspace(workspace, branch, base) -> WorkspaceResult` |
 | `work-end/close_artifacts.py` | subprocess call | `close(workspace, project, branch) -> CloseResult` |
 | `work-end/land_branch.py` | `main()` via sys.argv | `rebase(project, branch, base) -> RebaseResult`, `push(project, branch) -> PushResult`, `stamp(project, branch, sha) -> StampResult` |
 | `work-end/branch_cleanup.py` | `main()` via sys.argv | `cleanup(project, workspace, branch) -> CleanupResult` |
@@ -581,7 +614,7 @@ provide different implementations:
 | `continue` | `ctx.resolve()`, `work_health.run_checks()`, HANDOFF.md parse, `plan_manager.detect()` | `ContinueReady`, `StateChanged` |
 | `start #N [#M]` | `branch_create.create_branches()`, `scaffold.scaffold()`, `plan_manager.create_main_plan()` | `StepProgress` × N, `BranchCreated`, `StateChanged` |
 | `next` | `plan_manager.advance()`, `lifecycle.transition()` | `PlanAdvanced`, `StateChanged` |
-| `end` | `work_end_execute.promote()`, `work_end_execute.rebase()`, `work_end_execute.land()`, `branch_cleanup.cleanup()` | `StepProgress` × N, `WorkEnded`, `StateChanged` |
+| `end` | Sequential lifecycle transitions with: `close_artifacts.close()`, `work_end_execute.rebase()`, `work_end_execute.merge_to_main()`, `work_end_execute.push_to_remote()`, `land_branch.stamp()`, `work_end_execute.handle_workspace()`, `branch_cleanup.cleanup()` — see §Lifecycle Integration closing operation mapping | `StepProgress` × N, `WorkEnded`, `StateChanged` |
 | `pause` | `pause_exec.write_intent()`, `pause_exec.commit_wip()`, `pause_exec.push_and_stack()`, `pause_exec.clear_intent()` | `WipCommitted`, `Paused`, `StateChanged` |
 | `resume` | `resume_exec.write_intent()`, `stack.read_entries()`, `resume_exec.checkout_branches()`, `resume_exec.rebase()`, `resume_exec.reset_wip()`, `stack.pop_entry()`, `resume_exec.clear_intent()` | `Resumed`, `StateChanged` |
 | `quick-fix` | `quick_fix.run()` | `QuickFixLanded`, `StateChanged` |
@@ -611,14 +644,17 @@ with the existing crash-recovery mechanisms from the script layer.
 
 ### Progress Tracking (end)
 
-`work_end_execute.py` writes `.execute-progress` after each completed
-step. If the TUI crashes mid-sequence, restarting detects the progress
-file and the `end` command resumes from the last completed step. The
-`end` command reads progress on entry and skips completed steps —
-the user sees only the remaining steps in the content panel.
+The lifecycle state machine is the single source of truth for closing
+progress. Each step of the `end` command fires a lifecycle transition
+before performing the operation. If the TUI crashes mid-sequence, the
+lifecycle state records which transition was last committed. On
+restart, the `end` command reads the lifecycle state and resumes from
+the corresponding transition — completed steps are skipped.
 
-If `end` is re-invoked when the lifecycle is in a `closing:*` state,
-it resumes from the current closing state rather than starting over.
+`.execute-progress` is NOT used for high-level closing progress.
+It is retained internally by `push_to_remote()` only — to track
+push retry attempts within that single operation. This avoids dual
+progress tracking between lifecycle state and progress files.
 
 ### Intent Files (pause, resume)
 

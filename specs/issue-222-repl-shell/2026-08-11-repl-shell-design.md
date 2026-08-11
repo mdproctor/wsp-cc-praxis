@@ -348,8 +348,11 @@ Every state-changing command emits `StateChanged` as its final event.
 `StateChanged.available_actions` drives the action panel.
 `StateChanged.suggested_action` highlights the recommended next step.
 
-Informational commands (`brief`, `what-next`, `status`) do NOT emit
-`StateChanged` — they read state without changing it.
+Informational commands (`brief`, `continue`, `what-next`, `status`) do
+NOT emit `StateChanged` — they read state without changing it. The
+`continue` command fires `work_continue` as a precondition check
+(validates the branch is `active`) but does not call
+`commit_transition` — the lifecycle state is unchanged.
 
 Multi-step commands (end, start) emit `StepProgress` events as each
 step completes — the content panel updates in real time.
@@ -418,10 +421,15 @@ user input:
 1. Resolve topology — call `topology.resolve()` for project/workspace paths
 2. Detect work state — call `work_state.detect(topo)` for routing, plan, stack
 3. Read lifecycle state — call `lifecycle.read_state(meta_path)` (None → idle)
-4. Derive initial available actions from the state (same logic as `StateChanged`)
-5. Populate header (branch, state, queue position) from the detection results
-6. Populate action panel from available actions; highlight suggested action
-7. Content panel starts empty — displays a welcome line with branch/state summary
+4. Check recovery markers — scan for `.pausing`, `.resuming`, `.execute-progress`
+5. Derive initial available actions:
+   - If recovery markers present: override actions with recovery options
+     (`.pausing` → "Continue pause"; `.resuming` → "Continue resume";
+     `.execute-progress` → "Continue closing")
+   - Otherwise: derive from lifecycle state (same logic as `StateChanged`)
+6. Populate header (branch, state, queue position) from the detection results
+7. Populate action panel from available actions; highlight suggested action
+8. Content panel starts empty — displays a welcome line with branch/state summary
 
 The bootstrap emits a synthetic `StateChanged` event internally (not from
 a command) to drive the initial UI render. No command runs automatically —
@@ -582,6 +590,17 @@ provide different implementations:
   Scripts treat `None` as auto-approve (proceed without
   confirmation). The `--no-confirm` flag explicitly sets this.
 
+**`decide_fn` rejection.** When `decide_fn` returns `False`, the
+script returns an aborted result (e.g., `LandResult(aborted=True)`).
+The command layer emits `CommandFailed` with `error="user_declined"`
+and `recoverable=True`. Committed lifecycle transitions are NOT rolled
+back — `decide_fn` runs during effect execution, so the lifecycle
+state accurately reflects progress so far. The user can retry (the
+closing sequence resumes from the current sub-state) or abort if in
+`closing:review` / `closing:verified`. This is distinct from Esc
+cancellation (blocked during execution) — `decide_fn` is a planned
+decision point, not an escape hatch.
+
 ### Scripts to Refactor
 
 | Script | Current API | Library API needed |
@@ -594,7 +613,7 @@ provide different implementations:
 | `project/stack.py` | `cmd_*()` via sys.argv, prints KEY=value | Expose `read_entries(path) -> list[StackEntry]`, `push_entry(path, entry) -> int`, `pop_entry(path, branch) -> tuple[bool, int]` — pure data functions without stdout |
 | `work-start/scaffold.py` | `main()` via sys.argv | `scaffold(workspace, issue, branch, covers) -> ScaffoldResult` |
 | `work-start/branch_create.py` | `main()` via sys.argv | `create(project, workspace, branch, issues) -> CreateResult` |
-| `work-end/work_end_execute.py` | `main()` via sys.argv | `promote(opts) -> PromoteResult`, `rebase(project, branch, base) -> RebaseResult`, `merge_to_main(project, branch, base) -> MergeResult`, `push_to_remote(project, base, max_retries=3) -> PushResult`, `handle_workspace(workspace, branch, base) -> WorkspaceResult` |
+| `work-end/work_end_execute.py` | `cmd_promote()`, `cmd_rebase()`, `cmd_land()` via subcommands | Decompose `cmd_land`: `rebase(project, branch, base) -> RebaseResult`, `merge_to_main(project, branch, base) -> MergeResult`, `push_to_remote(project, base, max_retries=3) -> PushResult`, `handle_workspace(workspace, branch, base) -> WorkspaceResult`. Promotion handled by `close_artifacts.close()` (listed separately). |
 | `work-end/close_artifacts.py` | subprocess call | `close(workspace, project, branch) -> CloseResult` |
 | `work-end/land_branch.py` | `main()` via sys.argv | `rebase(project, branch, base) -> RebaseResult`, `push(project, branch) -> PushResult`, `stamp(project, branch, sha) -> StampResult` |
 | `work-end/branch_cleanup.py` | `main()` via sys.argv | `cleanup(project, workspace, branch) -> CleanupResult` |
@@ -611,7 +630,7 @@ provide different implementations:
 | Command | Script calls | Events emitted |
 |---------|-------------|----------------|
 | `brief` | `ctx.resolve()`, `work_health.run_checks()` | `BriefReady` |
-| `continue` | `ctx.resolve()`, `work_health.run_checks()`, HANDOFF.md parse, `plan_manager.detect()` | `ContinueReady`, `StateChanged` |
+| `continue` | `ctx.resolve()`, `work_health.run_checks()`, HANDOFF.md parse, `plan_manager.detect()` | `ContinueReady` |
 | `start #N [#M]` | `branch_create.create_branches()`, `scaffold.scaffold()`, `plan_manager.create_main_plan()` | `StepProgress` × N, `BranchCreated`, `StateChanged` |
 | `next` | `plan_manager.advance()`, `lifecycle.transition()` | `PlanAdvanced`, `StateChanged` |
 | `end` | Sequential lifecycle transitions with: `close_artifacts.close()`, `work_end_execute.rebase()`, `work_end_execute.merge_to_main()`, `work_end_execute.push_to_remote()`, `land_branch.stamp()`, `work_end_execute.handle_workspace()`, `branch_cleanup.cleanup()` — see §Lifecycle Integration closing operation mapping | `StepProgress` × N, `WorkEnded`, `StateChanged` |
@@ -620,6 +639,7 @@ provide different implementations:
 | `quick-fix` | `quick_fix.run()` | `QuickFixLanded`, `StateChanged` |
 | `what-next` | `enrichment.what_next()` | `WhatNextReady` |
 | `status` | `ctx.resolve()` | `StatusReady` |
+| `abort` | `close_artifacts.clear_markers()` | `StateChanged` |
 | `session` _(TUI action)_ | TUI suspends → `SessionProvider.start()` → TUI resumes → command layer `refresh()` | `StateChanged` |
 
 Any command may emit `CommandFailed` instead of its success events if
@@ -637,10 +657,43 @@ compatibility with Claude Code skills. This avoids double-emission
 when the command layer calls library functions that the lifecycle
 also records.
 
+`_emit_to_worklog()` is best-effort — failures are logged as warnings
+but do not block lifecycle transitions. The `what-next` command depends
+on worklog data indirectly: its primary inputs are the GitHub issue
+cache (refreshed via `gh issue list`) and enrichment metadata
+(strategic_role, readiness, decay). Worklog data feeds trajectory notes
+and work-item state tracking, which affect recommendation scoring but
+are not the sole input. A missed worklog emission degrades score quality
+for affected issues but does not produce incorrect recommendations.
+
 ## Error Recovery
 
-Multi-step commands (`end`, `start`, `pause`, `resume`) integrate
-with the existing crash-recovery mechanisms from the script layer.
+Two recovery mechanisms operate at different scopes, one for
+multi-transition sequences and one for intra-transition sub-steps:
+
+1. **Lifecycle sub-states** (closing) — the closing sequence uses
+   sub-states (`closing:review` through `closing:stamped`) as
+   durable progress markers. Each `end` step fires a lifecycle
+   transition before performing its operation. If the process
+   crashes, the lifecycle state records the last committed
+   transition; restart resumes from there.
+
+2. **Intent files** (pause, resume) — `pause` and `resume` each
+   execute multiple sub-operations within a single lifecycle
+   transition. Intent files (`.pausing`, `.resuming`) track
+   sub-step progress. If the process crashes mid-pause, the
+   intent file records which sub-steps completed.
+
+These mechanisms are complementary, not competing. Lifecycle sub-states
+track progress ACROSS transitions (closing has 7). Intent files track
+progress WITHIN a single transition (pause has 4 sub-steps within
+`active → paused`). They never overlap in scope.
+
+**Precedence on startup:** intent file presence takes priority over
+lifecycle state for action derivation. If `.pausing` exists, the
+action panel shows "Continue pause" regardless of whether the lifecycle
+reads `active` (crash before commit) or `paused` (crash after commit
+but before post-commit effects completed).
 
 ### Progress Tracking (end)
 
@@ -807,6 +860,16 @@ block each other. The `ConcurrentModification` exception in
 processes acquire the lock sequentially, the second detects that the
 state changed and raises rather than silently overwriting.
 
+**Intent file guards.** Before executing a state-changing command, the
+command layer checks for active intent files. If `.pausing` exists,
+`resume` is rejected ("Pause in progress"). If `.resuming` exists,
+`pause` is rejected. If `.execute-progress` exists, only `status` and
+closing continuation are allowed. This prevents a concurrent CLI
+invocation from starting a conflicting operation while the TUI or
+another CLI is mid-operation. Intent files are removed on successful
+completion; their presence always signals an in-progress or crashed
+operation.
+
 ## Testing Strategy
 
 - **Command layer** — unit tests with mocked script functions.
@@ -866,7 +929,7 @@ Defaults: `cli = "claude"`, paths auto-detected via `topology.resolve()`.
 
 ## Decisions Reference
 
-See [decisions.md](decisions.md) for the full decision log (D1–D10).
+See [decisions.md](decisions.md) for the full decision log (D1–D12).
 
 Key decisions:
 - **D1:** Textual from the start (maps to Tamboui)
@@ -878,3 +941,7 @@ Key decisions:
 - **D8:** Persistent panels over scrolling
 - **D9:** Pluggable SessionProvider SPI (CLI-agnostic)
 - **D10:** Suspend/resume as default, automated/embedded as future
+
+Follow-on scope (not in this issue):
+- **D11:** Home screen as multi-repo/slot workspace manager
+- **D12:** Multi-session management via tmux

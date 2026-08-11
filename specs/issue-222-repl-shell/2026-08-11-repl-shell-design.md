@@ -65,33 +65,47 @@ follows the three-phase commit protocol:
 3. `lifecycle.commit_transition(meta_path, result)` — verify state unchanged, write atomically
 4. Execute `TransitionResult.post_commit_effects` (branch switches, stack operations)
 
-The command layer maps abstract effect names from the transition table
-to concrete script library calls:
+The command layer maps every abstract effect name from the transition
+table to a concrete action. This table is exhaustive — every effect
+in `TRANSITION_TABLE` appears here. Effects marked "no-op (LLM-only)"
+are context-loading or narrative operations that require an LLM
+session; the command layer fires the transition to advance state but
+skips execution of these effects.
 
-| Effect | Script call |
-|--------|------------|
-| `create_branch` | `branch_create.create_branches()` |
-| `write_meta` | `scaffold.scaffold()` |
-| `build_plan` | `plan_manager.create_main_plan()` |
-| `advance_issue` | `plan_manager.advance()` |
-| `update_meta` | `scaffold.update_meta()` |
-| `wip_commit` | `pause_exec.commit_wip()` |
-| `push_stack` | `stack.push()` |
-| `pop_stack` | `stack.pop()` |
-| `reset_wip` | `resume_exec.reset_wip()` |
-| `write_promotion_stamp` | `close_artifacts.close()` |
-| `write_stamp` | `land_branch.stamp()` |
-| `write_plan_closed` | `plan_manager.close()` |
-| `return_to_main` | `branch_cleanup.cleanup()` |
+| Effect | Phase | Script call |
+|--------|-------|------------|
+| `create_branch` | effect | `branch_create.create_branches()` |
+| `create_slot` | effect | `slot_manager.create_slot()` |
+| `write_meta` | effect | `scaffold.scaffold()` |
+| `build_plan` | effect | `plan_manager.create_main_plan()` |
+| `garden_search` | effect | no-op (LLM-only) |
+| `load_specs` | effect | no-op (LLM-only) |
+| `check_protocols` | effect | no-op (LLM-only) |
+| `check_intellij` | effect | no-op (LLM-only) |
+| `advance_issue` | effect | `plan_manager.advance()` |
+| `update_meta` | effect | `scaffold.update_meta()` |
+| `tick_github` | effect | `plan_manager.tick_github()` |
+| `wip_commit` | effect | `pause_exec.commit_wip()` |
+| `pop_stack` | effect | `stack.pop_entry()` |
+| `reset_wip` | effect | `resume_exec.reset_wip()` |
+| `context_resume` | effect | no-op (LLM-only) |
+| `pre_close_sweep` | effect | no-op (LLM-only) |
+| `record_review` | effect | no-op (LLM-only) |
+| `write_promotion_stamp` | effect | `close_artifacts.close()` |
+| `verify_content_landed` | effect | `land_branch.verify()` |
+| `write_stamp` | effect | `land_branch.stamp()` |
+| `write_plan_closed` | effect | `plan_manager.close()` |
+| `clear_closing_markers` | effect | `close_artifacts.clear_markers()` |
+| `switch_to_main` | post_commit | `git checkout main` (direct) |
+| `push_stack` | post_commit | `pause_exec.push_and_stack()` |
+| `return_to_main` | post_commit | `branch_cleanup.cleanup()` |
+| `write_handoff` | post_commit | no-op (LLM-only) |
 
 **Multi-step commands.** The `end` command fires sequential lifecycle
 transitions through the closing substates: `work_end` →
 `review_pass` → `promote_pass` → `push_pass` → `merge_pass` →
 `stamp_pass` → `cleanup_pass`. Each transition follows the three-phase
 protocol. `StepProgress` events are emitted between transitions.
-The TUI's mechanical close skips LLM-only effects (`pre_close_sweep`,
-`record_review`) — these transitions still fire to advance state, but
-the effects are no-ops.
 
 **Transient states.** `scaffolded` and `transitioning` are auto-fired
 by the command layer — the user never sees these states. When `start`
@@ -115,10 +129,18 @@ layer provides — it has no independent derivation logic.
 | `active` (has queue) | continue, brief, next, pause, end, session, status | next |
 | `active` (no queue) | continue, brief, pause, end, session, status | end |
 | `paused` | resume, start, what-next, status | resume |
-| `closing:*` | (continue close sequence), status | (next close step) |
+| `closing:review` | abort, status | abort |
+| `closing:verified` | abort, status | abort |
+| `closing:promoted` | status | _(auto-continues)_ |
+| `closing:pushed` | status | _(auto-continues)_ |
+| `closing:merged` | status | _(auto-continues)_ |
+| `closing:stamped` | status | _(auto-continues)_ |
 
 `scaffolded` and `transitioning` are never surfaced — the command
 layer auto-fires through them before emitting `StateChanged`.
+`abort` maps to the lifecycle's `abort_close` transition, available
+only in `closing:review` and `closing:verified` (before artifacts
+are promoted).
 
 ## Directory Structure
 
@@ -372,35 +394,18 @@ The bootstrap emits a synthetic `StateChanged` event internally (not from
 a command) to drive the initial UI render. No command runs automatically —
 the user chooses their first action from the panel.
 
-### Action Panel Derivation
+### Action Panel Rendering
 
-The lifecycle state machine defines valid transitions. The action
-panel maps state to available actions:
-
-| State | Available actions |
-|-------|-------------------|
-| `main` (no work) | start, quick-fix, what-next, status, resume (if stack) |
-| `scaffolded` | _(no user actions — progress indicator while context setup runs; auto-resolves to `active` via `auto_setup`)_ |
-| `active` | continue, brief, next (if queue), pause, end, session, status |
-| `transitioning` | _(no user actions — progress indicator while context refreshes; auto-resolves to `active`)_ |
-| `paused` (on main) | resume, start, what-next, status |
-| `closing:review` | abort, status |
-| `closing:verified` | abort, status |
-| `closing:promoted` | status _(no abort — artifacts already promoted)_ |
-| `closing:pushed` | status _(no abort — branch pushed)_ |
-| `closing:merged` | status _(no abort — content merged)_ |
-| `closing:stamped` | status _(cleanup only — auto-completes)_ |
+The action panel renders from `StateChanged.available_actions` — the
+authoritative mapping is in § Architecture > Action Derivation.
 
 The `end` command runs the full closing sequence automatically —
 individual `closing:*` sub-states are not user-driven. The action
-panel shows the current close step as a progress indicator. `abort`
-is available only in `closing:review` and `closing:verified` (before
-artifacts are promoted), matching the lifecycle's `abort_close` transitions.
+panel shows the current close step as a progress indicator.
 
 Transient states (`scaffolded`, `transitioning`) auto-resolve via
 lifecycle events (`auto_setup`, `auto_refresh`). The TUI shows a
-progress indicator during these states. `scaffolded` appears
-momentarily during `start` before auto-transitioning to `active`.
+progress indicator during these states.
 
 ### Input Modals
 

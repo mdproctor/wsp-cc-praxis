@@ -70,9 +70,9 @@ to concrete script library calls:
 
 | Effect | Script call |
 |--------|------------|
-| `create_branch` | `branch_create.create()` |
+| `create_branch` | `branch_create.create_branches()` |
 | `write_meta` | `scaffold.scaffold()` |
-| `build_plan` | `plan_manager.create()` |
+| `build_plan` | `plan_manager.create_main_plan()` |
 | `advance_issue` | `plan_manager.advance()` |
 | `update_meta` | `scaffold.update_meta()` |
 | `wip_commit` | `pause_exec.commit_wip()` |
@@ -187,12 +187,18 @@ class StateChanged:
 
 # Command results
 @dataclass
+class HealthCheck:
+    check: str                   # "meta_consistency", "pause_stack", etc.
+    status: str                  # "ok", "warn", "error", "fix"
+    detail: str | None           # Human-readable detail when status != ok
+
+@dataclass
 class BriefReady:
     issue: int | None
     branch: str
     state: str
     queue_position: str | None   # "1/3"
-    health: dict[str, str]
+    health: list[HealthCheck]
     is_epic: bool
     epic_batch: str | None       # "2 of 4"
     epic_active_issue: int | None
@@ -285,13 +291,6 @@ class StepProgress:
     step: str                   # "promoted", "rebased", "pushed", "stamped"
     detail: str | None
 
-@dataclass
-class StepFailed:
-    command: str
-    step: str
-    error: str
-    recoverable: bool           # True if retry/resume is possible
-    detail: str | None
 
 ```
 

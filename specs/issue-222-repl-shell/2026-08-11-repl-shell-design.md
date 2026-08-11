@@ -187,6 +187,9 @@ class BriefReady:
     state: str
     queue_position: str | None   # "1/3"
     health: dict[str, str]
+    is_epic: bool
+    epic_batch: str | None       # "2 of 4"
+    epic_active_issue: int | None
 
 @dataclass
 class BranchCreated:
@@ -284,15 +287,6 @@ class StepFailed:
     recoverable: bool           # True if retry/resume is possible
     detail: str | None
 
-# Session lifecycle
-@dataclass
-class SessionStarted:
-    provider: str
-    issue: int | None
-
-@dataclass
-class SessionEnded:
-    provider: str
 ```
 
 Every state-changing command emits `StateChanged` as its final event.
@@ -346,6 +340,16 @@ What-next shows ranked recommendations.
 
 **Footer** — keybinding hints. Context-sensitive.
 
+### Command Execution Guard
+
+While a command is running, the action panel is disabled — items are
+visually dimmed and key/mouse input is rejected. The content panel
+shows a progress indicator (spinner + step-by-step output for
+multi-step commands). The footer switches to "Running... Esc cancel".
+When the command completes or fails, the action panel re-enables
+with the updated state. This prevents double-execution: pressing
+Enter twice on `end` cannot spawn concurrent close sequences.
+
 ### Bootstrap Sequence
 
 On startup, the TUI runs a deterministic initialisation before accepting
@@ -371,7 +375,8 @@ panel maps state to available actions:
 | State | Available actions |
 |-------|-------------------|
 | `main` (no work) | start, quick-fix, what-next, status, resume (if stack) |
-| `scaffolded` / `active` | continue, brief, next (if queue), pause, end, session, status |
+| `scaffolded` | _(no user actions — progress indicator while context setup runs; auto-resolves to `active` via `auto_setup`)_ |
+| `active` | continue, brief, next (if queue), pause, end, session, status |
 | `transitioning` | _(no user actions — progress indicator while context refreshes; auto-resolves to `active`)_ |
 | `paused` (on main) | resume, start, what-next, status |
 | `closing:review` | abort, status |
@@ -418,9 +423,9 @@ class IssueContext:
     workspace_path: str | None
 
 class SessionProvider(Protocol):
-    def start(self, context: IssueContext) -> None: ...
+    async def start(self, context: IssueContext) -> None: ...
     def is_active(self) -> bool: ...
-    def stop(self) -> None: ...
+    async def stop(self) -> None: ...
 ```
 
 ### Default Implementation: Suspend
@@ -433,29 +438,32 @@ class SuspendingProvider:
         self.cli_command = cli_command
         self._active = False
 
-    def start(self, context: IssueContext) -> None:
+    async def start(self, context: IssueContext) -> None:
         self._active = True
         # TUI calls app.suspend() before this
-        # Launch CLI with issue context
-        subprocess.run([
+        # Launch CLI with issue context via asyncio subprocess
+        process = await asyncio.create_subprocess_exec(
             self.cli_command,
             "--system-prompt", f"Working on #{context.issue}: {context.title}",
-        ], cwd=context.project_path)
+            cwd=context.project_path,
+        )
+        await process.wait()
         self._active = False
 
     def is_active(self) -> bool:
         return self._active
 
-    def stop(self) -> None:
+    async def stop(self) -> None:
         self._active = False
 ```
 
-After `start()` returns, the command layer must re-detect state before
-emitting `SessionEnded` + `StateChanged`. The CLI session may have
-advanced the plan, closed the branch, or changed lifecycle state.
+After `start()` returns, the TUI calls the command layer's `refresh()`
+to re-detect state and emit a fresh `StateChanged`. The CLI session may
+have advanced the plan, closed the branch, or changed lifecycle state.
 Re-detection sequence: re-read `.meta`, call `work_state.detect()`,
 derive new available actions. The resulting `StateChanged` reflects
-the post-session state.
+the post-session state. The command layer has no knowledge of session
+providers — it just re-detects state on request.
 
 Future implementations:
 - **AutomatedProvider** — drives a third-party CLI via I/O (reading
@@ -548,17 +556,62 @@ def land_branch(project: Path, branch: str,
 | `continue` | `ctx.resolve()`, `work_health.run_checks()`, HANDOFF.md parse, `plan_manager.detect()` | `ContinueReady`, `StateChanged` |
 | `start #N [#M]` | `branch_create.create_branches()`, `scaffold.scaffold()`, `plan_manager.create_main_plan()` | `StepProgress` × N, `BranchCreated`, `StateChanged` |
 | `next` | `plan_manager.advance()`, `lifecycle.transition()` | `PlanAdvanced`, `StateChanged` |
-| `end` | `close_artifacts.close()`, `land_branch.rebase()`, `land_branch.push()`, `land_branch.stamp()`, `branch_cleanup.cleanup()` | `StepProgress` × N, `WorkEnded`, `StateChanged` |
-| `pause` | `pause_exec.commit_wip()`, `pause_exec.push_and_stack()` | `WipCommitted`, `Paused`, `StateChanged` |
-| `resume` | `stack.pop()`, `resume_exec.checkout_branches()`, `resume_exec.rebase()`, `resume_exec.reset_wip()` | `Resumed`, `StateChanged` |
+| `end` | `work_end_execute.promote()`, `work_end_execute.rebase()`, `work_end_execute.land()`, `branch_cleanup.cleanup()` | `StepProgress` × N, `WorkEnded`, `StateChanged` |
+| `pause` | `pause_exec.write_intent()`, `pause_exec.commit_wip()`, `pause_exec.push_and_stack()`, `pause_exec.clear_intent()` | `WipCommitted`, `Paused`, `StateChanged` |
+| `resume` | `resume_exec.write_intent()`, `stack.read_entries()`, `resume_exec.checkout_branches()`, `resume_exec.rebase()`, `resume_exec.reset_wip()`, `stack.pop_entry()`, `resume_exec.clear_intent()` | `Resumed`, `StateChanged` |
 | `quick-fix` | `quick_fix.run()` | `QuickFixLanded`, `StateChanged` |
 | `what-next` | `enrichment.what_next()` | `WhatNextReady` |
 | `status` | `ctx.resolve()` | `StatusReady` |
-| `session` | `SessionProvider.start()` | `SessionStarted`, `SessionEnded`, `StateChanged` |
+| `session` _(TUI action)_ | TUI suspends → `SessionProvider.start()` → TUI resumes → command layer `refresh()` | `StateChanged` |
 
 Any command may emit `CommandFailed` instead of its success events if
 an error occurs. For multi-step commands (`end`, `start`), partial
 `StepProgress` events may precede the `CommandFailed`.
+
+## Error Recovery
+
+Multi-step commands (`end`, `start`, `pause`, `resume`) integrate
+with the existing crash-recovery mechanisms from the script layer.
+
+### Progress Tracking (end)
+
+`work_end_execute.py` writes `.execute-progress` after each completed
+step. If the TUI crashes mid-sequence, restarting detects the progress
+file and the `end` command resumes from the last completed step. The
+`end` command reads progress on entry and skips completed steps —
+the user sees only the remaining steps in the content panel.
+
+If `end` is re-invoked when the lifecycle is in a `closing:*` state,
+it resumes from the current closing state rather than starting over.
+
+### Intent Files (pause, resume)
+
+`pause_exec.py` writes `.pausing` and `resume_exec.py` writes
+`.resuming` before starting their sequences. Each step is marked
+done as it completes. On TUI restart, the presence of an intent
+file signals an interrupted operation.
+
+Startup checks:
+1. `.execute-progress` exists → offer "Continue closing" in action panel
+2. `.pausing` exists → offer "Continue pause" (resume from last step)
+3. `.resuming` exists → offer "Continue resume" (resume from last step)
+
+### Resume Ordering
+
+The `resume` command reads the stack entry without removing it (peek),
+then checks out the branches, rebases, resets WIP, and only pops the
+stack entry after all operations succeed. If checkout fails (branch
+deleted), the stack entry is preserved — the user sees the error and
+can choose to remove the entry manually or investigate.
+
+### Failure Display
+
+When a step fails, the content panel shows:
+- Which steps completed (green checkmarks)
+- The failed step name and error message (red)
+- Available recovery actions derived from the lifecycle:
+  - `closing:review` or `closing:verified` → retry or abort (back to `active`)
+  - `closing:promoted` onward → retry only (abort not available)
 
 ## What the TUI Skips (LLM-only)
 
@@ -622,6 +675,38 @@ The `soredium` command is installed via `pyproject.toml`:
 soredium = "tui.python.__main__:main"
 ```
 
+## Concurrency
+
+The CLI mode enables concurrent access to shared state files (TUI
+running while a CLI invocation modifies the same `.pause-stack` or
+`.meta`). All read-modify-write operations on these files use
+`fcntl.flock()` advisory locking:
+
+```python
+import fcntl
+from contextlib import contextmanager
+
+@contextmanager
+def file_lock(path: Path):
+    lock_path = path.parent / f".{path.name}.lock"
+    with open(lock_path, 'w') as lock_fd:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+```
+
+Protected operations:
+- `stack.push_entry()` / `stack.pop_entry()` — lock `.pause-stack`
+- `lifecycle.commit_transition()` — lock `.meta`
+
+Lock granularity is per-file — stack and lifecycle operations do not
+block each other. The `ConcurrentModification` exception in
+`lifecycle.commit_transition()` remains as a secondary check: if two
+processes acquire the lock sequentially, the second detects that the
+state changed and raises rather than silently overwriting.
+
 ## Testing Strategy
 
 - **Command layer** — unit tests with mocked script functions.
@@ -643,6 +728,14 @@ soredium = "tui.python.__main__:main"
 - `textual` — TUI framework
 - No other new dependencies. All script imports are from the existing
   soredium codebase.
+
+**Runtime (optional):**
+- `worklog` SQLite database — required by `what-next` for enrichment
+  recommendations. Created by `worklog.connect()`. If absent or empty,
+  `what-next` displays "No enrichment data available" and returns an
+  empty `WhatNextReady`. The TUI does not fail; it degrades gracefully.
+- `gh` CLI — used by `what-next` for GitHub issue cache refresh.
+  If unavailable, cached data is used (may be stale or empty).
 
 **Future Java (tui/java/):**
 - `tamboui` — TUI framework

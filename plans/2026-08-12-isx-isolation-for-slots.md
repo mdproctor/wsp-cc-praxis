@@ -467,15 +467,17 @@ if isx and not _check_isx_available():
     sys.exit(1)
 ```
 
-After `write_slot_md()`, add ISX instance creation and remote wiring:
+Before the existing `write_slot_md()` call, compute instance name and
+create the ISX instance. This ordering ensures: if `isx branch` fails,
+no isolation metadata is written and the slot is treated as non-ISX.
 ```python
+instance_name = ""
 if isx:
     instance_name = isx_instance or _truncate_instance_name(branch)
     rc, _, stderr = run_cmd(["isx", "branch", instance_name, "--from", isx_template])
     if rc != 0:
         print(f"ERROR=isx_branch_failed instance={instance_name} err={stderr.strip()}")
         sys.exit(1)
-    _wire_isx_remotes(slot_dir, repos, instance_name)
 ```
 
 Update the `write_slot_md()` call to pass isolation params:
@@ -485,6 +487,12 @@ write_slot_md(slot_dir, slot_num, repos, branch, issue,
               isolation_type="isx" if isx else "",
               isx_instance=instance_name if isx else "",
               isx_template=isx_template if isx else "")
+```
+
+After `write_slot_md()`, wire remotes:
+```python
+if isx:
+    _wire_isx_remotes(slot_dir, repos, instance_name)
 ```
 
 Update `main()` CLI dispatch to pass `isx`, `template`, `instance` from args.
@@ -897,8 +905,8 @@ def check_isx_staleness(workspace: str, project: str) -> dict:
     if not slot_file.exists():
         return {"status": "skip"}
 
-    # Import slot parser
-    slot_skill = Path.home() / ".claude" / "skills" / "work-slot"
+    # Import slot parser (source-local, not installed skill path)
+    slot_skill = Path(__file__).parent.parent / "work-slot"
     sys.path.insert(0, str(slot_skill))
     try:
         from slot_manager import parse_slot_md, get_slot_repos

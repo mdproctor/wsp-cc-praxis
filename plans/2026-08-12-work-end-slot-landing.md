@@ -15,6 +15,28 @@
 
 **Tech Stack:** Python 3, subprocess (git), pytest
 
+## How This Fixes All 6 Failures (#225)
+
+The root fix is writing `.phase-a-complete`, which unblocks `merge-slot`.
+merge-slot then resolves failures #1, #3, #4, #6. Failure #2 is the
+marker itself. Failure #5 was already fixed by `updateInstead` (D2).
+
+| # | Failure | Fixed by |
+|---|---------|----------|
+| 1 | Two-hop push not executed | merge-slot's per-repo push loop (slot → local → GitHub) |
+| 2 | merge-slot returns not_ready | `.phase-a-complete` marker (Task 1) |
+| 3 | No .landed marker | merge-slot writes it after successful landing |
+| 4 | Archive never offered | SKILL.md Step 5.1 reached because merge-slot succeeds |
+| 5 | close_artifacts push failure | `updateInstead` configured during slot creation (D2, no code change) |
+| 6 | Original workspace never synced | merge-slot iterates `get_all_slot_repos()` including workspace clones |
+
+Verified: `merge_slot()` line 977 checks ONLY `.phase-a-complete`:
+```python
+if not (slot_dir / ".phase-a-complete").exists():
+    print(f"ERROR=not_ready slot={slot_num}")
+    return 1
+```
+
 ## Global Constraints
 
 - All new `.py` functions ship with tests in the same commit (protocol: `externalised-scripts-require-tests`)
@@ -375,7 +397,77 @@ def verify(
     # ... existing output loop ...
 ```
 
-- [ ] **Step 11: Commit**
+- [ ] **Step 11: Add `_resolve_original_repos()` helper**
+
+Builds the `original_repos` dict from each slot clone's `local` remote URL:
+
+```python
+def _resolve_original_repos(slot_dir: str) -> dict[str, str]:
+    result = {}
+    slot_path = Path(slot_dir)
+    for sub in sorted(slot_path.iterdir()):
+        if not sub.is_dir() or not (sub / ".git").exists():
+            continue
+        if sub.name in (".m2", "attic"):
+            continue
+        local_url = git(str(sub), "remote", "get-url", "local")
+        if local_url.returncode == 0 and local_url.stdout.strip():
+            orig_path = local_url.stdout.strip()
+            if Path(orig_path).is_dir():
+                result[sub.name] = orig_path
+    return result
+```
+
+- [ ] **Step 12: Extend `main()` to parse `slot_dir=` CLI arg**
+
+```python
+def main() -> int:
+    # ... existing arg parsing ...
+
+    slot_dir = opts.get("slot_dir", "")
+    original_repos = None
+    if slot_dir:
+        original_repos = _resolve_original_repos(slot_dir)
+
+    verify(project, branch, workspace, base, covers,
+           slot_dir=slot_dir, original_repos=original_repos)
+    return 0
+```
+
+SKILL.md Step 4 invocation becomes:
+```bash
+python3 work-end/verify_slot_close.py <PROJ> branch=<BRANCH> workspace=<WS> [slot_dir=<SLOT_PATH>]
+```
+
+- [ ] **Step 13: Write test for CLI slot_dir parsing**
+
+```python
+class TestVerifySlotModeCLI:
+    def test_slot_dir_parsed_and_checks_run(self, tmp_path: Path) -> None:
+        slot_dir = tmp_path / "slot"
+        slot_dir.mkdir()
+        project = _init_repo(slot_dir / "engine")
+        workspace = _init_repo(slot_dir / "work")
+        (slot_dir / ".landed").write_text(
+            "branch=issue-42\nrepos=engine\n"
+            "landed_shas=engine:abc123\ntimestamp=2026-08-12\n"
+        )
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), str(project),
+             f"branch=issue-42", f"workspace={workspace}",
+             f"slot_dir={slot_dir}"],
+            capture_output=True, text=True, timeout=15,
+        )
+        assert result.returncode == 0
+        assert "landed_marker" in result.stdout
+```
+
+- [ ] **Step 14: Run all verify tests**
+
+Run: `python3 -m pytest tests/test_verify_slot_close.py -v`
+Expected: All PASS
+
+- [ ] **Step 15: Commit**
 
 ```bash
 git -C <PROJECT> add work-end/verify_slot_close.py tests/test_verify_slot_close.py
@@ -383,7 +475,8 @@ git -C <PROJECT> commit -m "feat(#225): extend verify_slot_close with slot landi
 
 Adds check_landed_marker(), check_original_sync(),
 check_slot_archive_status() as composable check functions.
-Wired into verify() when slot_dir is provided.
+Resolves original_repos from slot clone local remotes.
+Wired into verify() and main() via slot_dir= CLI arg.
 
 Refs #224, Refs #225"
 ```
@@ -435,12 +528,24 @@ marker, branch stamps. Do NOT call `work_end_execute.py land` in slot
 mode — that path is for branch mode only.
 ```
 
-- [ ] **Step 3: Verify Step 5.1 archive is reachable**
+- [ ] **Step 3: Update Step 4 verify invocation for slot mode**
+
+Update the verify CLI call to pass `slot_dir=` in slot mode:
+
+```markdown
+**Slot mode:** pass `slot_dir=<SLOT_PATH>` to enable slot-specific checks:
+
+\`\`\`bash
+python3 work-end/verify_slot_close.py <PROJ> branch=<BRANCH> workspace=<WS> slot_dir=<SLOT_PATH>
+\`\`\`
+```
+
+- [ ] **Step 4: Verify Step 5.1 archive is reachable**
 
 Confirm the archive prompt text matches the current SKILL.md. No change
 needed — the flow now reaches it because merge-slot succeeds.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git -C <PROJECT> add work-end/SKILL.md
@@ -448,6 +553,7 @@ git -C <PROJECT> commit -m "docs(#224): SKILL.md — wire marker write, clarify 
 
 Adds write-marker call after squash in Step 3.4.
 Clarifies merge-slot is the sole slot landing path in Step 3.5.
+Updates verify invocation to pass slot_dir= in slot mode.
 
 Refs #224, Refs #225"
 ```

@@ -1,0 +1,10 @@
+branch: issue-195-slot-db-disk-integrity
+state: scaffolded
+project-sha: 81d9638cee1de324bf5d67eceb3db4e4fc34181b
+date: 2026-08-13
+issue: 195
+issue-repo: Hortora/soredium
+covers: 195
+flyway-next-v: none
+design-repo: workspace
+design-section-hashes: 

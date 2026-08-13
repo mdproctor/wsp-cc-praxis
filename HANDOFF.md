@@ -1,17 +1,39 @@
-# HANDOFF — soredium slot/7
+# HANDOFF — soredium
 
 ## Last Session
 
-Continued the soredium TUI (#222). Completed Tasks 4-5 of the implementation plan: Project View (Textual app shell — header, action panel, content area, footer, modals, CSS, keyboard navigation, command execution in workers) and Home View (repo/slot discovery scanner, home view widget with session indicators, view switching between Home and Project views). Fixed 47 test failures across the codebase — stale test files, marketplace.json drift, missing skill cross-references, slot terminology, epic_manager.advance not updating .meta covers, and 28 empty shell slot directories. Three Textual gotchas captured in the garden (naming collision, focus model, testability pattern).
+Two tracks. First: designed ISX isolation for slots (#223) — brainstormed
+integration of incus-spawn containers with the slot workflow, captured 10
+decisions, wrote design spec and 7-task implementation plan. Rebased local
+incus-spawn fork to upstream v0.2.21. Work moved to Slot 8 for
+implementation.
+
+Second: fixed work-end slot landing (#224, #225) — traced 6 cascade
+failures to one missing `.phase-a-complete` marker. Implemented
+`cmd_write_marker()` in `work_end_execute.py`, extended
+`verify_slot_close.py` with slot-specific checks, updated SKILL.md.
+Branch closed, landed as 81d9638.
 
 ## Immediate Next Step
 
-Run `work continue` on branch `issue-222-repl-shell`. Resume at Task 6 of the implementation plan (`plans/2026-08-11-soredium-tui.md`). Task 6 builds the Session SPI — TmuxProvider and SuspendingProvider. Task 7 adds the CLI mode, pyproject.toml packaging, and config file. Uncommitted TUI and test-fix changes need committing first.
+Two active items:
+1. **Slot 8** (#223 ISX isolation) — open CLI in
+   `/Users/mdproctor/claude/hortora/slots/8/soredium`, run `/work`,
+   execute 7-task plan starting at Task 1 (parser/writer extensions)
+2. **TUI** (#222) — `work continue` on branch `issue-222-repl-shell`,
+   resume at Task 6 of `plans/2026-08-11-soredium-tui.md`
+
+## What's Next
+
+| Item | Scale / Complexity | Notes |
+|------|--------------------|-------|
+| #223 ISX isolation for slots | M / Med | Slot 8, plan ready, 7 tasks |
+| #222 Soredium TUI | L / High | Tasks 1-5 done, 6-7 pending |
 
 ## References
 
-- Spec: `specs/issue-222-repl-shell/2026-08-11-repl-shell-design.md`
-- Decisions: `specs/issue-222-repl-shell/decisions.md` (D1–D12)
-- Plan: `plans/2026-08-11-soredium-tui.md` (Tasks 1-5 done, 6-7 pending)
-- Journal: `design/JOURNAL.md`
-- Blog: `blog/2026-08-12-mdp01-the-textual-that-bites-back.md`
+- Slot 8: `/Users/mdproctor/claude/hortora/slots/8/`
+- ISX spec: `specs/issue-223-isx-isolation-for-slots/2026-08-12-isx-isolation-for-slots-design.md`
+- ISX plan: `plans/2026-08-12-isx-isolation-for-slots.md`
+- TUI spec: `specs/issue-222-repl-shell/2026-08-11-repl-shell-design.md`
+- TUI plan: `plans/2026-08-11-soredium-tui.md`

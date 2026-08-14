@@ -1,0 +1,10 @@
+branch: issue-237-slot-symlink-validation
+state: scaffolded
+project-sha: 339b91ceceff0a41fbb84fc341b38fcbdf0cff61
+date: 2026-08-14
+issue: 237
+issue-repo: Hortora/soredium
+covers: 237
+flyway-next-v: none
+design-repo: workspace
+design-section-hashes: 

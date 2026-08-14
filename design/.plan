@@ -1,0 +1,15 @@
+# Work Plan — issue-238-unify-queue-tracking
+
+## State
+branch: issue-238-unify-queue-tracking
+state: active
+project-sha: abbccecc8f9271cf62089f056b57ada44a286a0a
+date: 2026-08-14
+issue-repo: Hortora/soredium
+covers: 238
+flyway-next-v: none
+design-repo: workspace
+design-section-hashes: 
+
+## Queue
+- [ ] #238 — Issue #238 ← active

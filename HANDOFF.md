@@ -2,38 +2,17 @@
 
 ## Last Session
 
-Two tracks. First: designed ISX isolation for slots (#223) — brainstormed
-integration of incus-spawn containers with the slot workflow, captured 10
-decisions, wrote design spec and 7-task implementation plan. Rebased local
-incus-spawn fork to upstream v0.2.21. Work moved to Slot 8 for
-implementation.
+Two tracks. First: #195 (slot DB/disk integrity) — full implementation from brainstorm through work-end. DB-authoritative slot numbering with reserve-first pattern, inline drift detection on list_slots, three-phase reconciliation script. Second: discovered and fixed HANDOFF.md lifecycle bug — handoffs were committed to workspace main instead of the workspace branch, breaking pause/resume isolation. Fixed across 8 files (skills, scripts, tests). Audit confirmed branch-scoped model works. Also fixed: issue-matching gate silently dropping valid handoffs, brief not surfacing .notes, executing-plans routing to work-end instead of work-next when plan queue has remaining issues.
 
-Second: fixed work-end slot landing (#224, #225) — traced 6 cascade
-failures to one missing `.phase-a-complete` marker. Implemented
-`cmd_write_marker()` in `work_end_execute.py`, extended
-`verify_slot_close.py` with slot-specific checks, updated SKILL.md.
-Branch closed, landed as 81d9638.
+Then discovered #237: `create_slot` silently fails to wire `wksp/` symlinks when workspace subdirectories are gitignored. The workspace's `.gitignore` lists child repo dirs (e.g., `/work`), so `git clone --shared` doesn't create them. The `wksp/` symlink in the repo clone points to nothing. Sessions in affected slots run as `SINGLE_REPO=yes` — handoffs go to wrong place, workspace invisible. Fixed 5 slots manually. Branch created for the code fix.
 
 ## Immediate Next Step
 
-Two active items:
-1. **Slot 8** (#223 ISX isolation) — open CLI in
-   `/Users/mdproctor/claude/hortora/slots/8/soredium`, run `/work`,
-   execute 7-task plan starting at Task 1 (parser/writer extensions)
-2. **TUI** (#222) — `work continue` on branch `issue-222-repl-shell`,
-   resume at Task 6 of `plans/2026-08-11-soredium-tui.md`
+Branch `issue-237-slot-symlink-validation` is open. Brainstorm then implement:
 
-## What's Next
+1. **`create_slot`**: after cloning workspace, create gitignored subdirectories (`mkdir`) and un-ignore them before creating `wksp/` symlinks
+2. **`add_repo`**: same fix — create workspace subdir if missing
+3. **Post-creation validation**: verify all repo clones have working `wksp/` symlinks. Fail fast with clear error if not.
+4. **Naming collision**: workspace clone name must not collide with any repo name in the family (check all family repos, not just the current slot's repos list)
 
-| Item | Scale / Complexity | Notes |
-|------|--------------------|-------|
-| #223 ISX isolation for slots | M / Med | Slot 8, plan ready, 7 tasks |
-| #222 Soredium TUI | L / High | Tasks 1-5 done, 6-7 pending |
-
-## References
-
-- Slot 8: `/Users/mdproctor/claude/hortora/slots/8/`
-- ISX spec: `specs/issue-223-isx-isolation-for-slots/2026-08-12-isx-isolation-for-slots-design.md`
-- ISX plan: `plans/2026-08-12-isx-isolation-for-slots.md`
-- TUI spec: `specs/issue-222-repl-shell/2026-08-11-repl-shell-design.md`
-- TUI plan: `plans/2026-08-11-soredium-tui.md`
+Verification command in issue #237 body.

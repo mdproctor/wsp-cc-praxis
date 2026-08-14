@@ -56,25 +56,14 @@ with each failure, then `sys.exit(1)`.
 **Modified:** `add_repo()` — after `_update_slot_repos()`, call
 `validate_slot_wksp()` scoped to just the added repo. Same error pattern.
 
-### 3. DB consistency check in create_slot
-
-After `_wl.confirm_slot_create()`, verify the DB record matches disk:
-- Read back the slot record from the DB
-- Compare repos list against `get_slot_repos(slot_dir)`
-- If mismatch, print `WARN=db_disk_mismatch` (warning, not hard fail — the
-  slot is functional, the DB just needs correction)
-
-This check only applies to `create_slot()` where the DB write happens.
-`add_repo()` doesn't write to the DB, so there's nothing to cross-check.
-
-### 4. list_slots health surfacing
+### 3. list_slots health surfacing
 
 **Modified:** `list_slots()` — for each active (non-archived) slot, run
 `validate_slot_wksp()`. Add `wksp_ok: bool` to the slot dict.
 
 **Modified:** CLI output — append `WKSP=ok` or `WKSP=broken` to each slot line.
 
-### 5. add_repo workspace wiring parity
+### 4. add_repo workspace wiring parity
 
 **Modified:** `add_repo()` — after cloning the workspace (when a new workspace
 clone is created at lines 713-720), add `configure_slot_remotes()` and

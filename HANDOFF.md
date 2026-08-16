@@ -66,9 +66,19 @@ All specs, plans, and decisions now require a `## References` section listing so
 
 ---
 
-## What's Left
+## What's Left — Do In This Order
 
-### Slot DB reconciliation (ready to execute)
+### 1. Fix merge-slot project/workspace distinction (#242) — DO FIRST
+
+`merge_slot()` treats workspace clones (`work`, `work-casehub`, `work-work`) identically to project repos. This causes silent push failures for workspace clones — the `.landed` marker records SHAs that never reached the original workspace repo.
+
+**Evidence:** Slot 117 — engine and platform SHAs landed on main. `work` SHA (`f110cb2a`) recorded as landed but NOT on the original work repo's main. Content is stranded in the slot clone at `slots/117/work-work/`.
+
+**Fix (#242):** Add workspace detection to `slot_manager.py` — repos with `.workspace` marker, `proj` symlink, or `work-` prefix are workspace clones. `merge_slot` should skip them (workspace artifacts are promoted via `close_artifacts.py`, not merge-slot). Never write a SHA to `.landed` for a repo whose push failed.
+
+**Must fix this before running the reconciliation** — otherwise reconciliation will trust `.landed` SHAs that are lies.
+
+### 2. Slot DB reconciliation
 
 `reconcile_slots.py` audit found 40 divergences between the worklog DB and disk state:
 

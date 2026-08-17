@@ -1,0 +1,15 @@
+# Work Plan — issue-244-garden-feedback-wiring
+
+## State
+branch: issue-244-garden-feedback-wiring
+state: closing:promoted
+project-sha: 853e04d1686fc4bb1acb6e8a020af3e9479aa68d
+date: 2026-08-17
+issue-repo: Hortora/soredium
+covers: 244
+design-repo: project
+design-section-hashes: 979de182:##
+flyway-next-v: unknown
+
+## Queue
+- [ ] #244 — Issue #244 ← active

@@ -349,7 +349,7 @@ Some skills in this repository are **developer-only** — they require a cloned 
 
 **Rules:**
 - ✅ **In `skills/` directory** — auto-discovered and synced for developers
-- ❌ **Not in `marketplace.json`** — invisible to the web installer and not installable via plugin
+- ❌ **Not in `marketplace.json`** — not installable via plugin
 - ❌ **Not in README.md** — not documented as a user-facing skill
 - ✅ **SKILL.md includes a prominent DEV-ONLY note** — so Claude knows not to recommend it to marketplace users
 
@@ -445,15 +445,10 @@ python3 scripts/validation/validate_project_types.py --verbose
 
 # Check if a primary doc needs modularising
 python3 scripts/validation/validate_doc_structure.py CLAUDE.md
-
-# Revert stray subtype: log → subtype: diary (run periodically until sessions converge)
-python3 scripts/revert_diary_subtype.py          # dry-run: shows what needs changing
-python3 scripts/revert_diary_subtype.py --apply  # apply changes
 ```
 
 **After editing any skill:** run `sync-local` so `~/.claude/skills/` has the latest version.
 **After adding a new skill:** run `generate_commands.py` AND add to `marketplace.json` plugins list.
-**After chaining changes:** run `generate_web_app_data.py` to sync `docs/index.html` CHAIN data.
 **Worktrees for feature development:** use `.worktrees/` (gitignored). Create with `git worktree add .worktrees/<name> -b <branch>`. Always use `--force` when removing after subagent use.
 
 ## How Claude Code Loads Skills

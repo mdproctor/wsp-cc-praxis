@@ -1,0 +1,15 @@
+# Work Plan — issue-236-lifecycle-hygiene-fixes
+
+## State
+branch: issue-236-lifecycle-hygiene-fixes
+state: closing:verified
+project-sha: 0444987454a641711ffde3658f9499e7c8e1a135
+date: 2026-08-17
+issue-repo: Hortora/soredium
+covers: 236,170,240,245
+design-repo: project
+design-section-hashes: 979de182:##
+flyway-next-v: unknown
+
+## Queue
+- [ ] #236 — Issue #236 ← active

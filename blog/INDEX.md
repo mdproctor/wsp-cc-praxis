@@ -8,3 +8,4 @@
 | [2026-08-17-mdp02-advisory-text-nobody-reads.md](2026-08-17-mdp02-advisory-text-nobody-reads.md) | 2026-08-17 | Advisory text vs mechanical checks in skill design — fixing the diary form to detect existing entries |
 | [2026-08-17-mdp01-the-feedback-loop-that-wasnt.md](2026-08-17-mdp01-the-feedback-loop-that-wasnt.md) | 2026-08-17 | gardenFeedback MCP tool existed but was never called — wired it into work-end, discovered broader audit persistence gap |
 | [2026-08-17-mdp03-four-fixes-one-already-done.md](2026-08-17-mdp03-four-fixes-one-already-done.md) | 2026-08-17 | Four lifecycle/slot/hygiene fixes — one already solved by the state machine, persistent findings for the rest |
+| [2026-08-18-mdp01-the-reset-that-ate-twenty-files.md](2026-08-18-mdp01-the-reset-that-ate-twenty-files.md) | 2026-08-18 | Incident: work-end reset destroyed 20 uncommitted files; three-layer fix with safety stash, DIRTY-TREE-PROTOCOL, and Stop hook |

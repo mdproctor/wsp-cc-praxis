@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-236-lifecycle-hygiene-fixes
-state: closing:verified
+state: closing:promoted
 project-sha: 0444987454a641711ffde3658f9499e7c8e1a135
 date: 2026-08-17
 issue-repo: Hortora/soredium

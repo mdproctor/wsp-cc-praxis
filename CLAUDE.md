@@ -13,6 +13,8 @@ Run `add-dir /Users/mdproctor/claude/hortora/soredium` before any other work.
 | Skill | Writes to |
 |-------|-----------|
 | brainstorming (specs) | `specs/` |
+
+**Spec path override:** The brainstorming skill defaults to `docs/superpowers/specs/` in the project repo. This project overrides that: specs promote to `docs/specs/` (not `docs/superpowers/specs/`). When writing a spec, use `docs/specs/YYYY-MM-DD-<topic>-design.md`.
 | writing-plans (plans) | `plans/` |
 | handover | `HANDOFF.md` |
 | idea-log | `IDEAS.md` |
@@ -544,45 +546,12 @@ If a checklist item seems inapplicable: re-read it, check for rationalization, e
 
 ## Meta-Rule: Consider Universality First
 
-**CRITICAL: Before applying any fix, ask "Should this be universal?"**
+Before applying any fix, ask: is this problem specific to one context, or could it occur in any project type? If uncertain → ask the user.
 
-**The principle:**
-When you identify a problem and prepare a solution, STOP and consider:
-1. **Is this problem specific to one context** (skills repo only, Java only, this file only)?
-2. **Or is this a universal problem** (could happen in any project type, any AI assistant, any workflow)?
+**Stay narrow for:** domain-specific knowledge, language syntax, tool-specific features.
+**Go universal for:** process failures, quality gates, cognitive biases, infrastructure.
 
-**If uncertain whether to make it universal → ASK THE USER.**
-
-**Examples:**
-
-| Situation | Narrow Fix | Universal Fix | Correct Choice |
-|-----------|------------|---------------|----------------|
-| README.md sync missing | Add check to docs/development/readme-sync.md only | Add framework change detection to ALL sync workflows | Universal (ADR-0001) |
-| Java-specific BOM issue | Fix in maven-dependency-update | Make dependency management universal | Narrow (Java-specific) |
-| Rationalization bypass | Strengthen git-commit Step 2b | Add mandatory checks to all workflows | Universal |
-| Quarkus event loop bug | Fix in quarkus-flow-dev | Make concurrency universal | Already universal (code-review-principles) |
-
-**Why this matters:**
-- **Prevents repeated regressions** - fix once, applies everywhere
-- **Scales to future project types** - type: python, type: rust get the fix automatically
-- **Reduces user burden** - don't re-discover same problem per project
-- **Forces better design** - universal solutions are often cleaner
-
-**When to stay narrow:**
-- Domain-specific knowledge (Java annotations, Quarkus configuration)
-- Language syntax (Java vs Python vs Go)
-- Tool-specific features (Maven BOM vs npm package.json)
-- Framework patterns (Quarkus vs Spring)
-
-**When to go universal:**
-- Process failures (rationalization, skipping workflows)
-- Quality gates (validation, testing, documentation)
-- Human behavior patterns (cognitive biases, shortcuts)
-- Infrastructure (scripts, automation, validation)
-
-**The test:** If the problem could plausibly occur in a different project type with different technologies, it's probably universal.
-
-**See:** ADR-0001: Documentation Completeness Must Be Universal, Not Project-Specific
+The test: if the problem could plausibly occur in a different project type, it's probably universal. See ADR-0001.
 
 ## Workspace Model
 
@@ -657,91 +626,15 @@ Full design: `docs/specs/2026-04-09-workspace-model-design.md`
 
 ## Quality Assurance Framework
 
-**Comprehensive validation ensures skills maintain structural integrity, logical soundness, and documentation accuracy.**
+19 validators across 3 tiers. Scripts handle mechanical checks; Claude handles semantic analysis.
 
-Skills are infrastructure code guiding AI behavior across millions of invocations. Quality issues compound exponentially. This framework provides automated checks (scripts), semantic analysis (Claude), and functional testing.
+📖 **[QUALITY.md](QUALITY.md)** — full framework, validator specs, deep analysis procedures, and success criteria.
 
-### Quality Assurance Philosophy
-
-**Scripts handle mechanical checks (syntax, structure, format).**
-**Claude handles semantic analysis (logic, contradictions, completeness).**
-
-For complete details on the division of labor, validation tiers, what gets checked, and integration patterns:
-📖 **[QUALITY.md § The Architecture: Scripts + Claude](QUALITY.md#the-architecture-scripts--claude)**
-
-### Automated Validation
-
-**19 validators across 3 tiers (COMMIT/PUSH/CI):**
-
-For complete validator specifications, tier assignments, and implementation details:
-📖 **[QUALITY.md § Implementation Status](QUALITY.md#implementation-status)**
-
-**Pre-Commit Checklist integration:** See § Pre-Commit Checklist for Skills below for mandatory validation hooks.
-
-### Deep Analysis Procedures
-
-When user requests deep analysis of skills ("/skill-review", "do a deep analysis", "comprehensive review"):
-
-*These checks map to the `project-health` skill. Invoke as `/project-health --deep` for a full deep analysis, or with specific categories.*
-
-📖 **[QUALITY.md § Deep Analysis Validation](QUALITY.md#deep-analysis-validation-level-2)**
-
-**Mandatory checklist:**
-- [ ] Run all automated checks (`python scripts/validate_all.py --tier commit`)
-- [ ] Perform all manual analysis procedures (reference accuracy, logical soundness, completeness, etc.)
-- [ ] Document findings by severity (CRITICAL/WARNING/NOTE)
-- [ ] Create action items for CRITICAL/WARNING findings
-
-### Validation Infrastructure
-
-For complete inventory of validation scripts by tier:
-📖 **[QUALITY.md § Validation Script Roadmap](QUALITY.md#validation-script-roadmap)**
-
-**Quick reference (19 validators total):**
-- **COMMIT tier (<2s)**: frontmatter, CSO, references, naming, sections, structure, project-types, blog-frontmatter
-- **PUSH tier (<30s)**: flowcharts, cross-document, temporal, usability, edge-cases, behavior, readme-sync, external-links, code-examples, web-app
-- **CI tier (<5min)**: Python quality (mypy, flake8, bandit) + functional tests
-- **On disk, not yet registered**: validate_blog_commit.py (git hook only — needs commit message), validate_doc_structure.py (on-demand — needs target path)
-
-### Success Criteria
-
-Validation framework is working when:
-- ✅ Zero CRITICAL findings pass pre-commit
-- ✅ All skills have functional tests
-- ✅ All known issues have regression tests
-- ✅ Deep analysis finds ≤5 WARNING issues per 40 skills
-- ✅ No duplicate issues across releases
-- ✅ CI blocks PRs with validation failures
-
-For complete success criteria and implementation status:
-📖 **[QUALITY.md § Success Criteria for QA Framework](QUALITY.md#success-criteria-for-qa-framework)**
-
----
-
-## Document Sync Quality Assurance
-
-**Universal validation prevents document corruption during sync operations across all project types.**
-
-For complete details on validation rules, integration points, corruption patterns, and regression prevention:
-📖 **[QUALITY.md § Document Sync Quality Assurance](QUALITY.md#document-sync-quality-assurance)**
-
-### Running Validators Locally
-
+**Run validators locally:**
 ```bash
-# Validate a specific document
-python scripts/validate_document.py README.md
-python scripts/validate_document.py CLAUDE.md
-
-# Validate all staged .md files
-git diff --staged --name-only | grep '\.md$' | xargs -I{} python scripts/validate_document.py {}
-
-# Run full commit-tier validation suite
-python scripts/validate_all.py --tier commit
+python scripts/validate_all.py --tier commit   # pre-commit suite
+python scripts/validate_document.py README.md  # single file
 ```
-
-Exit codes: `0` = clean · `1` = CRITICAL (blocks commit) · `2` = WARNING (review recommended) · `3` = NOTE
-
-Local validation is optional but recommended — pre-commit validation runs automatically and is mandatory.
 
 
 ## Work Tracking

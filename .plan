@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-243-diary-revise-or-new
-state: closing:promoted
+state: closing:stamped
 project-sha: 5488c0261cf5ec9a63fe64191c03641068e3ce09
 date: 2026-08-17
 issue-repo: Hortora/soredium

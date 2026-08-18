@@ -1,1 +1,1 @@
-# Design Journal — issue-101-validate-epic-slots
+# Design Journal — issue-247-slot-gitignore-baseline

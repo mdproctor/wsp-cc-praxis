@@ -1,12 +1,15 @@
-# Work Plan — issue-182-work-observability
+# Work Plan — issue-247-slot-gitignore-baseline
+
+## State
+branch: issue-247-slot-gitignore-baseline
+state: scaffolded
+project-sha: 78da92b851078dd0048eeb6345c6625865e9adbe
+date: 2026-08-18
+issue-repo: Hortora/soredium
+covers: 247
+design-repo: workspace
+design-section-hashes: 979de182:## Artifact Schema|2babe25e:## S1 Introduction and Goals|bb734ef3:## S2 Constraints|56f12d30:## S3 Context and Scope|e1b910f2:## S4 Solution Strategy|52bc89ed:## S5 Building Block View|912c0058:## S6 Runtime View|e8498ada:## S7 Deployment View|a9787bd0:## S8 Crosscutting Concepts|295520db:## S9 Journeys and Chapters|3c1be7c4:## S10 Architectural Decisions|acc0167f:## S11 Quality Requirements|6ac24194:## S12 Risks and Technical Debt|33dfd20d:## S13 Glossary
+flyway-next-v: unknown
 
 ## Queue
-- [ ] #182 — Work Observability — complete the worklog tracking pipeline (epic)
-  - [ ] #178 — Worklog event emission at state transitions — close the tracking loop ← active
-  - [ ] #158 — Worklog: track individual issue transitions within branches
-  - [ ] #141 — Issue-level lifecycle within epic slots — nested start/end with auto-transition
-  - [ ] #157 — Worklog REST + MCP server — expose work history as API
-
-## Session State
-Current: #178 — Worklog event emission at state transitions — close the tracking loop
-Started: 2026-08-04
+- [ ] #247 — Issue #247 ← active

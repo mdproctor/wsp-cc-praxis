@@ -448,8 +448,9 @@ epic hygiene).
 
 ### Session entry
 
-New `check_prior_findings()` function in `work_health.py` reads
-`findings.jsonl` and surfaces open findings with severity and category:
+Enhanced `check_prior_findings()` in `work_health.py` (exists today,
+reads `findings.json`) updated to read `findings.jsonl` and surface
+open findings with severity and category:
 
 ```
 CHECK=prior_findings STATUS=warn DETAIL=3 open finding(s):
@@ -544,8 +545,8 @@ at session entry) before the full system lands.
 - code-review/SKILL.md — per-line checklist
 - design-review/SKILL.md — adversarial spec review
 - design-review/review-tiers.md — lifecycle points and dimensions
-- work-end/hygiene_scan.py — hygiene checks (to be extended with findings.jsonl persistence)
-- project/work_health.py — session entry health checks (to be extended with check_prior_findings)
+- work-end/hygiene_scan.py — hygiene checks (persist_findings() at line 246 writes findings.json today; to be migrated to findings.jsonl)
+- project/work_health.py — session entry health checks (check_prior_findings() at line 427 reads findings.json today; to be migrated to findings.jsonl)
 - Blog: 2026-08-17-mdp01 "The Feedback Loop That Wasn't"
 - Blog: 2026-08-17-mdp03 "Four Fixes, One Already Done"
 - handover/SKILL.md — epic hygiene checks

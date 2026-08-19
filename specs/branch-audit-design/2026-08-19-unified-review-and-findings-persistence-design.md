@@ -220,11 +220,7 @@ writes eliminate read-modify-write races across concurrent sessions.
 
 - **Dedup** by `(check, detail, branch)` — branch-scoped findings are
   independent per branch; workspace-level findings use `branch: null`
-  and dedup without branch (preserving current hygiene behavior).
-  When multiple entries share the same dedup key (from different
-  sources), the reader takes the highest severity. Ties broken by
-  latest timestamp. Source metadata comes from the highest-severity
-  entry.
+  and dedup without branch (preserving current hygiene behavior)
 - **Accumulate** across sessions — findings persist until explicitly resolved
 - **Read at session entry** — `work_health.py` `check_prior_findings()`
   already reads `$WORKSPACE/.audit/findings.json` and surfaces open
@@ -255,6 +251,26 @@ writes eliminate read-modify-write races across concurrent sessions.
   (filters by timestamp: only findings older than current work-end
   cycle start, to avoid double-counting current-session findings)
 
+### Reader contract
+
+JSONL is append-only — writers blind-append, never read. Dedup and
+status resolution are reader-side operations. All readers (work_health.py,
+forcing function, loose ends sweep) implement the same contract:
+
+1. **Group** entries by dedup key `(check, detail, branch)`
+2. **Status:** latest timestamp within the group determines the finding's
+   current status. An `open` entry at T3 re-opens a finding `resolved`
+   at T2. (If code-review independently surfaces the same issue after
+   a fix, the fix was incomplete — re-opening is correct.)
+3. **Severity:** highest severity across ALL entries in the group,
+   regardless of status. A CRITICAL from branch-audit is not downgraded
+   by a WARNING re-open from code-review.
+4. **Source:** comes from the entry that established the current severity
+   (the highest-severity entry)
+5. **Resolution updates** are new appended lines with the same dedup key
+   and updated status/resolution fields — not in-place modifications.
+   The original entry remains in the file.
+
 ### Default severity
 
 Findings without a `severity` field default to `warning`. All writers
@@ -270,6 +286,18 @@ JSONL files grow monotonically. At work-end, after all findings are
 resolved, compact: archive resolved/dismissed findings older than 30
 days to `$WORKSPACE/.audit/findings-archive.jsonl`. This keeps the
 active file small while preserving audit trail.
+
+**Atomicity:** Compaction is a read-rewrite that breaks the append-only
+guarantee. To prevent data loss from concurrent appenders:
+1. Acquire advisory lock (`fcntl.flock`) on `findings.jsonl`
+2. Read all entries, separate into "keep" and "archive"
+3. Write "keep" entries to `findings.jsonl.tmp`
+4. `os.rename('findings.jsonl.tmp', 'findings.jsonl')` (atomic on POSIX)
+5. Append "archive" entries to `findings-archive.jsonl`
+6. Release lock
+
+Concurrent appenders block briefly during compaction (milliseconds).
+Compaction runs at most once per work-end — the lock cost is negligible.
 
 ## Component 4 — Forcing Function
 
@@ -376,6 +404,13 @@ Proposed: Context → Review → Sweep → Execute → Verify → Close
 
 All four sub-steps are hard gates. Step 2 does not complete until
 the forcing function has resolved all findings.
+
+**Step 2.1 security-audit suppression:** When work-end invokes code-review
+at Step 2.1, include this instruction: "Do NOT offer security-audit
+escalation — branch-audit Step 2.2 Robustness dimension handles security
+escalation." This prevents duplicate escalation offers. During per-commit
+development review (outside work-end), code-review continues to offer
+security-audit escalation as today.
 
 **Duration estimate:** For a non-trivial branch, expect Step 2 to take
 10–30 minutes depending on branch size and accumulated findings.

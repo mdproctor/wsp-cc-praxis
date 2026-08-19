@@ -402,7 +402,7 @@ holistic dimensions, a gotcha surfaced by forage could explain unusual
 code. Accepted: the cost of reviewing without sweep context is lower
 than the cost of sweeping before reviewing.
 
-**Post-rebase re-review:** If rebase (Execute Step 3.3) is non-fast-forward
+**Post-rebase re-review:** If rebase (Execute Step 3.2) is non-fast-forward
 (i.e., conflicts were resolved), re-run code-review on the conflict
 resolution diff only. Branch-audit re-run is not required — code-review's
 per-line checklist is sufficient for conflict resolution changes.

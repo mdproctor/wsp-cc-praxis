@@ -240,6 +240,33 @@ git add scripts/place_workspace_markers.py tests/test_place_workspace_markers.py
 git commit -m "feat: marker placement script for .workspace bootstrap Refs #<N>"
 ```
 
+### Task 2b: workspace-init marker placement
+
+**Files:**
+- Modify: `workspace-init/SKILL.md`
+
+**Interfaces:**
+- Produces: Updated skill text that places `.workspace` marker during workspace repo creation and catches up existing repos
+
+- [ ] **Step 1: Add `.workspace` marker to workspace-init repo creation**
+
+In workspace-init/SKILL.md, find the workspace repo creation step (after
+`git init` or `git clone`). Add `touch .workspace` and commit as part of
+initial setup.
+
+- [ ] **Step 2: Add idempotent catch-up**
+
+In the symlink setup section, add: if workspace repo exists but lacks
+`.workspace`, place the marker. This catches repos created before this
+change.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add workspace-init/SKILL.md
+git commit -m "feat: workspace-init places .workspace marker Refs #<N>"
+```
+
 ---
 
 ## Batch 2: Fix Slot Creation

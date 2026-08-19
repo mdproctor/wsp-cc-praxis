@@ -220,14 +220,21 @@ writes eliminate read-modify-write races across concurrent sessions.
 
 - **Dedup** by `(check, detail, branch)` — branch-scoped findings are
   independent per branch; workspace-level findings use `branch: null`
-  and dedup without branch (preserving current hygiene behavior)
+  and dedup without branch (preserving current hygiene behavior).
+  When multiple entries share the same dedup key (from different
+  sources), the reader takes the highest severity. Ties broken by
+  latest timestamp. Source metadata comes from the highest-severity
+  entry.
 - **Accumulate** across sessions — findings persist until explicitly resolved
 - **Read at session entry** — `work_health.py` `check_prior_findings()`
-  already reads `$WORKSPACE/.audit/findings.json` and surfaces open
-  findings (implemented — see line 427). `hygiene_scan.py`
-  `persist_findings()` already writes hygiene findings to the same path
-  (line 246). Migration to `.jsonl` format requires updating both
-  functions and enhancing the display to show severity and category.
+  surfaces all open findings with severity and category. New
+  implementation — neither `check_prior_findings()` nor findings.jsonl
+  persistence exist yet; `work_health.py` has no such function (verified)
+  and `hygiene_scan.py` outputs JSON to stdout without writing to any
+  file. handover/SKILL.md describes this architecture as design intent
+  but the implementation hasn't landed. `hygiene_scan.py` needs
+  `persist_findings()` added; `work_health.py` needs
+  `check_prior_findings()` added.
 - **Resolution statuses:**
   - `resolved` — fixed in code (include commit SHA)
   - `filed` — created as GitHub issue (include issue number)
@@ -270,6 +277,18 @@ active file small while preserving audit trail.
 
 Runs at work-end only (D4). Presents all accumulated findings from
 `findings.jsonl` and requires resolution for each.
+
+### Implementation model
+
+The forcing function is a work-end SKILL.md workflow step, not a
+standalone script. The LLM reads `findings.jsonl`, formats the
+presentation, interprets user responses (Fix/File/Dismiss), and
+updates `findings.jsonl` after each resolution.
+
+Scriptable operations (reading findings, formatting display, updating
+status) are simple enough for inline LLM execution — no separate
+helper script is needed. The interactive loop (presenting choices,
+executing fixes, creating issues) is inherently LLM-driven.
 
 ### Presentation
 
@@ -333,11 +352,13 @@ specific findings, not structural changes.
 
 For efficiency when many findings exist:
 - "Fix all" — not available (each fix is different)
-- "File all remaining" — creates one GitHub issue per finding
+- "File all remaining as single issue" — creates one GitHub issue
+  listing all remaining findings as a checklist
+- "File each remaining" — creates one GitHub issue per finding
 - "Dismiss all NOTEs" — dismisses all NOTE-severity findings with a
   blanket reason (user provides)
 
-## Component 5 — Lifecycle Integration
+## Lifecycle Integration
 
 ### Work-end flow (D5)
 
@@ -357,6 +378,13 @@ Proposed: Context → Review → Sweep → Execute → Verify → Close
 
 All four sub-steps are hard gates. Step 2 does not complete until
 the forcing function has resolved all findings.
+
+**Duration estimate:** For a non-trivial branch, expect Step 2 to take
+10–30 minutes depending on branch size and accumulated findings.
+code-review: 2–5 min, branch-audit: 5–10 min, loose ends sweep: 1–2
+min, forcing function: 2–15 min (scales with open findings). This time
+is not new — it moves review earlier in the pipeline, catching bugs
+before the Sweep invests in knowledge capture.
 
 Both code-review and branch-audit run unconditionally — there is no
 choice between them. code-review catches per-line issues (mutable
@@ -434,7 +462,7 @@ Findings display: `[category/dimension/severity] detail (source)`.
 Dimension omitted when null (hygiene, loose-end categories). Findings
 missing `severity` display as `[WARNING]` (default severity rule, §3).
 
-## Component 6 — Skill Cleanup
+## Skill Cleanup
 
 ### Remove requesting-code-review (D2)
 

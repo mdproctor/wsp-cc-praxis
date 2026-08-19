@@ -227,14 +227,12 @@ writes eliminate read-modify-write races across concurrent sessions.
   entry.
 - **Accumulate** across sessions — findings persist until explicitly resolved
 - **Read at session entry** — `work_health.py` `check_prior_findings()`
-  surfaces all open findings with severity and category. New
-  implementation — neither `check_prior_findings()` nor findings.jsonl
-  persistence exist yet; `work_health.py` has no such function (verified)
-  and `hygiene_scan.py` outputs JSON to stdout without writing to any
-  file. handover/SKILL.md describes this architecture as design intent
-  but the implementation hasn't landed. `hygiene_scan.py` needs
-  `persist_findings()` added; `work_health.py` needs
-  `check_prior_findings()` added.
+  already reads `$WORKSPACE/.audit/findings.json` and surfaces open
+  findings (implemented at line 427, in `ENTRY_CHECKS` list at line 456).
+  `hygiene_scan.py` `persist_findings()` already writes hygiene findings
+  to the same path (implemented at line 246). Migration to `.jsonl`
+  format requires updating both functions and enhancing the display to
+  show severity and category.
 - **Resolution statuses:**
   - `resolved` — fixed in code (include commit SHA)
   - `filed` — created as GitHub issue (include issue number)

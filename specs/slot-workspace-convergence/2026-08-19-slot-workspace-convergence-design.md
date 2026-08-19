@@ -182,22 +182,27 @@ For each active slot with old structure (`work-<family>/`):
 
 1. **Check lifecycle state.** Only migrate at session start (before work
    begins) or work-end (work being closed). Never mid-session.
-2. For each project repo subdirectory in the family workspace clone:
-   a. Create new workspace clone directory at slot root
-      (`wsp-casehub-connectors/`)
-   b. Move content from `work-casehub/connectors/*` to
-      `wsp-casehub-connectors/`
-   c. Replace `work-casehub/connectors/` with symlink to
-      `../wsp-casehub-connectors/`
-   d. Repoint project's `wksp` symlink to `../wsp-casehub-connectors/`
-   e. Place `.workspace` marker in new workspace clone
+2. For each project repo in the slot:
+   a. Clone the project's workspace repo fresh from the original
+      (e.g., `git clone --shared ~/claude/public/casehub/connectors
+      wsp-casehub-connectors`). Resolve the original via the project
+      repo's `wksp` symlink outside the slot.
+   b. Check out the same feature branch. Cherry-pick or merge any
+      commits from `work-casehub/connectors/` that aren't in the
+      original workspace repo.
+   c. Place `.workspace` marker in the new clone.
+   d. Repoint project's `wksp` symlink to `../wsp-casehub-connectors/`.
+   e. Replace `work-casehub/connectors/` with symlink to
+      `../wsp-casehub-connectors/` (backwards compat for loaded sessions).
 3. The family workspace clone (`work-casehub/`) remains as a shell with
    symlinks — old sessions following old paths still resolve correctly.
 
-**Git handling:** The family workspace clone is one git repo. Moving
-subdirectories out and replacing with symlinks changes the git working
-tree. The migration must commit these changes on the feature branch
-so git state stays clean.
+**Why clone fresh instead of splitting:** The family workspace clone is
+one git repo. Its subdirectories are not independent git repos — you
+can't extract `connectors/` as a standalone repo without `git
+filter-branch` or `git subtree split`, both heavyweight and fragile.
+Cloning fresh from the original workspace repo and replaying branch
+commits is simpler and preserves clean git history.
 
 ### Phase 3: Code Path Convergence + Sunset
 

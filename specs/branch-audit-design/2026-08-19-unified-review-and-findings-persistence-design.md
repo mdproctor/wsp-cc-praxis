@@ -184,8 +184,10 @@ Same pipe, different taps.
 ## Component 3 — Findings Persistence
 
 Extends the existing findings architecture (D9). Storage format is JSONL
-(one JSON object per line) at `$WORKSPACE/.audit/findings.jsonl`. Append-only
-writes eliminate read-modify-write races across concurrent sessions.
+(one JSON object per line) at `$WORKSPACE/.audit/findings.jsonl`. Writers
+append lines under an advisory flock — lock hold time is O(line), not
+O(file) as with JSON read-modify-write, making concurrent session
+contention negligible.
 
 ### Current format (hygiene only)
 
@@ -207,6 +209,7 @@ writes eliminate read-modify-write races across concurrent sessions.
   "dimension": "conformance|coherence|structure|robustness|null",
   "severity": "critical|warning|note",
   "check": "missing-requirement|dead-code|deferred-plan-item|...",
+  "location": "src/sync.py:42|spec:req-3|plan:add-integration-tests",
   "detail": "Requirement 3 (user notifications) not implemented",
   "source": "branch-audit|code-review|loose-ends-sweep|hygiene-scan",
   "branch": "issue-123-feature-name",
@@ -216,11 +219,31 @@ writes eliminate read-modify-write races across concurrent sessions.
 }
 ```
 
+**`location`** is the stable dedup anchor — a reference to WHERE the
+finding was found, independent of how it's described:
+
+| Finding source | Location format | Example |
+|----------------|----------------|---------|
+| Code issue (file-level) | `file:line` | `src/sync.py:42` |
+| Requirement gap | `spec:§N` or `spec:req-N` | `spec:req-3` |
+| Plan item | `plan:item-slug` | `plan:add-integration-tests` |
+| Hygiene (artifact) | `artifact:file:branch` | `artifact:blog.md:issue-200` |
+| Hygiene (branch) | `branch:name` | `branch:issue-200` |
+| TODO in code | `file:line` | `handler.py:88` |
+| Session context (LLM-sourced) | `context:anchor` | `context:edge-case-handler` |
+
+`location` is distinct from `detail`: location identifies WHAT finding
+(stable across sessions), detail describes it for humans (may vary).
+When `location` is absent (legacy hygiene entries), readers fall back
+to `detail` for dedup.
+
 ### Semantics
 
-- **Dedup** by `(check, detail, branch)` — branch-scoped findings are
+- **Dedup** by `(check, location, branch)` — branch-scoped findings are
   independent per branch; workspace-level findings use `branch: null`
-  and dedup without branch (preserving current hygiene behavior)
+  and dedup without branch (preserving current hygiene behavior).
+  When `location` is absent (legacy entries), falls back to
+  `(check, detail, branch)` for backward compatibility
 - **Accumulate** across sessions — findings persist until explicitly resolved
 - **Read at session entry** — `work_health.py` `check_prior_findings()`
   already reads `$WORKSPACE/.audit/findings.json` and surfaces open
@@ -236,12 +259,16 @@ writes eliminate read-modify-write races across concurrent sessions.
 
 ### Who writes
 
-| Source | Category | When |
-|--------|----------|------|
-| `hygiene_scan.py` | `hygiene` | work-end, handover |
-| `branch-audit` | `audit` | work-end |
-| `code-review` | `review` | work-end (unresolved findings only) |
-| loose ends sweep | `loose-end` | work-end, handover |
+Each writer persists findings immediately after its step completes —
+before the next step begins. This ensures partial progress survives
+session interruption at any point in the pipeline.
+
+| Source | Category | When | Persistence point |
+|--------|----------|------|-------------------|
+| `hygiene_scan.py` | `hygiene` | work-end, handover | After scan completes |
+| `code-review` | `review` | work-end Step 2.1 | After Step 2.1 completes, before Step 2.2 |
+| `branch-audit` | `audit` | work-end Step 2.2 | After each dimension (§1 execution model) |
+| loose ends sweep | `loose-end` | work-end Step 2.3, handover | After sweep completes |
 
 ### Who reads
 
@@ -257,7 +284,8 @@ JSONL is append-only — writers blind-append, never read. Dedup and
 status resolution are reader-side operations. All readers (work_health.py,
 forcing function, loose ends sweep) implement the same contract:
 
-1. **Group** entries by dedup key `(check, detail, branch)`
+1. **Group** entries by dedup key `(check, location, branch)` — when
+   `location` is absent, fall back to `(check, detail, branch)`
 2. **Status:** latest timestamp within the group determines the finding's
    current status. An `open` entry at T3 re-opens a finding `resolved`
    at T2. (If code-review independently surfaces the same issue after
@@ -271,6 +299,13 @@ forcing function, loose ends sweep) implement the same contract:
    and updated status/resolution fields — not in-place modifications.
    The original entry remains in the file.
 
+**Canonical implementation:** The reader contract is implemented as a
+shared `read_findings(path)` function in a common Python module (alongside
+`work_health.py` and `hygiene_scan.py`). `work_health.py` calls it
+directly. LLM-driven readers (forcing function, loose ends sweep) follow
+the same algorithm from the spec's description above. The shared function
+is the reference implementation — if behavior diverges, the function wins.
+
 ### Default severity
 
 Findings without a `severity` field default to `warning`. All writers
@@ -280,6 +315,26 @@ is missed. "Dismiss all NOTEs" in the forcing function correctly
 excludes defaulted-to-warning findings — unknown severity gets human
 attention, not silent dismissal.
 
+### Writer locking protocol
+
+All writers acquire an advisory lock (`fcntl.flock`) on `findings.jsonl`
+before appending. The lock protocol is:
+
+1. Acquire `flock(LOCK_EX)` on `findings.jsonl`
+2. Append finding line(s)
+3. Release lock
+
+Lock hold time for appenders is O(line) — a single write syscall,
+microseconds. This is the structural advantage of JSONL over JSON:
+JSON read-modify-write holds the lock for O(file) (read entire file →
+parse → modify → serialize → write entire file). JSONL holds the lock
+only for the append duration. Both formats require locking for
+compaction safety, but contention under JSONL is negligible because
+appenders hold the lock for microseconds, not milliseconds.
+
+During normal operation (no compaction running), appender-vs-appender
+contention is effectively zero — the flock succeeds instantly.
+
 ### Compaction
 
 JSONL files grow monotonically. At work-end, after all findings are
@@ -288,8 +343,9 @@ days to `$WORKSPACE/.audit/findings-archive.jsonl`. This keeps the
 active file small while preserving audit trail.
 
 **Atomicity:** Compaction is a read-rewrite that breaks the append-only
-guarantee. To prevent data loss from concurrent appenders:
-1. Acquire advisory lock (`fcntl.flock`) on `findings.jsonl`
+model. It acquires the same flock that appenders use:
+
+1. Acquire `flock(LOCK_EX)` on `findings.jsonl`
 2. Read all entries, separate into "keep" and "archive"
 3. Write "keep" entries to `findings.jsonl.tmp`
 4. `os.rename('findings.jsonl.tmp', 'findings.jsonl')` (atomic on POSIX)
@@ -310,6 +366,13 @@ The forcing function is a work-end SKILL.md workflow step, not a
 standalone script. The LLM reads `findings.jsonl`, formats the
 presentation, interprets user responses (Fix/File/Dismiss), and
 updates `findings.jsonl` after each resolution.
+
+**Checkpoint behavior:** Each resolution is persisted to `findings.jsonl`
+immediately (as an appended line with updated status). If the session
+aborts mid-forcing-function, already-resolved findings remain resolved.
+A restart reads `findings.jsonl`, applies the reader contract, and
+presents only findings whose current status is still `open`. The forcing
+function resumes from where it left off — no progress is lost.
 
 Scriptable operations (reading findings, formatting display, updating
 status) are simple enough for inline LLM execution — no separate
@@ -441,6 +504,22 @@ than the cost of sweeping before reviewing.
 (i.e., conflicts were resolved), re-run code-review on the conflict
 resolution diff only. Branch-audit re-run is not required — code-review's
 per-line checklist is sufficient for conflict resolution changes.
+
+If the re-review produces findings, they are handled as a mini-gate at
+Step 3.2 — resolved inline before proceeding to Step 3.3 (Squash):
+
+1. Persist findings to `findings.jsonl` (same writer protocol as Step 2.1)
+2. Present findings with the same Fix/File/Dismiss options as the forcing
+   function, with the same severity constraints (CRITICALs cannot be
+   dismissed)
+3. All findings must be resolved before proceeding to Step 3.3
+4. If "Fix" creates new commits, re-run code-review on those fixup commits
+   only. Repeat until no new findings. The branch is already rebased —
+   fixup commits sit on top; no re-rebase is needed.
+
+This extends the "no finding survives branch close with status open"
+guarantee to post-rebase changes. The scope is small (conflict resolution
+diff only) so the mini-gate is fast.
 
 **Step 3 — Execute (after reorganization):**
 

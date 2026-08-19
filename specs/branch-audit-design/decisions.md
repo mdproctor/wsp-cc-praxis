@@ -115,14 +115,15 @@
 
 ## D9: findings.json as unified persistence format (implicit — now explicit)
 
-**Choice:** Extend existing `$WORKSPACE/.audit/findings.json` to cover all finding categories (review, audit, loose ends, hygiene)
+**Choice:** Extend findings persistence to cover all categories (review, audit, loose ends, hygiene) using JSONL format at `$WORKSPACE/.audit/findings.jsonl`
 **Alternatives:**
 - GitHub issues — durable and visible, but heavy per-finding; better as a resolution mechanism ("file as issue") than a capture mechanism
 - Entries in `.plan` — already read at session entry, but `.plan` is branch-scoped and removed at branch close
 - Git-tracked markdown — human-readable and diffable, but harder to parse programmatically
-**Rationale:** findings.json already works for hygiene findings (hygiene_scan.py writes, work_health.py reads, dedup by check+detail). Same format, same semantics, extended categories. JSON is machine-parseable for the forcing function. Not git-tracked (accumulates in workspace .audit/, not committed to project repo).
-**Trade-offs:** Invisible to GitHub. Not human-browsable without tooling. Mitigated by work_health.py surfacing at session entry and forcing function presenting at work-end.
-**Sources:** work-end/hygiene_scan.py (persist_findings), project/work_health.py (check_prior_findings)
+- JSON array (`findings.json`) — current hygiene format; requires read-modify-write, creating race conditions across concurrent sessions
+**Rationale:** JSONL (one JSON object per line) is append-only — each writer appends lines without reading the file first, eliminating the read-modify-write race condition that affects JSON array format. Issue #246 specified JSONL; this decision aligns with it. Machine-parseable for the forcing function. Not git-tracked (accumulates in workspace .audit/, not committed to project repo). Dedup by `(check, detail, branch)` ensures branch-scoped findings are independent.
+**Trade-offs:** Invisible to GitHub. Not human-browsable without tooling. JSONL requires compaction (resolved findings archived after 30 days). Mitigated by work_health.py surfacing at session entry and forcing function presenting at work-end.
+**Sources:** work-end/hygiene_scan.py, project/work_health.py, issue #246
 **Exploration:** quick
 **Status:** captured
 **Review:** R1-10 noted this was implicit. Now explicit.

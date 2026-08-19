@@ -16,11 +16,11 @@ Findings are ephemeral. Code review findings, design review deferred
 items, completeness audit gaps, and loose ends all die with the session.
 The next session has no idea what was deferred, dismissed, or left
 unfinished. Only hygiene findings (stale branches, unrecovered artifacts)
-persist via `findings.json`.
+persist via `findings.jsonl`.
 
 The blog entries from 2026-08-17 ("The Feedback Loop That Wasn't" and
 "Four Fixes, One Already Done") diagnosed this gap and identified the
-architecture: extend `findings.json` to cover all finding categories,
+architecture: extend `findings.jsonl` to cover all finding categories,
 with accumulation across sessions and a forcing function at work-end.
 
 ## Solution Overview
@@ -30,7 +30,7 @@ Six components:
 1. **Branch audit** — new skill for holistic branch-level code review
 2. **Loose ends sweep** — captures deferred/skipped/missing items at
    every lifecycle gate
-3. **Findings persistence** — extends `findings.json` to all categories
+3. **Findings persistence** — extends `findings.jsonl` to all categories
 4. **Forcing function** — drains all accumulated findings at work-end
 5. **Lifecycle integration** — reorders work-end and adds sweep to handover
 6. **Skill cleanup** — removes deprecated skills, preserves VBC as protocol
@@ -49,7 +49,9 @@ Each dimension includes (but is not limited to) the listed sub-concerns.
 The reference document varies by context:
 - With spec: implementation vs spec
 - With issue only: implementation vs issue description and acceptance criteria
-- With neither: implementation vs stated intent
+- With neither: implementation vs commit messages and conversation
+  context (lightest form — confirms code does what was described;
+  fewer, lower-severity findings expected)
 
 Includes: issue conformance, completeness, missing requirements, gaps in
 edge case coverage, untested scenarios, acceptance criteria not met.
@@ -74,13 +76,21 @@ When Robustness identifies security concerns (auth, PII, payment, user
 input code), it offers to escalate to `security-audit` for the full
 OWASP pass (D7).
 
+At work-end, branch-audit's Robustness dimension owns the security-audit
+escalation. code-review suppresses its own escalation offer at work-end
+to avoid presenting the same offer twice. During development (per-commit
+review), code-review continues to offer security-audit escalation as
+today.
+
 ### Execution Model
 
 Runs inline in the current session. Single pass per dimension. No
 external sessions, no adversarial rounds, no watchdog crons.
 
-Produces findings with severity (CRITICAL / WARNING / NOTE). Unresolved
-findings are written to `findings.json` (Component 3).
+Produces findings with severity (CRITICAL / WARNING / NOTE). Findings
+are appended to `findings.jsonl` (Component 3) after each dimension
+completes — not batched after all four. This ensures partial progress
+survives session interruption. Dedup prevents duplicates on re-run.
 
 ### Relationship to design-review
 
@@ -114,21 +124,40 @@ closed correctly, artifacts promoted, blogs published).
 - Deferred plan items (from `.plan`)
 - Skipped or deferred review findings from this session
 - TODOs in code referencing this branch/issue
-- Open findings from prior sessions (reads `findings.json`)
+- Open findings from prior sessions (reads `findings.jsonl`)
 - Uncommitted changes
 - Unresolved "I'll come back to this" items from conversation context
+
+### Execution model
+
+Hybrid skill (SKILL.md) — mechanical checks via script calls, conversation
+recall via LLM. Same pattern as handover combining `ctx.py` calls with
+conversation memory.
+
+| Check | Method | Notes |
+|-------|--------|-------|
+| Deferred plan items | Script: read `.plan` | Mechanical |
+| Skipped/deferred findings | Script: read `findings.jsonl` where `status: open` | Writers persist unresolved findings at source |
+| TODOs referencing branch/issue | Script: code search scoped to changed files | Mechanical |
+| Open findings from prior sessions | Script: read `findings.jsonl` | Mechanical |
+| Uncommitted changes | Script: `git status` | Skipped at work-end (Step 1 `clean_tree` handles it) |
+| "I'll come back to this" | LLM: conversation recall | Best-effort — marked as LLM-sourced in output |
+
+At handover, all six checks run (uncommitted changes is the primary
+signal since work-end Step 1 hasn't run). At work-end, the uncommitted
+changes check is skipped — already handled by Step 1 Context.
 
 ### Lifecycle behavior
 
 **At handover:** capture and persist only. New findings written to
-`findings.json`. No forcing function — session is ending, work continues.
+`findings.jsonl`. No forcing function — session is ending, work continues.
 
 **At work-end:** capture, persist, then force-resolve all accumulated
 findings (Component 4).
 
 ### Relationship to epic hygiene
 
-Same persistence mechanism (findings.json), different concerns:
+Same persistence mechanism (findings.jsonl), different concerns:
 
 | Check | Epic hygiene | Loose ends sweep |
 |-------|-------------|-----------------|
@@ -144,7 +173,9 @@ Same pipe, different taps.
 
 ## Component 3 — Findings Persistence
 
-Extends the existing `$WORKSPACE/.audit/findings.json` architecture (D9).
+Extends the existing findings architecture (D9). Storage format is JSONL
+(one JSON object per line) at `$WORKSPACE/.audit/findings.jsonl`. Append-only
+writes eliminate read-modify-write races across concurrent sessions.
 
 ### Current format (hygiene only)
 
@@ -177,9 +208,11 @@ Extends the existing `$WORKSPACE/.audit/findings.json` architecture (D9).
 
 ### Semantics
 
-- **Dedup** by `(check, detail)` — same as current hygiene behavior
+- **Dedup** by `(check, detail, branch)` — branch-scoped findings are
+  independent per branch; workspace-level findings use `branch: null`
+  and dedup without branch (preserving current hygiene behavior)
 - **Accumulate** across sessions — findings persist until explicitly resolved
-- **Read at session entry** — `work_health.py` `check_prior_findings()` surfaces open findings (already implemented for hygiene; same code path handles extended categories)
+- **Read at session entry** — `work_health.py` `check_prior_findings()` surfaces all open findings with severity and category (new implementation — neither `check_prior_findings()` nor findings.jsonl persistence exist yet; handover/SKILL.md describes the architecture but implementation hasn't landed)
 - **Resolution statuses:**
   - `resolved` — fixed in code (include commit SHA)
   - `filed` — created as GitHub issue (include issue number)
@@ -199,11 +232,29 @@ Extends the existing `$WORKSPACE/.audit/findings.json` architecture (D9).
 - `work_health.py` at session entry — surfaces all open findings
 - Forcing function at work-end — presents all open findings for resolution
 - Loose ends sweep — reads prior findings as part of its scan
+  (filters by timestamp: only findings older than current work-end
+  cycle start, to avoid double-counting current-session findings)
+
+### Default severity
+
+Findings without a `severity` field default to `warning`. All writers
+should adopt the extended format from the start (implementation order
+has Component 3 first), but the default provides robustness if a writer
+is missed. "Dismiss all NOTEs" in the forcing function correctly
+excludes defaulted-to-warning findings — unknown severity gets human
+attention, not silent dismissal.
+
+### Compaction
+
+JSONL files grow monotonically. At work-end, after all findings are
+resolved, compact: archive resolved/dismissed findings older than 30
+days to `$WORKSPACE/.audit/findings-archive.jsonl`. This keeps the
+active file small while preserving audit trail.
 
 ## Component 4 — Forcing Function
 
 Runs at work-end only (D4). Presents all accumulated findings from
-`findings.json` and requires resolution for each.
+`findings.jsonl` and requires resolution for each.
 
 ### Presentation
 
@@ -238,9 +289,30 @@ Prior sessions (accumulated):
 | **File** | Create a GitHub issue. Finding status → `filed`, resolution includes issue number |
 | **Dismiss** | Not a real problem. Finding status → `dismissed`, resolution includes reason |
 
+**Severity constraints on resolution:**
+
+| Severity | Fix | File | Dismiss |
+|----------|-----|------|---------|
+| CRITICAL | Yes | Yes  | No      |
+| WARNING  | Yes | Yes  | Yes     |
+| NOTE     | Yes | Yes  | Yes     |
+
+CRITICAL findings ("will cause wrong behavior, data loss, or security
+vulnerability") must be fixed or filed — they cannot be dismissed with
+a reason string.
+
 No finding survives branch close with status `open`. The forcing function
 is a hard gate — work-end cannot proceed to Execute until all findings
 are resolved.
+
+### Re-review after fixes
+
+When the user chooses "Fix" and creates new commits, the forcing function
+detects new commits since the review started and re-runs code-review on
+those commits only. New findings from the re-review are added to the
+forcing function queue. This loop continues until no new commits are
+needed. Branch-audit does not re-run — fixes are scoped responses to
+specific findings, not structural changes.
 
 ### Batch operations
 
@@ -271,11 +343,21 @@ Proposed: Context → Review → Sweep → Execute → Verify → Close
 All four sub-steps are hard gates. Step 2 does not complete until
 the forcing function has resolved all findings.
 
+**Loose ends sweep temporal filtering:** Step 2.3 reads `findings.jsonl`
+for prior-session findings only — it filters by timestamp, reading only
+findings older than the current work-end cycle start. This prevents
+double-counting findings just written by Steps 2.1 and 2.2.
+
 **Trade-off acknowledged:** Review runs without forage/protocol sweep
 context. For per-line code-review this is negligible. For branch-audit's
 holistic dimensions, a gotcha surfaced by forage could explain unusual
 code. Accepted: the cost of reviewing without sweep context is lower
 than the cost of sweeping before reviewing.
+
+**Post-rebase re-review:** If rebase (Execute Step 3.3) is non-fast-forward
+(i.e., conflicts were resolved), re-run code-review on the conflict
+resolution diff only. Branch-audit re-run is not required — code-review's
+per-line checklist is sufficient for conflict resolution changes.
 
 ### Handover flow
 
@@ -290,13 +372,13 @@ Add loose ends sweep to the wrap checklist (Step 0), defaulting ON:
 ```
 
 Loose ends sweep runs first (while session context is full). Captures
-and persists to `findings.json`. No forcing function at handover —
+and persists to `findings.jsonl`. No forcing function at handover —
 capture only.
 
 ### Session entry
 
 No changes needed. `work_health.py` `check_prior_findings()` already
-reads `findings.json` and surfaces open findings. Extended format is
+reads `findings.jsonl` and surfaces open findings. Extended format is
 backward compatible — new fields are additive.
 
 ## Component 6 — Skill Cleanup
@@ -307,8 +389,10 @@ backward compatible — new fields are additive.
 - Update cross-references in: `code-review/SKILL.md`,
   `receiving-code-review/SKILL.md`, `subagent-driven-development/SKILL.md`,
   `CLAUDE.md`, `README.md`
-- `receiving-code-review` stays — update its Skill Chaining to reference
-  branch-audit instead
+- `receiving-code-review` stays — remove the `requesting-code-review`
+  reference from its Skill Chaining; add `design-review` as the
+  dispatching counterpart (design-review dispatches external review
+  sessions whose feedback receiving-code-review handles)
 
 ### Retire verification-before-completion (D3)
 
@@ -334,12 +418,12 @@ backward compatible — new fields are additive.
 
 ## Implementation Order
 
-1. **Findings persistence** (Component 3) — extend `findings.json` format.
+1. **Findings persistence** (Component 3) — extend `findings.jsonl` format.
    Everything else writes to it.
 2. **Loose ends sweep** (Component 2) — can ship independently. Writes to
-   `findings.json`, runs at handover.
+   `findings.jsonl`, runs at handover.
 3. **Branch audit** (Component 1) — new skill with four dimensions.
-4. **Forcing function** (Component 4) — reads `findings.json`, presents
+4. **Forcing function** (Component 4) — reads `findings.jsonl`, presents
    findings, requires resolution.
 5. **Lifecycle integration** (Component 5) — reorder work-end, add sweep
    to handover.

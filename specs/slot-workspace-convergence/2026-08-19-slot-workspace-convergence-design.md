@@ -13,6 +13,34 @@ on "am I in a slot?" — work-end, work-start, topology detection, symlink
 resolution, promotion, squash, merge. The divergence is the root cause
 of slot-specific bugs and unreliable behaviour.
 
+### Root Cause
+
+`resolve_workspace_source()` (`slot_manager.py:309-320`) uses a
+parent-first resolution algorithm: it checks `target.parent / ".git"`
+before checking `target / ".git"`. In the casehub workspace structure,
+child workspace repos (e.g., `~/claude/public/casehub/connectors/`) are
+nested inside a parent that is ALSO a git repo
+(`~/claude/public/casehub/`). Because the parent check fires first,
+ALL casehub projects resolve to the same parent repo — producing the
+family workspace model that this spec eliminates.
+
+```python
+target = wksp.resolve()           # ~/claude/public/casehub/connectors
+parent = target.parent            # ~/claude/public/casehub/
+if (parent / ".git").exists():    # TRUE — parent IS a git repo
+    return parent, "work"         # Returns the PARENT, not the child
+# Never reaches the child's .git check
+```
+
+workspace-init creates independent per-project workspace repos (each
+with its own `.git`), but `resolve_workspace_source` doesn't see them.
+The 1:1 mapping exists on disk; the code produces the N:1 family model.
+
+Fixing `resolve_workspace_source` to use `git rev-parse --show-toplevel`
+(which correctly resolves to the nearest enclosing `.git`) would make
+new slots correct immediately. The migration exists to fix existing
+slots created with the buggy resolution.
+
 ### Symptoms
 
 1. **Ambiguous artifact ownership.** `work-casehub/specs/` and
@@ -100,31 +128,74 @@ Topology-specific transport (helper functions):
 
 ### Convergence Architecture
 
-The converged flow adopts `merge_slot`'s batch orchestration model —
-preflight all repos before touching any, then rebase all, then
-merge+push per repo — extended to include workspace repos:
+The shared flow is parameterized, not conditional. Each adapter constructs
+a batch of repo descriptors; the shared flow processes them uniformly.
 
-1. **Enumerate:** `get_all_slot_repos()` returns project + workspace repos.
-   Partition into project repos and workspace repos via `is_workspace_clone()`.
-2. **Preflight:** Check all originals (project AND workspace) for clean state,
-   sync their `main` with remote. Fail fast if any repo is dirty or diverged.
-3. **Rebase:** Rebase all feature branches (project AND workspace) onto
-   updated `main`. Retry up to 3 times. Abort all on persistent conflict.
-4. **Merge + push (per repo):** For each repo (workspace first, then project):
-   merge feature branch into `main`, push via topology-appropriate transport.
-   Collect results. Fail if any local push fails.
-5. **Stamp:** Stamp all feature branches (project AND workspace) with
+**Repo descriptor** (per repo in the batch):
+
+```
+repo_path:      Path   # the repo being landed (clone in slot mode, original in branch mode)
+original_path:  Path   # clone source (slot) or same as repo_path (branch)
+push_target:    str    # remote name for final push
+base_branch:    str    # typically "main"
+is_workspace:   bool   # workspace or project repo
+transport:      str    # "two-hop" (slot: clone→original→remote) or "direct" (branch: repo→remote)
+```
+
+**Slot adapter** constructs the batch:
+- Calls `get_all_slot_repos()` and partitions via `is_workspace_clone()`
+- `repo_path` = slot clone path; `original_path` = `resolve_original_repo()`
+- `push_target` = "local" (first hop) then original pushes to "origin" (second hop)
+- `transport` = "two-hop"
+
+**Branch adapter** constructs the batch:
+- Takes `(project, workspace)` pair from `cmd_land` arguments
+- `repo_path` = `original_path` = the repo itself (no clone indirection)
+- `push_target` = result of `detect_topology()` (blessed remote or fork)
+- `transport` = "direct"
+- Preflight translates to: fetch from push target, detect and rescue
+  local-only commits (the rescue-branch logic from current `cmd_land`)
+
+**Shared flow** (5 steps):
+
+1. **Preflight:** For each repo descriptor, ensure `base_branch` is in
+   sync with remote and working tree is clean. In two-hop transport,
+   this checks the original repo. In direct transport, this checks the
+   repo itself. Fail fast if any repo is dirty or diverged.
+2. **Rebase (safety re-check):** Rebase all feature branches onto updated
+   `base_branch`. If the SKILL.md's Phase A already rebased, this is a
+   no-op (fast-forward). If time passed between Phase A and Phase C, this
+   catches up. Retry up to 3 times; abort all on persistent conflict.
+3. **Merge + push (per repo, project first):** For each repo — project
+   repos first, then workspace repos — merge feature branch into
+   `base_branch`, push via transport. Project-first ordering matches
+   `cmd_land`'s existing behavior: code lands before its workspace
+   artifacts. Code without docs is recoverable; docs without code is
+   confusing.
+4. **Stamp:** Stamp all feature branches (project AND workspace) with
    branch-closed commit containing landed SHA.
+5. **Record:** Write `.landed` marker (slot mode) or land ledger entry
+   (branch mode).
 
-`cmd_land` becomes a thin adapter: construct a single-repo batch (one
-project + its workspace) and call the shared flow. The transport helpers
-detect topology (slot two-hop vs direct push) and are called from the
-shared flow — they don't define a separate orchestration path.
+**Crash recovery:** The shared flow tracks per-repo progress in
+`.execute-progress` (adopted from `cmd_land`), recording state
+transitions: `merged` → `pushed` → `stamped`. On re-entry after a
+crash, the flow reads progress and resumes from the last incomplete
+stage per repo. This is critical for batch operations where N repos
+(project + workspace) can fail at any point.
 
-**Error handling:** The shared flow uses `merge_slot`'s coordinated model.
-All push results are collected; if any local push fails, the full status
-is reported. Per-repo rollback (reset to pre-merge SHA) applies to each
-repo independently but the batch reports holistically.
+**Error handling:** Coordinated model — all push results are collected;
+if any local push fails, the full batch status is reported. Per-repo
+rollback (reset to pre-merge SHA) applies independently but reporting
+is batch-level.
+
+**SKILL.md two-phase model mapping:**
+- Phase A-B (rebase + squash analysis) remains as SKILL.md orchestration.
+  Writes `.phase-a-complete` marker in slot mode.
+- Phase C (land) calls the shared flow via the appropriate adapter.
+  `.phase-a-complete` is a SKILL.md pre-condition for slot mode — the
+  shared flow itself does not check or require it. In branch mode, the
+  marker does not exist and is not checked.
 
 ## Detection
 
@@ -175,9 +246,12 @@ No hardcoded name exclusions.
    g. `create_proj_symlink` in that subdirectory back to the project clone
 
 In practice, for the casehub family, all projects resolve to the same
-workspace source (`~/claude/public/casehub/`), producing a single family
-workspace clone with per-project subdirectories. But the code already
-handles per-source resolution — the deduplication is explicit.
+workspace source (`~/claude/public/casehub/`) because of the parent-first
+bug in `resolve_workspace_source` (see §Root Cause). The `ws_created`
+deduplication compensates for this — without it, `create_slot` would
+attempt to clone the same parent repo once per project and fail on the
+second clone. With correct `git_toplevel`-based resolution, each project
+would resolve to its own workspace repo and dedup would be unnecessary.
 
 ### Target
 
@@ -195,22 +269,28 @@ handles per-source resolution — the deduplication is explicit.
 No family workspace clone. No subdirectory nesting. Each workspace
 clone is independent — same as workspace-init creates them.
 
-**1:1 mapping assumption:** workspace-init guarantees each project has
-its own independent workspace repo. Two projects should never resolve
-to the same workspace source. If they do (legacy configuration), the
-target `create_slot` detects the collision (same `slot_workspace_name`
-already cloned) and errors with a diagnostic — the workspace-init
-configuration must be fixed before slot creation succeeds. The current
-`ws_created` deduplication is removed; it masked a configuration problem
-that the target makes explicit.
+**1:1 mapping:** workspace-init creates independent per-project workspace
+repos. The current code doesn't see this mapping because
+`resolve_workspace_source` resolves to the parent (see §Root Cause).
+With `git_toplevel`-based resolution (§Resolving Workspace Repo Identity),
+each project resolves to its own workspace repo — the 1:1 mapping that
+already exists on disk. The `ws_created` deduplication is removed because
+it compensates for the parent-first bug; with correct resolution, no two
+projects resolve to the same source. As a safety check, the target
+`create_slot` detects collisions (same `slot_workspace_name` already
+cloned) and errors with a diagnostic.
 
 ### Resolving Workspace Repo Identity
+
+This algorithm replaces `resolve_workspace_source()`. The key change:
+`git rev-parse --show-toplevel` replaces the parent-first `.git` check,
+correctly resolving to the child workspace repo instead of the parent.
 
 For each project repo being cloned into a slot:
 
 ```
 original_wksp = readlink(original_project/wksp)   # e.g., ~/claude/public/casehub/connectors
-workspace_repo = git_toplevel(original_wksp)       # the git repo root
+workspace_repo = git_toplevel(original_wksp)       # ~/claude/public/casehub/connectors (NOT parent)
 workspace_name = basename(workspace_repo)           # e.g., "connectors"
 
 # But the directory name may collide with the project name.
@@ -233,9 +313,14 @@ to construct a unique name: `wsp-<family>-<project>`.
    clones using current detection (name-based), write marker.
 2. Update `is_workspace_clone()` to check `.workspace` marker as primary
    signal. Keep name-based check as fallback for one release cycle.
-3. Bulk-migrate archived slots (attic): for each archived slot with a
-   family workspace clone, split into per-repo workspace clones. Archived
-   slots have no active sessions — safe to restructure freely.
+3. Archived slots (attic): place `.workspace` markers only — do NOT
+   restructure. Attic slots are read-only archives; restructuring requires
+   cloning from original workspace repos which may have been moved or
+   reorganized since archival. If an attic slot is restored (via
+   `restore_slot`), Phase 2 migration triggers at the session-start
+   lifecycle event. If the original workspace repo is inaccessible at
+   restore time, warn and leave the slot in its current layout — the
+   `.workspace` markers ensure correct detection regardless of structure.
 4. Update `create_slot()` to use the new per-repo workspace model and
    place `.workspace` markers.
 
@@ -323,7 +408,7 @@ commits is simpler and preserves clean git history.
 | File | Function/Section | Change |
 |------|-----------------|--------|
 | `slot_manager.py:547-711` | `create_slot` | Per-repo workspace cloning, `.workspace` marker, remove `ws_created` dedup |
-| `slot_manager.py:309-320` | `resolve_workspace_source` | Keep detection (wksp→git repo resolution), replace naming with remote-URL derivation |
+| `slot_manager.py:309-320` | `resolve_workspace_source` | Replace parent-first `.git` check with `git_toplevel`; replace naming with remote-URL derivation (see §Root Cause) |
 | `slot_manager.py:872-877` | `is_project_repo` | Remove name-based exclusion |
 | `slot_manager.py:880-894` | `is_workspace_clone` | `.workspace` marker only |
 | `slot_manager.py:897-902` | `get_slot_repos` | Unchanged (uses updated detection) |

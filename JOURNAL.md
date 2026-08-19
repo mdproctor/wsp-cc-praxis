@@ -1,1 +1,1 @@
-# Design Journal — issue-254-unified-review-findings
+# Design Journal — issue-255-slot-workspace-convergence

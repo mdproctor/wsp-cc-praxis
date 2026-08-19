@@ -25,13 +25,16 @@ with accumulation across sessions and a forcing function at work-end.
 
 ## Solution Overview
 
-Six components:
+Four architectural components:
 
 1. **Branch audit** — new skill for holistic branch-level code review
 2. **Loose ends sweep** — captures deferred/skipped/missing items at
    every lifecycle gate
 3. **Findings persistence** — extends `findings.jsonl` to all categories
 4. **Forcing function** — drains all accumulated findings at work-end
+
+Two implementation tasks:
+
 5. **Lifecycle integration** — reorders work-end and adds sweep to handover
 6. **Skill cleanup** — removes deprecated skills, preserves VBC as protocol
 
@@ -219,7 +222,12 @@ writes eliminate read-modify-write races across concurrent sessions.
   independent per branch; workspace-level findings use `branch: null`
   and dedup without branch (preserving current hygiene behavior)
 - **Accumulate** across sessions — findings persist until explicitly resolved
-- **Read at session entry** — `work_health.py` `check_prior_findings()` surfaces all open findings with severity and category (new implementation — neither `check_prior_findings()` nor findings.jsonl persistence exist yet; handover/SKILL.md describes the architecture but implementation hasn't landed)
+- **Read at session entry** — `work_health.py` `check_prior_findings()`
+  already reads `$WORKSPACE/.audit/findings.json` and surfaces open
+  findings (implemented — see line 427). `hygiene_scan.py`
+  `persist_findings()` already writes hygiene findings to the same path
+  (line 246). Migration to `.jsonl` format requires updating both
+  functions and enhancing the display to show severity and category.
 - **Resolution statuses:**
   - `resolved` — fixed in code (include commit SHA)
   - `filed` — created as GitHub issue (include issue number)

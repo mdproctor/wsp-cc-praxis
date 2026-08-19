@@ -332,11 +332,19 @@ For each active slot with old structure (`work-<family>/`):
 
 1. **Check lifecycle state.** Only migrate at session start (before work
    begins) or work-end (work being closed). Never mid-session.
-2. For each project repo in the slot:
+   Check `.migration-progress` in the slot root — if all projects are
+   marked `complete`, skip migration (already done). If partially
+   complete, resume from where it stopped.
+2. For each project repo in the slot (skip if `.migration-progress`
+   records this project as `complete`):
    a. Clone the project's workspace repo fresh from the original
       (e.g., `git clone --shared ~/claude/public/casehub/connectors
       wsp-casehub-connectors`). Resolve the original via the project
       repo's `wksp` symlink outside the slot.
+      **Idempotency:** if `wsp-casehub-connectors/` already exists with
+      `.git` and the feature branch, skip clone and patch (steps a-b).
+      If it exists but is broken (no `.git`, wrong branch), remove and
+      re-clone.
    b. Check out the same feature branch. Replay workspace changes from
       the family clone into the new per-repo clone:
       ```
@@ -353,19 +361,23 @@ For each active slot with old structure (`work-<family>/`):
       is not preserved but each repo gets its complete file-level changes.
       If no commits touch the subdirectory, no patches are generated —
       the fresh clone on the feature branch is already correct.
-   c. Place `.workspace` marker in the new clone.
-   d. Repoint project's `wksp` symlink to `../wsp-casehub-connectors/`.
+   c. Place `.workspace` marker in the new clone (idempotent — `touch`).
+   d. Repoint project's `wksp` symlink to `../wsp-casehub-connectors/`
+      (idempotent — overwrites existing symlink).
    e. Replace `work-casehub/connectors/` with symlink to
-      `../wsp-casehub-connectors/` (backwards compat for loaded sessions).
+      `../wsp-casehub-connectors/` (idempotent — symlink overwrite).
+   f. Record `<project>=complete` in `.migration-progress`.
 3. Commit the symlink replacements to the family workspace clone's
-   feature branch:
+   feature branch (if working tree is dirty):
    ```
    git -C work-casehub/ add connectors/ pages/ ...
-   git -C work-casehub/ commit -m "chore: migration — subdirs replaced with symlinks to per-repo clones"
+   git -C work-casehub/ diff --cached --quiet || \
+     git -C work-casehub/ commit -m "chore: migration — subdirs replaced with symlinks to per-repo clones"
    ```
-   This keeps the working tree clean. `merge_slot` skips workspace repos
-   (via `get_slot_repos` filtering), so this commit is never pushed — it
-   exists only to prevent dirty-tree warnings.
+   **Idempotency:** `diff --cached --quiet` skips the commit if nothing
+   staged (previous run already committed). `merge_slot` skips workspace
+   repos (via `get_slot_repos` filtering), so this commit is never
+   pushed — it exists only to prevent dirty-tree warnings.
 4. The family workspace clone (`work-casehub/`) remains as a shell with
    symlinks — old sessions following old paths still resolve correctly.
    Writes through symlinks land in the per-repo workspace clone's git
@@ -450,6 +462,53 @@ commits is simpler and preserves clean git history.
   correct — separate repos per project).
 - Changing `.slot` file format or slot lifecycle states.
 - Changing `.plan` location or format.
+
+## Slot Session Orientation
+
+With per-repo workspaces, artifact routing becomes structurally obvious.
+But sessions still need to understand their scope.
+
+### Problem
+
+Sessions started in a slot's primary repo assume they are scoped to that
+repo only. When the active issue targets a different repo in the slot
+(e.g., pages#323 while CWD is connectors), the session asks the user
+whether to "work from here or start a pages-scoped session" — not
+understanding that slot membership grants full write access to all
+cloned repos.
+
+### Orientation Rule
+
+When a slot session starts or resumes, work-start must communicate:
+
+1. **All repos in the slot** — listed with paths, not just the primary.
+2. **Write access is universal** — the session can and should write to
+   any repo in the slot. That's the point of slots.
+3. **Artifact routing** — each repo's workspace artifacts go in that
+   repo's workspace clone. Cross-cutting artifacts go in primary's
+   workspace, tagged for scope.
+4. **Issue routing** — `.plan` entries are tagged with their target repo
+   (e.g., `[pages]`). The session writes to the tagged repo, not the
+   repo it was started in.
+
+### Skill Changes
+
+- **work-start (slot resume path):** When `IN_SLOT=yes`, read `.slot`
+  to enumerate all repos. Present the full scope to the session. Include
+  each repo's path and its paired workspace path.
+- **work-slot SKILL.md:** Add an explicit "Slot Scope" section
+  documenting that sessions own all repos in the slot.
+- **.slot file:** Already lists repos. No format change needed — skills
+  just need to read and surface it.
+
+### Connection to Workspace Convergence
+
+With the old family workspace clone, artifact routing was ambiguous —
+even a correctly-oriented session wouldn't know whether connectors specs
+go in `work-casehub/specs/` or `work-casehub/connectors/specs/`. With
+per-repo workspaces, the routing is unambiguous: connectors specs go in
+`wsp-casehub-connectors/specs/`. The orientation rule and the workspace
+structure reinforce each other.
 
 ## Companion Tasks
 

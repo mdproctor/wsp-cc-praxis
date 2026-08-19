@@ -94,10 +94,17 @@ survives session interruption. Dedup prevents duplicates on re-run.
 
 ### Relationship to design-review
 
-`design-review/review-tiers.md` planned a "Post-implementation" lifecycle
-point with the same four dimensions. Branch-audit fills this gap with a
-simpler execution model. `review-tiers.md` should be updated to reference
-branch-audit for the post-implementation lifecycle point.
+Branch-audit is an independent skill, not a child of design-review.
+Both share a common lifecycle model documented in `review-tiers.md`:
+
+- `review-tiers.md` maps lifecycle points to dimensions and depths.
+  Post-implementation is one lifecycle point, currently marked "future."
+- Branch-audit implements the post-implementation lifecycle point with
+  a single-pass inline execution model — fundamentally different from
+  design-review's multi-round adversarial model.
+- `review-tiers.md` should be updated to change the post-implementation
+  row from "future" to "Implemented by: branch-audit" — completing the
+  lifecycle model, not creating an ownership dependency.
 
 The four dimensions (Conformance, Coherence, Structure, Robustness) are
 shared vocabulary between design-review and branch-audit. Cross-cutting
@@ -343,6 +350,13 @@ Proposed: Context → Review → Sweep → Execute → Verify → Close
 All four sub-steps are hard gates. Step 2 does not complete until
 the forcing function has resolved all findings.
 
+Both code-review and branch-audit run unconditionally — there is no
+choice between them. code-review catches per-line issues (mutable
+defaults, unawaited coroutines). branch-audit catches holistic issues
+(missing requirements, structural gaps). The current work-end Step 3.1
+conditional ("for structural diffs: use `design-review --mode
+final-review` instead") is removed — branch-audit replaces that routing.
+
 **Loose ends sweep temporal filtering:** Step 2.3 reads `findings.jsonl`
 for prior-session findings only — it filters by timestamp, reading only
 findings older than the current work-end cycle start. This prevents
@@ -359,27 +373,58 @@ than the cost of sweeping before reviewing.
 resolution diff only. Branch-audit re-run is not required — code-review's
 per-line checklist is sufficient for conflict resolution changes.
 
-### Handover flow
+**Step 3 — Execute (after reorganization):**
 
-Add loose ends sweep to the wrap checklist (Step 0), defaulting ON:
+Execute retains its current content minus code review (moved to Step 2):
 
 ```
-[x] 1  Loose ends sweep   capture deferred/skipped/missing items
+3.1  Promote artifacts
+3.2  Phase A: Rebase
+3.3  Phase B: Squash
+3.4  Phase C: Land
+```
+
+### Handover flow
+
+Add loose ends sweep to the wrap checklist (Step 0), defaulting ON.
+The full checklist after this change:
+
+```
+[x] 1  Loose ends sweep   capture deferred/skipped/missing items       (NEW)
 [x] 2  Knowledge capture  (forage then protocol — sequential)
-[x] 3  ADR               record architectural decisions
+[x] 3  ADR               record architectural decisions                (NEW)
 [x] 4  Doc sync           (update-claude-md then implementation-doc-sync)
-[x] 5  write-content      capture branch narrative as diary entry
+[?] 5  journal-entry      document design changes not yet in JOURNAL.md ← ON if mid-epic
+[?] 6  epic hygiene       check epic branch state and staleness         ← ON if workspace configured
+[?] 7  arc42 stale scan   check ARC42STORIES.MD for stale statuses      ← ON if ARC42STORIES.MD exists
+[x] 8  write-content      capture branch narrative as diary entry
+[x] 9  notes              anything to note for later?
 ```
 
 Loose ends sweep runs first (while session context is full). Captures
 and persists to `findings.jsonl`. No forcing function at handover —
 capture only.
 
+Items 5–7 retain their existing conditional defaults and behavior
+from handover/SKILL.md. Epic hygiene and loose ends sweep are different
+concerns sharing the same persistence mechanism (§2 Relationship to
+epic hygiene).
+
 ### Session entry
 
-No changes needed. `work_health.py` `check_prior_findings()` already
-reads `findings.jsonl` and surfaces open findings. Extended format is
-backward compatible — new fields are additive.
+New `check_prior_findings()` function in `work_health.py` reads
+`findings.jsonl` and surfaces open findings with severity and category:
+
+```
+CHECK=prior_findings STATUS=warn DETAIL=3 open finding(s):
+  [audit/conformance/WARNING] Requirement 3 not implemented (branch-audit)
+  [loose-end/WARNING] Plan item "add integration tests" deferred (loose-ends-sweep)
+  [hygiene/WARNING] Blog on closed branch never promoted (hygiene-scan)
+```
+
+Findings display: `[category/dimension/severity] detail (source)`.
+Dimension omitted when null (hygiene, loose-end categories). Findings
+missing `severity` display as `[WARNING]` (default severity rule, §3).
 
 ## Component 6 — Skill Cleanup
 
@@ -408,13 +453,24 @@ backward compatible — new fields are additive.
 
 ### Update design-review
 
-- Update `review-tiers.md` post-implementation lifecycle point to
-  reference branch-audit
-- Rename dimensions to match shared vocabulary:
-  - Current: Coherence, Structure, Robustness
-  - New: Conformance, Coherence, Structure, Robustness (add Conformance
-    for post-implementation)
+- Update `review-tiers.md` post-implementation lifecycle point: change
+  from *(future)* to active, referencing branch-audit as the executor
+- Conformance already exists in `review-tiers.md` as a dimension scoped
+  to post-implementation. The change is activating the lifecycle point,
+  not adding the dimension.
 - No changes to execution model, adversarial machinery, or degree system
+
+### Retire `--mode final-review`
+
+Branch-audit replaces `design-review --mode final-review` for pre-merge
+holistic review. Update all references:
+
+- **work-end/SKILL.md** Step 3.1: remove the conditional routing to
+  `--mode final-review` for structural diffs — branch-audit runs
+  unconditionally at Step 2.2 for all branches
+- **code-review/SKILL.md** Skill Chaining: update "use final-review for
+  pre-merge production readiness checks" to reference branch-audit
+- **design-review/SKILL.md**: remove `--mode final-review` references
 
 ## Implementation Order
 
@@ -452,8 +508,8 @@ at session entry) before the full system lands.
 - code-review/SKILL.md — per-line checklist
 - design-review/SKILL.md — adversarial spec review
 - design-review/review-tiers.md — lifecycle points and dimensions
-- work-end/hygiene_scan.py — existing findings persistence
-- project/work_health.py — existing findings surfacing
+- work-end/hygiene_scan.py — hygiene checks (to be extended with findings.jsonl persistence)
+- project/work_health.py — session entry health checks (to be extended with check_prior_findings)
 - Blog: 2026-08-17-mdp01 "The Feedback Loop That Wasn't"
 - Blog: 2026-08-17-mdp03 "Four Fixes, One Already Done"
 - handover/SKILL.md — epic hygiene checks

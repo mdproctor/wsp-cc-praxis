@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-254-unified-review-findings
-state: scaffolded
+state: closing:review
 project-sha: 6f46563d060c90e2c52dbc0883f392dcbb4d2c23
 date: 2026-08-19
 issue-repo: Hortora/soredium

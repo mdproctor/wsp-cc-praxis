@@ -1,7 +1,7 @@
 # Unified Review and Findings Persistence
 
 **Date:** 2026-08-19
-**Status:** Draft
+**Status:** Reviewed (Standard, 3 rounds × 4 dimensions, $48.56)
 **Decisions:** [decisions.md](decisions.md)
 
 ## Problem
@@ -427,6 +427,17 @@ a reason string.
 No finding survives branch close with status `open`. The forcing function
 is a hard gate — work-end cannot proceed to Execute until all findings
 are resolved.
+
+### Triage filtering
+
+"Accept all" and batch operations apply only to **surviving** findings —
+those not already rejected by verification during the review process.
+If a reviewer raised a finding and the implementor proved it invalid
+(e.g., claimed infrastructure doesn't exist but it does), that finding
+is not presented for triage. The forcing function presents only findings
+whose status is `open` after the review's own adversarial process has
+run. This applies equally to branch-audit, code-review, and loose ends
+sweep findings.
 
 ### Re-review after fixes
 

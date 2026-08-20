@@ -1,15 +1,15 @@
-# Work Plan — issue-258-phantom-landing-bugs
+# Work Plan — issue-261-unified-work-queue
 
 ## State
-branch: issue-258-phantom-landing-bugs
-state: closing:stamped
-project-sha: 51b51de36ca3bdfcd59547b57c6f0e2d18a2e0b8
+branch: issue-261-unified-work-queue
+state: scaffolded
+project-sha: 2342b47f193de6f8d37ace0aec562480be64e2bd
 date: 2026-08-20
 issue-repo: Hortora/soredium
-covers: 258
+covers: 261
 design-repo: project
-design-section-hashes: 
+design-section-hashes: 979de182:## Artifact Schema|2babe25e:## S1 Introduction and Goals|bb734ef3:## S2 Constraints|56f12d30:## S3 Context and Scope|e1b910f2:## S4 Solution Strategy|52bc89ed:## S5 Building Block View|912c0058:## S6 Runtime View|e8498ada:## S7 Deployment View|a9787bd0:## S8 Crosscutting Concepts|295520db:## S9 Journeys and Chapters|3c1be7c4:## S10 Architectural Decisions|acc0167f:## S11 Quality Requirements|6ac24194:## S12 Risks and Technical Debt|33dfd20d:## S13 Glossary
 flyway-next-v: none
 
 ## Queue
-- [ ] #258 — Issue #258 ← active
+- [ ] #261 — Issue #261 ← active

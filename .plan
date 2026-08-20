@@ -1,0 +1,15 @@
+# Work Plan — issue-256-design-review-workspace-crash
+
+## State
+branch: issue-256-design-review-workspace-crash
+state: scaffolded
+project-sha: 18b4e06334583c816ec99a2d3fbf96deb1707a56
+date: 2026-08-20
+issue-repo: Hortora/soredium
+covers: 256
+design-repo: workspace
+design-section-hashes: 
+flyway-next-v: none
+
+## Queue
+- [ ] #256 — Issue #256 ← active

@@ -15,8 +15,8 @@ flyway-next-v: none
 - [ ] #261 — Issue #261 ← active
   - [x] Batch 1: Lifecycle foundation
     - [x] Task 1: Add drained state to lifecycle
-  - [ ] Batch 2: Chaining engine
-    - [ ] Task 2: Create work_chain.py
+  - [x] Batch 2: Chaining engine
+    - [x] Task 2: Create work_chain.py
   - [ ] Batch 3: Routing infrastructure
     - [ ] Task 3: Fix hardcoded main and drained route
     - [ ] Task 4: Update health checks for drained

@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-256-design-review-workspace-crash
-state: scaffolded
+state: closing:promoted
 project-sha: 18b4e06334583c816ec99a2d3fbf96deb1707a56
 date: 2026-08-20
 issue-repo: Hortora/soredium

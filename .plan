@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-261-unified-work-queue
-state: closing:review
+state: closing:promoted
 project-sha: 2342b47f193de6f8d37ace0aec562480be64e2bd
 date: 2026-08-20
 issue-repo: Hortora/soredium

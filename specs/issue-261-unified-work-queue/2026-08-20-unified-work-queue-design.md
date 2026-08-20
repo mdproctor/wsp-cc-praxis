@@ -82,13 +82,13 @@ New transitions:
 
 | From | Event | To | Effects |
 |------|-------|----|---------|
-| `closing:stamped` | `cleanup_pass` | `ended` | `write_plan_ended` (on main) |
 | `closing:stamped` | `cleanup_pass` | `idle` | `write_plan_closed` (on branch — unchanged) |
+| `closing:stamped` | `cleanup_main` | `ended` | `write_plan_ended` |
 | `ended` | `work_find` | `active` | `queue_populated` |
 | `ended` | `work_continue` | `ended` | — (self-transition, chains to next) |
 | `ended` | `work_next` | `ended` | — (self-transition, chains to end) |
 
-The `cleanup_pass` transition is context-sensitive: on a branch it goes to `idle` (branch is done), on main it goes to `ended` (.plan persists).
+**Implementation:** Two distinct events rather than context-sensitive routing. `work-end` fires `cleanup_pass` on a branch (existing behavior) or `cleanup_main` on main. This keeps the transition table pure — no runtime context inspection inside `transition()`. The caller (work-end skill or `work_router.py`) selects the event based on `ON_MAIN`.
 
 ### 5. work-end on main
 
@@ -164,8 +164,8 @@ The LLM presents the resolution to the user and executes the suggested action.
 
 2. **`lifecycle.py` changes**
    - Add `ended` to `VALID_STATES`
-   - Add new transitions to `TRANSITION_TABLE`
-   - Context-sensitive `cleanup_pass` (branch → `idle`, main → `ended`)
+   - Add new transitions to `TRANSITION_TABLE`: `cleanup_main` → `ended`, `work_find` → `active`, self-transitions for `ended` + continue/next
+   - New `cleanup_main` event (distinct from `cleanup_pass`) — keeps transition table pure
 
 3. **`ctx.py` changes**
    - Pass `BASE_BRANCH` to work_state.detect() (fix hardcoded "main" comparison)

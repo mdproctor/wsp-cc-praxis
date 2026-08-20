@@ -1,15 +1,15 @@
-# Work Plan — issue-255-slot-workspace-convergence
+# Work Plan — issue-258-phantom-landing-bugs
 
 ## State
-branch: issue-255-slot-workspace-convergence
-state: closing:stamped
-project-sha: 999b89fa4459142625c9ca0ea02e0f4eb5af4ca2
-date: 2026-08-19
+branch: issue-258-phantom-landing-bugs
+state: closing:review
+project-sha: 51b51de36ca3bdfcd59547b57c6f0e2d18a2e0b8
+date: 2026-08-20
 issue-repo: Hortora/soredium
-covers: 255
+covers: 258
 design-repo: project
 design-section-hashes: 
 flyway-next-v: none
 
 ## Queue
-- [ ] #255 — Issue #255 ← active
+- [ ] #258 — Issue #258 ← active

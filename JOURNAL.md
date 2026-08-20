@@ -1,1 +1,1 @@
-# Design Journal — issue-261-unified-work-queue
+# Design Journal — issue-262-lifecycle-corruption-recovery

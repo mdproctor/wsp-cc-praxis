@@ -10,3 +10,4 @@
 | [2026-08-17-mdp03-four-fixes-one-already-done.md](2026-08-17-mdp03-four-fixes-one-already-done.md) | 2026-08-17 | Four lifecycle/slot/hygiene fixes — one already solved by the state machine, persistent findings for the rest |
 | [2026-08-18-mdp01-the-reset-that-ate-twenty-files.md](2026-08-18-mdp01-the-reset-that-ate-twenty-files.md) | 2026-08-18 | Incident: work-end reset destroyed 20 uncommitted files; three-layer fix with safety stash, DIRTY-TREE-PROTOCOL, and Stop hook |
 | [2026-08-20-mdp01-the-parent-that-ate-the-children.md](2026-08-20-mdp01-the-parent-that-ate-the-children.md) | 2026-08-20 | Slot workspace convergence — fixing the parent-first resolution bug, migrating 79 slots, and converging work-end to a shared parameterised flow |
+| [2026-08-20-mdp03-corruption-is-a-routing-problem.md](2026-08-20-mdp03-corruption-is-a-routing-problem.md) | 2026-08-20 | Corruption detection as a routing concern — coherence layer between state machine and environment |

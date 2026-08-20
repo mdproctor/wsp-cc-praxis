@@ -20,6 +20,6 @@ flyway-next-v: none
   - [x] Batch 3: Routing infrastructure
     - [x] Task 3: Fix hardcoded main and drained route
     - [x] Task 4: Update health checks for drained
-  - [ ] Batch 4: Skill integration
-    - [ ] Task 5: Update work/SKILL.md routing
-    - [ ] Task 6: Update work-end/SKILL.md main support
+  - [x] Batch 4: Skill integration
+    - [x] Task 5: Update work/SKILL.md routing
+    - [x] Task 6: Update work-end/SKILL.md main support

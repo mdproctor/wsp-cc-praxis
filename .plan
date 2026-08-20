@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-255-slot-workspace-convergence
-state: closing:review
+state: closing:stamped
 project-sha: 999b89fa4459142625c9ca0ea02e0f4eb5af4ca2
 date: 2026-08-19
 issue-repo: Hortora/soredium

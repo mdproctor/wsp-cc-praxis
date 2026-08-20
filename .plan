@@ -1,23 +1,16 @@
-# Work Plan — issue-262-lifecycle-corruption-recovery
+# Work Plan — issue-264-archive-slot-repack-alternates
 
 ## State
-branch: issue-262-lifecycle-corruption-recovery
-state: closing:stamped
-project-sha: 1d04cab17ee5805292507f061795a76543df9094
+branch: issue-264-archive-slot-repack-alternates
+state: scaffolded
+project-sha: b7147c7ae1d19cc5dc3f09f490cc217c94785e6d
 date: 2026-08-20
 issue-repo: Hortora/soredium
-covers: 262,263
+covers: 264,265
 design-repo: workspace
 design-section-hashes: 
 flyway-next-v: none
 
 ## Queue
-- [ ] #262 — Issue #262 ← active
-  - [x] Batch 1: Detection module
-    - [x] Task 1: Finding + S1 S2 checks
-    - [x] Task 2: S4 S5 S6 S7 git-local checks
-    - [x] Task 3: S3 S8 GitHub checks + diagnose
-  - [x] Batch 2: Integration
-    - [x] Task 4: work_state + ctx corruption output
-    - [x] Task 5: base_branch threading + delegation
-    - [x] Task 6: work SKILL triage routing
+- [ ] #264 — Issue #264 ← active
+- [ ] #265 — migrate legacy .meta files to .plan format

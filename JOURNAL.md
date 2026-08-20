@@ -1,1 +1,1 @@
-# Design Journal — issue-262-lifecycle-corruption-recovery
+# Design Journal — issue-264-archive-slot-repack-alternates

@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-262-lifecycle-corruption-recovery
-state: closing:promoted
+state: closing:stamped
 project-sha: 1d04cab17ee5805292507f061795a76543df9094
 date: 2026-08-20
 issue-repo: Hortora/soredium

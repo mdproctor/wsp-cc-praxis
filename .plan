@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-258-phantom-landing-bugs
-state: closing:review
+state: closing:stamped
 project-sha: 51b51de36ca3bdfcd59547b57c6f0e2d18a2e0b8
 date: 2026-08-20
 issue-repo: Hortora/soredium

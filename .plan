@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-264-archive-slot-repack-alternates
-state: scaffolded
+state: closing:review
 project-sha: b7147c7ae1d19cc5dc3f09f490cc217c94785e6d
 date: 2026-08-20
 issue-repo: Hortora/soredium

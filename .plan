@@ -17,9 +17,9 @@ flyway-next-v: none
     - [x] Task 1: Add drained state to lifecycle
   - [x] Batch 2: Chaining engine
     - [x] Task 2: Create work_chain.py
-  - [ ] Batch 3: Routing infrastructure
-    - [ ] Task 3: Fix hardcoded main and drained route
-    - [ ] Task 4: Update health checks for drained
+  - [x] Batch 3: Routing infrastructure
+    - [x] Task 3: Fix hardcoded main and drained route
+    - [x] Task 4: Update health checks for drained
   - [ ] Batch 4: Skill integration
     - [ ] Task 5: Update work/SKILL.md routing
     - [ ] Task 6: Update work-end/SKILL.md main support

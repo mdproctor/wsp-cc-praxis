@@ -60,6 +60,53 @@
 **Exploration:** quick
 **Status:** captured
 
+## D7: Protocol format — action-specific context
+
+**Choice:** KEY=VALUE lines with action-specific context only. The orchestrator provides values the LLM needs to execute THIS action correctly (diff range, repo list, resume point). Does not repeat generic context already in the conversation (project path, workspace path, branch name).
+**Alternatives:**
+- Full context every time (Option A) — verbose, repeats what the LLM already knows
+- Minimal ACTION + RESUME_FROM only (Option C pure) — risks LLM hallucinating action-specific values like diff ranges or repo lists
+**Rationale:** The LLM can't be trusted to derive action-specific values correctly. The orchestrator has computed them from progress state and ctx.py. Generic paths are already in conversation context and don't need repeating. KEY=VALUE format is consistent with the soredium script ecosystem.
+**Trade-offs:** Requires judgment about what's "action-specific" vs "already known" — but the rule is clear: if getting it wrong causes a failure, include it.
+**Sources:** ctx.py output format, existing soredium script conventions
+**Exploration:** quick
+**Status:** captured
+
+## D8: Progress file format
+
+**Choice:** Flat KEY=VALUE, one line per sub-step, append-only. Same convention as `.execute-progress`.
+**Alternatives:**
+- JSON object — easier atomic read/write but inconsistent with existing `.execute-progress` format
+**Rationale:** Append-only is crash-safe (partial writes don't corrupt earlier entries). Consistent with the pattern already used by `work_end_execute.py`. Simple to parse with grep or Python.
+**Trade-offs:** Append-only means the file grows — but work-end has ~20 sub-steps max, so size is irrelevant.
+**Sources:** work-end/work_end_execute.py `.execute-progress` format
+**Exploration:** quick
+**Status:** captured
+
+## D9: Slot mode handling — unified sequence
+
+**Choice:** Single orchestrator, same sequence for slots and non-slots. Slot-specific mechanics (two-hop transport, merge into original, `.landed` marker) are already encapsulated in the existing scripts (`land_flow.py`, `slot_manager.py`). The orchestrator calls the same scripts — they handle the mode difference internally.
+**Alternatives:**
+- Two orchestrator scripts (slot vs non-slot) — duplicates sequence logic for no gain
+- Slot-aware branching in orchestrator — unnecessary; the scripts already handle this
+**Rationale:** Slots and non-slots follow the same sequence. The only difference is the extra merge into the original repo, which is already handled by the landing scripts. The orchestrator doesn't need to know.
+**Trade-offs:** None — this is the simpler and more correct approach.
+**Sources:** land_flow.py, slot_manager.py, prior unification work
+**Exploration:** quick
+**Status:** captured
+
+## D10: Error and retry policy
+
+**Choice:** Re-yield with reason, max 3 attempts, then skip-with-warning. The orchestrator re-yields the same action with `REASON=` explaining what failed validation. After 3 failures, logs a warning and continues.
+**Alternatives:**
+- Re-yield indefinitely — risks infinite loops
+- Hard stop after 3 — too disruptive; forces manual intervention
+**Rationale:** Matches the existing non-blocking philosophy. The orchestrator records the skip in `.close-progress` so verify can catch it downstream. Critical steps (review, verify) already have their own hard gates in the existing scripts.
+**Trade-offs:** A skipped step could leave artifacts unpromoted or reviews incomplete. Mitigated by verify_slot_close.py catching gaps at the end.
+**Sources:** Current work-end non-blocking patterns (trajectory, forage)
+**Exploration:** quick
+**Status:** captured
+
 ## D6: Existing scripts reused as-is
 
 **Choice:** The orchestrator calls the existing 17 work-end Python scripts without modification. It is a wrapper/sequencer, not a rewrite.

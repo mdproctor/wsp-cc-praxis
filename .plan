@@ -13,8 +13,8 @@ flyway-next-v: unknown
 
 ## Queue
 - [ ] Hortora/soredium#271 — Issue #271 ← active
-  - [ ] Batch 1: Crash-safety
-    - [ ] Task 1: Atomic write-then-rename
+  - [x] Batch 1: Crash-safety
+    - [x] Task 1: Atomic write-then-rename
   - [ ] Batch 2: Core
     - [ ] Task 2: Progress tracking module
     - [ ] Task 3: Orchestrator script

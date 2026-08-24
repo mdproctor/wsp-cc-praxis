@@ -2,15 +2,15 @@
 
 ## Last Session
 
-Designed and partially implemented slot workspace convergence (#255). Root cause: `resolve_workspace_source` parent-first `.git` check resolved all child workspace repos to the parent, producing N:1 instead of the 1:1 mapping workspace-init creates. Implemented 4 of 6 plan batches — detection bootstrap, slot creation fix, migration script, session orientation. 282 tests passing. Markers placed on 79 real casehub slots.
+Designed and began implementing #271 — mechanise work-end close sequence. Inverted control: Python orchestrator drives, LLM assists via a 20-line dispatch loop. 12 design decisions captured, adversarially reviewed (3 rounds on decisions, 2+1 rounds on spec). Implemented Batches 1-2: crash-safety fix for `write_progress()` (atomic `os.replace()`), `close_progress.py` module, and core `work_end_orchestrator.py` with step walker, action yielding, validation, retry escalation, abort handling.
 
 ## Immediate Next Step
 
-Run `/work` to continue on branch `issue-255-slot-workspace-convergence`. Batch 5 (work-end convergence) is next — decompose `merge_slot` into a shared parameterised flow with slot/branch adapters. Start by reading the spec's Convergence Architecture section and the current `merge_slot` function at `slot_manager.py:1163-1458`.
+Run `/work` to continue. Batch 3 is next: update `close_report.py` step names (Task 4), then rewrite `SKILL.md` from 660 lines to ~470 lines with dispatch loop + action handlers (Task 5). Plan at `$WORKSPACE/plans/2026-08-24-mechanise-work-end-close.md`.
 
-## References
+## Garden Entries Consulted
 
-- Spec: `specs/slot-workspace-convergence/2026-08-19-slot-workspace-convergence-design.md`
-- Decisions: `specs/slot-workspace-convergence/decisions.md` (D1-D7, reviewed)
-- Plan: `plans/2026-08-19-slot-workspace-convergence.md` (Batches 1-4 done, 5-6 remaining)
-- Blog: `blog/2026-08-20-mdp01-the-parent-that-ate-the-children.md`
+GE-IDs retrieved, pending final feedback at work-end.
+
+- GE-20260821-ebba3b — "work-end can stamp a branch closed without merging code" (work-start, design context)
+- GE-20260821-e9c59e — "Query worklog.db to audit slot lifecycle state" (work-start, design context)

@@ -16,8 +16,11 @@ only for judgment steps.
 **Architecture:** A stateless re-entrant Python script
 (`work_end_orchestrator.py`) reads `.close-progress` and `META_STATE`,
 runs mechanical steps, and yields one `ACTION=` line when it needs LLM
-judgment. The SKILL.md becomes a ~20-line dispatch loop. Existing scripts
-are called as-is.
+judgment. The SKILL.md becomes a ~20-line dispatch loop plus ~200 lines
+of Action Handlers (per-action judgment constraints the LLM needs) plus
+~250 lines of pre-close context handling. Existing scripts are called
+as-is. In slot mode, the orchestrator routes `land` to
+`slot_manager.py merge-slot` instead of `work_end_execute.py land`.
 
 **Tech Stack:** Python 3, pytest, lifecycle.py state machine,
 existing work-end scripts
@@ -30,6 +33,7 @@ existing work-end scripts
 - KEY=VALUE output format (match soredium ecosystem)
 - No new dependencies beyond stdlib + existing project imports
 - `evidence-before-claims` protocol applies at every completion boundary
+- Two progress files coexist: `.close-progress` (orchestrator-level: which close step) and `.execute-progress` (script-level: which repo promoted/landed). `.execute-progress` is owned by `work_end_execute.py` and cleaned by `branch_cleanup.py cleanup-scaffold`. `.close-progress` is owned by the orchestrator and cleaned by the orchestrator before `ACTION=complete`. They are independent — neither reads the other.
 
 ---
 
@@ -440,59 +444,157 @@ The orchestrator is a sequential state machine. Each invocation:
 4. At the next incomplete step: if mechanical, run it; if judgment, yield ACTION
 5. After running a mechanical step, update progress and continue to next
 
-The step sequence is a list of tuples:
+The step sequence is a list of tuples. The `phase` column is the
+lifecycle state the step runs IN (not the state it transitions TO).
+Lifecycle steps use the state they transition FROM as their phase.
+
 ```python
 STEPS = [
-    # (name, phase, type, action_or_script)
-    ("report_init", "closing:review", "mechanical", "close_report.py init"),
-    ("review", "closing:review", "judgment", "review"),
-    ("sweep_config", "closing:review", "judgment", "sweep_config"),
+    # (name, phase, type, action_or_script, skip_condition)
+    ("report_init", "closing:review", "mechanical", "close_report.py init", None),
+    ("review", "closing:review", "judgment", "review", None),
+    ("sweep_config", "closing:review", "judgment", "sweep_config", None),
     # sweep sub-steps inserted dynamically from sweep_selected
-    ("review_pass", "closing:review", "lifecycle", "review_pass"),
-    ("promote", "closing:verified", "mechanical", "work_end_execute.py promote"),
-    ("report_promote", "closing:verified", "mechanical", "close_report.py record promote"),
-    ("promote_pass", "closing:verified", "lifecycle", "promote_pass"),
-    ("trajectory", "closing:promoted", "judgment", "trajectory"),
-    ("rebase", "closing:promoted", "mechanical", "work_end_execute.py rebase"),
-    ("report_rebase", "closing:promoted", "mechanical", "close_report.py record rebase"),
-    ("squash", "closing:promoted", "judgment", "squash"),
-    ("report_squash", "closing:promoted", "mechanical", "close_report.py record squash"),
-    ("land", "closing:promoted", "mechanical", "work_end_execute.py land"),
-    ("report_land", "closing:promoted", "mechanical", "close_report.py record land"),
-    ("push_pass", "closing:promoted", "lifecycle", "push_pass"),
-    ("merge_pass", "closing:promoted", "lifecycle", "merge_pass"),
-    ("stamp_pass", "closing:promoted", "lifecycle", "stamp_pass"),
-    ("arc42_scan", "closing:stamped", "judgment", "user_input"),
-    ("session_rename", "closing:stamped", "judgment", "user_input"),
-    ("garden_feedback", "closing:stamped", "judgment", "user_input"),
-    ("notes", "closing:stamped", "judgment", "user_input"),
-    ("close_issues", "closing:stamped", "mechanical", "work_end_execute.py close-issues"),
-    ("report_close_issues", "closing:stamped", "mechanical", "close_report.py record close-issues"),
-    ("verify", "closing:stamped", "mechanical", "verify_slot_close.py"),
-    ("report_verify", "closing:stamped", "mechanical", "close_report.py record verify"),
-    ("archive_slot", "closing:stamped", "mechanical", "work_end_execute.py archive-slot"),
-    ("report_archive", "closing:stamped", "mechanical", "close_report.py record archive"),
-    ("checkout_main", "closing:stamped", "mechanical", "branch_cleanup.py checkout-main"),
-    ("cleanup_stack", "closing:stamped", "mechanical", "branch_cleanup.py cleanup-stack"),
-    ("cleanup_scaffold", "closing:stamped", "mechanical", "branch_cleanup.py cleanup-scaffold"),
-    ("report_scaffold", "closing:stamped", "mechanical", "close_report.py record scaffold-cleanup"),
-    ("cleanup_pass", "closing:stamped", "lifecycle", "cleanup_pass"),
-    ("delete_progress", "closing:stamped", "mechanical", "delete .close-progress"),
-    ("report_render", "closing:stamped", "mechanical", "close_report.py render"),
-    ("complete", "closing:stamped", "terminal", "complete"),
+    ("review_pass", "closing:review", "lifecycle", "review_pass", None),
+    ("promote", "closing:verified", "mechanical", "work_end_execute.py promote", None),
+    ("report_promote", "closing:verified", "mechanical", "close_report.py record promote", None),
+    ("promote_pass", "closing:verified", "lifecycle", "promote_pass", None),
+    ("trajectory", "closing:promoted", "judgment", "trajectory", None),
+    ("rebase", "closing:promoted", "mechanical", "work_end_execute.py rebase", "on_main"),
+    ("report_rebase", "closing:promoted", "mechanical", "close_report.py record rebase", "on_main"),
+    ("squash", "closing:promoted", "judgment", "squash", "on_main"),
+    ("report_squash", "closing:promoted", "mechanical", "close_report.py record squash", "on_main"),
+    ("land", "closing:promoted", "mechanical", "ROUTE_LAND", None),  # see slot routing below
+    ("report_land", "closing:promoted", "mechanical", "close_report.py record land", None),
+    ("push_pass", "closing:promoted", "lifecycle", "push_pass", None),
+    ("merge_pass", "closing:pushed", "lifecycle", "merge_pass", None),  # FROM closing:pushed
+    ("stamp_pass", "closing:merged", "lifecycle", "stamp_pass", None),  # FROM closing:merged
+    ("arc42_scan", "closing:stamped", "judgment", "user_input", "no_arc42"),
+    ("session_rename", "closing:stamped", "judgment", "user_input", None),
+    ("garden_feedback", "closing:stamped", "judgment", "user_input", "no_ge_ids"),
+    ("notes", "closing:stamped", "judgment", "user_input", "no_notes_dir"),
+    ("close_issues", "closing:stamped", "mechanical", "work_end_execute.py close-issues", "no_covers"),
+    ("report_close_issues", "closing:stamped", "mechanical", "close_report.py record close-issues", "no_covers"),
+    ("verify", "closing:stamped", "mechanical", "verify_slot_close.py", None),
+    ("report_verify", "closing:stamped", "mechanical", "close_report.py record verify", None),
+    ("archive_slot", "closing:stamped", "mechanical", "work_end_execute.py archive-slot", "not_slot"),
+    ("report_archive", "closing:stamped", "mechanical", "close_report.py record archive", "not_slot"),
+    ("checkout_main", "closing:stamped", "mechanical", "branch_cleanup.py checkout-main", "on_main"),
+    ("cleanup_stack", "closing:stamped", "mechanical", "branch_cleanup.py cleanup-stack", "on_main"),
+    ("cleanup_scaffold", "closing:stamped", "mechanical", "branch_cleanup.py cleanup-scaffold", None),
+    ("report_scaffold", "closing:stamped", "mechanical", "close_report.py record scaffold-cleanup", None),
+    ("cleanup_pass", "closing:stamped", "lifecycle", "ROUTE_CLEANUP", None),  # cleanup_pass or cleanup_main
+    ("delete_progress", "idle_or_drained", "mechanical", "delete .close-progress", None),
+    ("report_render", "idle_or_drained", "mechanical", "close_report.py render", None),
+    ("complete", "idle_or_drained", "terminal", "complete", None),
 ]
 ```
 
-Implementation detail is large — the full script will be ~350 lines covering:
-- CLI argument parsing
-- Progress read/stale detection
-- Step walker with skip logic (completed steps, main mode, non-slot mode)
-- Mechanical step execution (subprocess calls)
-- Judgment step yielding (ACTION= output)
-- Validation checks for prior judgment steps
-- Lifecycle transition firing with evidence dict construction
-- Retry counting for judgment steps
-- abort/skip_step/conflict_resolved handling
+**Slot-mode routing (ROUTE_LAND):**
+When `in_slot=yes`, the orchestrator calls `slot_manager.py merge-slot <SLOT_PATH>`
+instead of `work_end_execute.py land`. The current SKILL.md explicitly says
+"Do NOT call `work_end_execute.py land` in slot mode." The routing is:
+
+```python
+if in_slot:
+    run("slot_manager.py merge-slot", slot_path)
+else:
+    run("work_end_execute.py land", project, branch, base_branch, workspace)
+```
+
+**Lifecycle state tracking for rapid-fire transitions:**
+After `land` completes, three lifecycle transitions fire in sequence.
+Each transition changes the state, so the orchestrator must track the
+expected state internally (not re-read META_STATE, which would add
+unnecessary I/O):
+
+```python
+expected_state = "closing:promoted"
+for event in ["push_pass", "merge_pass", "stamp_pass"]:
+    evidence = build_evidence(event, land_output)
+    run_lifecycle("commit-transition", plan_path,
+                  from_state=expected_state, new_state=NEXT[event],
+                  event=event, evidence=evidence)
+    expected_state = NEXT[event]
+# expected_state is now "closing:stamped"
+```
+
+In main mode, `merge_pass` and `stamp_pass` fire with empty evidence dicts.
+
+**Evidence dict construction:**
+Each lifecycle event requires specific evidence keys. The orchestrator
+builds these from script output and `.execute-progress` state:
+
+```python
+EVIDENCE_BUILDERS = {
+    "review_pass": lambda ctx: {"review_result": "pass"},
+    "promote_pass": lambda ctx: {
+        "promoted_files": ctx.promote_output.get("PROMOTED_FILES", ""),
+        "target_repos": ctx.promote_output.get("TARGET_REPOS", ""),
+    },
+    "push_pass": lambda ctx: {
+        "pushed_repos": ctx.land_output.get("PUSHED_REPOS", "").split(","),
+        "pushed_shas": parse_sha_dict(ctx.land_output),
+    },
+    "merge_pass": lambda ctx: {
+        "landed_shas": parse_sha_dict(ctx.land_output) if not ctx.on_main else {},
+        "verified_on_main": infer_verification(ctx) if not ctx.on_main else {},
+    },
+    "stamp_pass": lambda ctx: {
+        "stamp_shas": read_stamp_shas(ctx.execute_progress) if not ctx.on_main else {},
+    },
+    "cleanup_pass": lambda ctx: {
+        "repos_on_main": {"project": True, "workspace": True},
+        "work_items_ended": True,
+    },
+    "cleanup_main": lambda ctx: {"work_items_ended": True},
+}
+```
+
+**Validation on re-entry (per judgment step):**
+
+```python
+VALIDATORS = {
+    "review": lambda ws, proj: all_findings_resolved(ws),
+    "write_content": lambda ws, proj: blog_file_exists(ws) and blog_valid(ws),
+    "forage": lambda ws, proj: garden_entries_created(ws) or was_skipped(ws, "forage"),
+    "protocol": lambda ws, proj: protocol_files_created(ws) or was_skipped(ws, "protocol"),
+    "squash": lambda ws, proj: squash_plans_exist(ws, proj),
+    "trajectory": lambda ws, proj: True,  # non-blocking
+    "sweep_config": lambda ws, proj: True,  # validated by sweep_selected arg
+}
+```
+
+**Retry counting:**
+
+```python
+def handle_judgment_step(step_name, ws, progress):
+    attempt_key = f"{step_name}_attempt"
+    attempt = int(progress.get(attempt_key, "0")) + 1
+    if attempt > 3:
+        yield_action("user_input", CONTEXT="step_failed", STEP=step_name,
+                     ATTEMPTS=3, REASON=validator_reason)
+        return
+    update_close_progress(ws, attempt_key, str(attempt))
+    yield_action(step_name, **build_context(step_name))
+```
+
+**Abort handling:**
+
+```python
+if abort_requested:
+    state = read_meta_state(plan_path)
+    if state in ("closing:review", "closing:verified"):
+        delete_close_progress(workspace)
+        delete_execute_progress(workspace)
+        run_lifecycle("transition", plan_path, "abort_close")
+        run_lifecycle("commit-transition", plan_path,
+                      from_state=state, new_state="active", event="abort_close")
+        yield_action("complete", SUMMARY="Aborted — returned to active state")
+    else:
+        print(f"ERROR=abort_blocked STATE={state}")
+        print("REASON=Post-promotion states are forward-only")
+```
 
 - [ ] **Step 4: Run tests iteratively as each section is implemented**
 
@@ -580,7 +682,12 @@ Run: `python3 -m pytest tests/test_close_report.py::test_orchestrator_step_order
 
 - [ ] **Step 3: Update STEP_ORDER and STEP_LABELS**
 
-Replace lines 19-53 with:
+Replace lines 19-53 with new STEP_ORDER, STEP_LABELS, and add
+`_format_detail` handlers for the new step names. The existing
+`_format_detail()` function dispatches by step name — add cases for
+`promote`, `land`, `close-issues`, and `verify` that render meaningful
+detail (file counts, SHA references, issue numbers, check results)
+rather than falling through to generic `_kv_summary`.
 
 ```python
 STEP_ORDER = [
@@ -606,6 +713,25 @@ STEP_LABELS = {
 }
 ```
 
+And in `_format_detail()`, add:
+
+```python
+elif step == "promote":
+    files = data.get("promoted_files", "")
+    targets = data.get("target_repos", "")
+    return f"{files} files → {targets}" if files else "no artifacts"
+elif step == "land":
+    sha = data.get("landed_sha", "")
+    repos = data.get("pushed_repos", "")
+    return f"{repos} (SHA {sha[:7]})" if sha else "pushed"
+elif step == "close-issues":
+    closed = data.get("closed", "0")
+    return f"{closed} issues closed"
+elif step == "verify":
+    result = data.get("verified", "unknown")
+    return f"VERIFIED={result}"
+```
+
 - [ ] **Step 4: Run tests**
 
 Run: `python3 -m pytest tests/test_close_report.py -v`
@@ -629,10 +755,27 @@ Refs #271"
 - Consumes: `work_end_orchestrator.py` ACTION= output
 - Produces: SKILL.md that Claude Code loads for work-end
 
-The new SKILL.md has three sections:
+The new SKILL.md has four sections:
 1. **Frontmatter** — unchanged name/description
 2. **Pre-close** — context resolution, preconditions, dirty-tree protocol (~250 lines, adapted from current Steps 0-1)
 3. **Dispatch loop** — ~20 lines that call the orchestrator and dispatch actions
+4. **Action Handlers** — ~200 lines of per-action judgment constraints the LLM needs when executing each action. These are the work-end-specific instructions from the current SKILL.md that aren't part of the invoked skills:
+
+| Action | Handler content (from current SKILL.md) |
+|--------|---------------------------------------|
+| `review` | Security-audit suppression during work-end, budget limits as non-gates, findings persistence to findings.jsonl, forcing function severity constraints (CRITICAL cannot be dismissed), batch operations, re-review after fixes |
+| `review_rebase` | Scope constraint: code-review only, no branch-audit/loose-ends/forcing function |
+| `sweep_config` | All items default ON, NEVER-RECOMMEND-SKIPPING hard gate, session-bound items cannot be deferred |
+| `forage` | Run while context is full (first in sweep order) |
+| `write_content` | Run last (synthesises full narrative), session-bound — cannot be deferred |
+| `squash` | Per-repo .squash-plan-<repo>.json output format, slot mode marker write |
+| `trajectory` | Non-blocking, enrichment.py commands, propose-confirm pattern |
+| `user_input CONTEXT=arc42_scan` | Scan for stale statuses, offer fixes |
+| `user_input CONTEXT=garden_feedback` | 5-level relevance scale, grouping by outcome |
+| `user_input CONTEXT=notes` | Surface recent date section, prompt for append |
+
+The SKILL.md total: ~20 (loop) + ~250 (pre-close) + ~200 (handlers) = ~470 lines.
+Down from 660 lines, but the judgment instructions are preserved — not lost.
 
 - [ ] **Step 1: Write the new SKILL.md**
 
@@ -748,7 +891,7 @@ Refs #271"
 
 ## References
 
-- `specs/issue-271-mechanise-work-end-close/2026-08-24-mechanise-work-end-close-design.md` — design spec
+- `$WORKSPACE/specs/issue-271-mechanise-work-end-close/2026-08-24-mechanise-work-end-close-design.md` — design spec (workspace, not project repo)
 - `work-end/work_end_execute.py:127-132` — write_progress crash-safety issue
 - `work-end/land_flow.py:69-74` — _write_progress crash-safety issue
 - `project/lifecycle.py:237-239` — atomic write pattern (precedent)

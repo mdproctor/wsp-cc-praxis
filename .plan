@@ -2,8 +2,8 @@
 
 ## State
 branch: issue-271-mechanise-work-end-close
-state: scaffolded
-project-sha: 582d347a27d83cc06b90086a47589811818eb96a
+state: active
+project-sha: 76c668c74809058c35f655d6eea1ae7df74acac3
 date: 2026-08-23
 issue-repo: Hortora/soredium
 covers: 271
@@ -18,8 +18,8 @@ flyway-next-v: unknown
   - [x] Batch 2: Core
     - [x] Task 2: Progress tracking module
     - [x] Task 3: Orchestrator script
-  - [ ] Batch 3: Report+SKILL
-    - [ ] Task 4: Update close_report
-    - [ ] Task 5: Rewrite SKILL.md
+  - [x] Batch 3: Report+SKILL
+    - [x] Task 4: Update close_report
+    - [x] Task 5: Rewrite SKILL.md
   - [ ] Batch 4: Integration
     - [ ] Task 6: End-to-end tests

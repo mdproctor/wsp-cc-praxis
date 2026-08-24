@@ -7,7 +7,6 @@ issue: 271
 branch: issue-271-mechanise-work-end-close
 project: soredium
 tags: [architecture, agent-design, inverted-control, reliability]
-status: partial
 ---
 
 # The LLM that couldn't follow instructions
@@ -38,10 +37,16 @@ The design spec called this "append-only." It wasn't. The code read the file int
 
 Finding this while designing the orchestrator was fortunate. If we'd built the orchestrator on top of the same pattern, the crash-safety problem would have propagated into a system that runs more steps, not fewer.
 
-## What's built, what's next
+## What the rewrite actually looks like
 
-The orchestrator core is working: `close_progress.py` for atomic progress tracking with stale detection, and `work_end_orchestrator.py` with the step walker, action yielding, validation, retry escalation, and abort handling. The crash-safety fix is shipped independently.
+The old SKILL.md had 662 lines of sequential instructions that the LLM was supposed to follow in order. Context resolution. Preconditions. Dirty tree protocol. Review with four sub-steps and a forcing function. Sweep configuration. Six sweep sub-steps. Trajectory capture. Rebase. Squash analysis. Land. Verify. Close issues. Archive. Checkout main. ARC42 scan. Session rename. Garden feedback. Notes. Close summary. All of it described in prose the LLM was expected to parse, sequence, and execute without missing a beat.
 
-Still to come: updating `close_report.py` with the new step names so the close summary renders properly, rewriting the SKILL.md itself, and integration tests with real git repos. The rewrite is where it gets real — 660 lines of hard-won judgment instructions need to become ~470 lines: a dispatch loop, pre-close context handling, and an Action Handlers reference section that tells the LLM what each action actually means.
+The new one is 425 lines and has three sections. Pre-close context handling stays in the skill — that's interactive work the LLM is good at. The dispatch loop is about 20 lines: call the orchestrator, read the action, handle it, call again. Action handlers tell the LLM the judgment constraints for each action type — what the review forcing function's severity rules are, what the sweep toggle defaults to, how to classify commits for squash. The sequencing and validation live in Python where they can't be skipped.
 
-The question I can't answer yet: does this work in practice? The architecture is sound — the LLM genuinely can't skip what it can't see. But the judgment steps still need the LLM to execute them correctly. Code review. Forcing function triage. Blog writing. The orchestrator validates outputs, but "blog file exists with >100 words" doesn't guarantee "blog captures the session's narrative." That's where the optional Haiku validation layer comes in — a cheap semantic check that the mechanical heuristics can't provide. Whether it earns its place is an implementation question, not a design one.
+The close report changed too. The old step names — `merge`, `push-fork`, `stamp-project`, `slot-archive` — reflected the script-level operations that work-end used to coordinate directly. The new names — `promote`, `land`, `close-issues`, `verify` — reflect the orchestrator's higher-level sequence. Eight steps instead of fifteen, because the orchestrator combines what the LLM used to manage as separate calls.
+
+## The question that remains
+
+The architecture is proven in tests — the orchestrator yields the right actions in the right order, handles crash recovery, detects stale progress from prior closes, and escalates after repeated judgment failures. What it hasn't done yet is close a real branch end-to-end. The mechanical steps (promote, rebase, push, stamp) are still stubs that mark themselves done without calling the scripts. The sequencing is correct; the wiring to the actual scripts is the next step.
+
+The harder question is the judgment steps. The orchestrator validates that a blog file exists with reasonable word count. It can't validate that the blog captures the session's narrative well. "File exists" is a mechanical check. "Content is good" is a semantic one. That's where the optional Haiku validation layer might earn its place — a cheap model doing a focused quality check that the heuristics can't provide. Whether that's worth building depends on how the judgment steps perform without it.

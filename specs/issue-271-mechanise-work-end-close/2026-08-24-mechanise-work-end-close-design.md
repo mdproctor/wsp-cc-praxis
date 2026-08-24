@@ -67,7 +67,10 @@ step sequence, so it cannot skip steps.
 
 `work_end_orchestrator.py` is a stateless script. Each invocation:
 
-1. Reads `.close-progress` to determine current position
+1. Reads `META_STATE` (from lifecycle) for the current phase and
+   `.close-progress` for fine-grained position within that phase.
+   If `META_STATE` is ahead of `.close-progress` (crash between
+   lifecycle transition and progress write), fast-forwards to match.
 2. Runs all mechanical steps up to the next judgment point
 3. Prints one `ACTION=` line with action-specific context
 4. Exits
@@ -122,7 +125,7 @@ benefits from SKILL.md-level handling.
 |--------|----------|----------------|------------|
 | `review` | code-review + branch-audit + loose-ends + forcing function | `closing:review` | `findings.jsonl`: all findings status != `open` |
 | `review_rebase` | code-review on conflict-resolution diff only | `closing:promoted` | `findings.jsonl`: all findings status != `open` |
-| `sweep_config` | Present toggle UI, report selections | `closing:review` | `SELECTED=` line in output |
+| `sweep_config` | Present toggle UI, report selections | `closing:review` | `sweep_selected=` argument provided on next orchestrator call |
 | `forage` | Invoke forage SWEEP | `closing:review` | Garden entry files created (or explicit skip) |
 | `protocol` | Invoke protocol SWEEP | `closing:review` | Protocol files created (or explicit skip) |
 | `update_claude_md` | Invoke update-claude-md | `closing:review` | CLAUDE.md timestamp (or no changes needed) |
@@ -169,9 +172,9 @@ benefits from SKILL.md-level handling.
 
 | Event | Evidence keys | Source |
 |---|---|---|
-| `push_pass` | `pushed_repos`, `pushed_shas` | `land` output `PUSHED=`, `LANDED_SHA=` |
-| `merge_pass` | `landed_shas`, `verified_on_main` | `land` output (main mode: empty dicts) |
-| `stamp_pass` | `stamp_shas` | `land` output `STAMPED=` (main mode: empty dict) |
+| `push_pass` | `pushed_repos`, `pushed_shas` | `land` output `LANDED=yes`, `LANDED_SHA=<sha>` (branch mode); `LANDED_SHAS=repo:sha,...` (slot mode via merge-slot). Orchestrator derives `pushed_repos` from successful completion + `.execute-progress` entries. |
+| `merge_pass` | `landed_shas`, `verified_on_main` | Orchestrator derives from `LANDED_SHA=` output and successful exit code (land_flow verifies via `merge-base --is-ancestor` internally, emits `PUSH_VERIFY_WARN=` only on failure). Main mode: empty dicts. |
+| `stamp_pass` | `stamp_shas` | Orchestrator derives from `.execute-progress` entries (`repo:branch=stamped`) written by `land_flow._stamp_repo()`. No stdout key — stamp status is tracked in the progress file. Main mode: empty dict. |
 | `cleanup_pass` | `repos_on_main`, `work_items_ended` | `checkout-main` result + `close-issues` result |
 | `cleanup_main` | `work_items_ended` | `close-issues` result |
 
@@ -391,8 +394,12 @@ The LLM can pass `abort=yes` to the orchestrator. The orchestrator:
 
 1. Checks current lifecycle state — abort is valid from `closing:review`
    or `closing:verified` only
-2. Fires `abort_close` lifecycle transition → returns to `active`
-3. Yields `ACTION=complete SUMMARY=Aborted — returned to active state`
+2. Deletes `.close-progress` and `.execute-progress` — stale progress
+   from an aborted attempt must not confuse a subsequent `work_end`.
+   This matches lifecycle's `clear_closing_markers` effect, which already
+   handles lifecycle state cleanup but does not know about these files.
+3. Fires `abort_close` lifecycle transition → returns to `active`
+4. Yields `ACTION=complete SUMMARY=Aborted — returned to active state`
 
 Post-promotion states (`closing:promoted` onward) are forward-only.
 The orchestrator rejects `abort=yes` with an error message explaining
@@ -541,8 +548,14 @@ Phase: closing:verified
 Phase: closing:promoted
   [yield] ACTION=trajectory (non-blocking — skip does not block close)
   [mechanical] work_end_execute.py rebase  (skip in main mode)
-  [yield if conflicts] ACTION=review_rebase DIFF_RANGE=<conflict-resolution-commits>
+  [mechanical] close_report.py record rebase
+  [yield if REBASE_CONFLICT] ACTION=user_input CONTEXT=rebase_conflict
+    → user resolves conflicts manually
+    → LLM passes conflict_resolved=yes
+    → orchestrator re-runs work_end_execute.py rebase (now succeeds)
+  [yield if conflicts were resolved] ACTION=review_rebase DIFF_RANGE=<conflict-resolution-commits>
   [yield] ACTION=squash → LLM classifies commits, writes plan files  (skip in main mode)
+  [mechanical] close_report.py record squash
   [mechanical] work_end_execute.py land (applies squash, pushes, stamps)
     Main mode: push only (no merge, no stamp)
   [mechanical] close_report.py record land
@@ -564,12 +577,15 @@ VERIFY:
   [mechanical] work_end_execute.py close-issues (if COVERS non-empty)
   [mechanical] close_report.py record close-issues
   [mechanical] verify_slot_close.py (with covers= and issue_repo= when applicable)
+  [mechanical] close_report.py record verify
   [yield if failed] ACTION=verify_recover → LLM presents failures
 
 CLOSE:
   [mechanical] work_end_execute.py archive-slot (slot mode)
+  [mechanical] close_report.py record archive (slot mode)
   [mechanical] branch_cleanup.py checkout-main  (skip in main mode)
   [mechanical] branch_cleanup.py cleanup-scaffold
+  [mechanical] close_report.py record scaffold-cleanup
   [mechanical] lifecycle commit-transition:
     Branch mode: cleanup_pass → idle
       evidence={"repos_on_main": <dict>, "work_items_ended": true}
@@ -605,6 +621,14 @@ The orchestrator requires its own test suite — the risk shifts from
 | Verify failure | `ACTION=verify_recover` yielded |
 | Concurrent session | Lifecycle `ConcurrentModification` raised |
 | Main mode | Branch-specific steps skipped (rebase, squash, stamp) |
+| Abort from `closing:review` | `.close-progress` + `.execute-progress` deleted, `abort_close` fires, yields `ACTION=complete SUMMARY=Aborted` |
+| Abort from `closing:promoted` | Rejected with explanation, sequence continues forward |
+| `skip_step=` handling | Progress updated with skip, next action yielded |
+| `conflict_resolved=yes` handling | Rebase re-run succeeds, proceeds to `review_rebase` |
+| Evidence dict construction | Correct keys derived from script output for each lifecycle event |
+| Main mode empty evidence dicts | `merge_pass` and `stamp_pass` accept empty dicts |
+| `close_report.py` integration | init → record (all steps) → render produces valid summary |
+| META_STATE ahead of `.close-progress` | Fast-forwards to match lifecycle phase |
 
 ### Crash-safety tests
 

@@ -69,8 +69,10 @@ step sequence, so it cannot skip steps.
 
 1. Reads `META_STATE` (from lifecycle) for the current phase and
    `.close-progress` for fine-grained position within that phase.
-   If `META_STATE` is ahead of `.close-progress` (crash between
-   lifecycle transition and progress write), fast-forwards to match.
+   - If `META_STATE` is ahead of `.close-progress` (crash between
+     lifecycle transition and progress write), fast-forwards to match.
+   - If `.close-progress` is ahead of `META_STATE` (stale file from a
+     prior completed close), deletes it and starts fresh.
 2. Runs all mechanical steps up to the next judgment point
 3. Prints one `ACTION=` line with action-specific context
 4. Exits
@@ -584,6 +586,7 @@ CLOSE:
   [mechanical] work_end_execute.py archive-slot (slot mode)
   [mechanical] close_report.py record archive (slot mode)
   [mechanical] branch_cleanup.py checkout-main  (skip in main mode)
+  [mechanical] branch_cleanup.py cleanup-stack <workspace> branch=<name>  (skip in main mode)
   [mechanical] branch_cleanup.py cleanup-scaffold
   [mechanical] close_report.py record scaffold-cleanup
   [mechanical] lifecycle commit-transition:
@@ -591,6 +594,11 @@ CLOSE:
       evidence={"repos_on_main": <dict>, "work_items_ended": true}
     Main mode: cleanup_main → drained
       evidence={"work_items_ended": true}
+    Post-commit: write_handoff is not surfaced as an orchestrator action.
+    HANDOFF.md is a session-end concern handled by the session's handover
+    protocol, not a close-sequence step. The current SKILL.md also does
+    not consume this effect.
+  [mechanical] delete .close-progress (and .close-progress.tmp if present)
   [mechanical] close_report.py render <report-path>
   [yield] ACTION=complete SUMMARY=<rendered report>
 ```
@@ -629,6 +637,10 @@ The orchestrator requires its own test suite — the risk shifts from
 | Main mode empty evidence dicts | `merge_pass` and `stamp_pass` accept empty dicts |
 | `close_report.py` integration | init → record (all steps) → render produces valid summary |
 | META_STATE ahead of `.close-progress` | Fast-forwards to match lifecycle phase |
+| Stale `.close-progress` (ahead of META_STATE) | File deleted, fresh sequence starts |
+| `.close-progress` cleanup on normal completion | File deleted before `ACTION=complete` yielded |
+| Stack cleanup (branch was paused) | `branch_cleanup.py cleanup-stack` called with correct args |
+| Stack cleanup (main mode) | `cleanup-stack` step skipped |
 
 ### Crash-safety tests
 
@@ -681,10 +693,11 @@ Step 1 can ship independently. Steps 2-3 ship together.
 | `work-end/SKILL.md` | Rewrite to ~20-line dispatch loop + ~250-line pre-close and reference |
 | `work-end/work_end_execute.py` | `write_progress()` → atomic write-then-rename |
 | `work-end/land_flow.py` | `_write_progress()` → atomic write-then-rename |
+| `work-end/close_report.py` | Update STEP_ORDER, STEP_LABELS, `_format_detail()` for orchestrator step names (`promote`, `land`, `close-issues`, `verify`) |
 
 ### Unchanged files
 
-All 17 existing work-end scripts remain unchanged. The orchestrator
+All other existing work-end scripts remain unchanged. The orchestrator
 calls them as-is.
 
 ---

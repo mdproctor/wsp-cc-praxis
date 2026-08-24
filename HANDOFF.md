@@ -2,15 +2,15 @@
 
 ## Last Session
 
-Designed and began implementing #271 — mechanise work-end close sequence. Inverted control: Python orchestrator drives, LLM assists via a 20-line dispatch loop. 12 design decisions captured, adversarially reviewed (3 rounds on decisions, 2+1 rounds on spec). Implemented Batches 1-2: crash-safety fix for `write_progress()` (atomic `os.replace()`), `close_progress.py` module, and core `work_end_orchestrator.py` with step walker, action yielding, validation, retry escalation, abort handling.
+Wrote continuation spec for #271 (mechanical wiring, 93 capabilities mapped, 6 new decisions D13-D18), ran spec review (standard, 3 rounds — key fixes: evidence derivation from stdout not progress file, .slot markdown format, main-mode verify/land routing). Wrote implementation plan (3 batches, 5 tasks). Executed Batch 1: refactored orchestrator to data-driven step walker, wired all mechanical steps with real subprocess calls, added mode routing (branch/slot/main), evidence-based crash recovery, extended abort. 86 tests pass. Implementation reverted stubs that caused the original revert.
 
 ## Immediate Next Step
 
-Run `/work` to continue. Batch 3 is next: update `close_report.py` step names (Task 4), then rewrite `SKILL.md` from 660 lines to ~470 lines with dispatch loop + action handlers (Task 5). Plan at `$WORKSPACE/plans/2026-08-24-mechanise-work-end-close.md`.
+Run `/work` to continue. Batch 2 is next: rewrite `work-end/SKILL.md` with dispatch loop + action handlers + fallback section (Task 4). Plan at `$WORKSPACE/plans/2026-08-24-mechanise-work-end-close.md`. Spec at `$WORKSPACE/specs/issue-271-mechanise-work-end-close/2026-08-24-mechanise-work-end-close-wiring.md`.
 
 ## Garden Entries Consulted
 
 GE-IDs retrieved, pending final feedback at work-end.
 
+- GE-20260824-c09677 — "Stateless re-entrant script as coroutine pattern" (work-start, design context)
 - GE-20260821-ebba3b — "work-end can stamp a branch closed without merging code" (work-start, design context)
-- GE-20260821-e9c59e — "Query worklog.db to audit slot lifecycle state" (work-start, design context)

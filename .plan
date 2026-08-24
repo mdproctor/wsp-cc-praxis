@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-271-mechanise-work-end
-state: scaffolded
+state: closing:verified
 project-sha: b730baa6940ea50c5811c570ea6564e90a84a313
 date: 2026-08-24
 issue-repo: Hortora/soredium
@@ -11,5 +11,10 @@ design-repo: workspace
 design-section-hashes: 
 flyway-next-v: unknown
 
+evidence-era: true
 ## Queue
-- [ ] Hortora/soredium#271 — Issue #271 ← active
+- [x] Hortora/soredium#271 — Issue #271
+- [x] Hortora/soredium#279 — Harden work-end scripts for orchestrator invocation
+- [x] Hortora/soredium#276 — Slot mode per-repo sweep in orchestrator
+- [x] Hortora/soredium#277 — Replace stub evidence checks in reconciliation
+- [x] Hortora/soredium#278 — Integration test — run orchestrator on real close

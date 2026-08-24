@@ -3,7 +3,7 @@
 ## State
 branch: issue-271-mechanise-work-end-close
 state: active
-project-sha: 76c668c74809058c35f655d6eea1ae7df74acac3
+project-sha: 75ae87c4c6f9ed879dc9607d495dd34c845007ad
 date: 2026-08-23
 issue-repo: Hortora/soredium
 covers: 271
@@ -21,5 +21,5 @@ flyway-next-v: unknown
   - [x] Batch 3: Report+SKILL
     - [x] Task 4: Update close_report
     - [x] Task 5: Rewrite SKILL.md
-  - [ ] Batch 4: Integration
-    - [ ] Task 6: End-to-end tests
+  - [x] Batch 4: Integration
+    - [x] Task 6: End-to-end tests

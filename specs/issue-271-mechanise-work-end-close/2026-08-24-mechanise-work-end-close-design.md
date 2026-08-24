@@ -55,8 +55,9 @@ LLM reads output, writes blog, calls orchestrator again
   Script prints: ACTION=complete
 ```
 
-The SKILL.md becomes a ~20-line loop. The LLM never sees the full step
-sequence, so it cannot skip steps.
+The SKILL.md becomes a ~20-line dispatch loop plus ~250 lines of pre-close
+context handling and reference documentation. The LLM never sees the full
+step sequence, so it cannot skip steps.
 
 ---
 
@@ -85,9 +86,17 @@ this because the LLM maintains one continuous conversation.
 ```
 loop:
   output = run("python3 work-end/work_end_orchestrator.py ...")
+  parse ACTION= from output
+
   if ACTION=complete → print summary, done
-  if ACTION=invoke_skill → invoke the named skill with provided args
-  if ACTION=user_input → present to user, pass response on next call
+  if ACTION=user_input → present CONTEXT to user, collect response
+  if ACTION=review → full review cycle (code-review + branch-audit + forcing function)
+  if ACTION=review_rebase → code-review on DIFF_RANGE only
+  if ACTION=sweep_config → present toggle UI, report selections via sweep_selected=
+  if ACTION=squash → classify commits per repo, write .squash-plan-<repo>.json
+  if ACTION=verify_recover → present verify failures, offer recovery
+  if ACTION in [forage, protocol, update_claude_md, impl_doc_sync,
+                adr, write_content, trajectory] → invoke the named skill
   go to loop
 ```
 
@@ -112,6 +121,7 @@ benefits from SKILL.md-level handling.
 | Action | LLM does | Lifecycle state | Validation |
 |--------|----------|----------------|------------|
 | `review` | code-review + branch-audit + loose-ends + forcing function | `closing:review` | `findings.jsonl`: all findings status != `open` |
+| `review_rebase` | code-review on conflict-resolution diff only | `closing:promoted` | `findings.jsonl`: all findings status != `open` |
 | `sweep_config` | Present toggle UI, report selections | `closing:review` | `SELECTED=` line in output |
 | `forage` | Invoke forage SWEEP | `closing:review` | Garden entry files created (or explicit skip) |
 | `protocol` | Invoke protocol SWEEP | `closing:review` | Protocol files created (or explicit skip) |
@@ -120,7 +130,7 @@ benefits from SKILL.md-level handling.
 | `adr` | Invoke adr | `closing:review` | ADR file created (or explicit skip) |
 | `write_content` | Invoke write-content (diary) | `closing:review` | Blog file exists, frontmatter valid, word count > 100 |
 | `squash` | Classify commits per repo | `closing:promoted` | `.squash-plan-<repo>.json` exists, valid JSON |
-| `trajectory` | Draft enrichment notes | `closing:stamped` | Enrichment recorded (or explicit skip) |
+| `trajectory` | Draft enrichment notes | `closing:promoted` | Enrichment recorded (or skip via `skip_step=` protocol) |
 | `verify_recover` | Present verify failures, offer recovery | When verify fails | Re-run verify passes |
 | `user_input` | Parameterised via CONTEXT= | `closing:stamped` | Response received |
 
@@ -138,8 +148,9 @@ benefits from SKILL.md-level handling.
 ### Conditional actions
 
 - **Post-rebase re-review:** If rebase had conflicts, orchestrator yields
-  `ACTION=review` with `DIFF_RANGE=` scoped to conflict resolution commits.
-  Same action type, different parameters.
+  `ACTION=review_rebase` with `DIFF_RANGE=` scoped to conflict resolution
+  commits. Distinct action type — LLM runs code-review only (no branch-audit,
+  loose-ends, or forcing function).
 - **`verify_recover`:** Fires only when `verify_slot_close.py` returns
   `VERIFIED=no`. Not part of the normal sequence.
 - **Sweep sub-steps:** Conditional on `sweep_config` selections. User
@@ -147,16 +158,27 @@ benefits from SKILL.md-level handling.
 
 ### Lifecycle state mapping
 
-| Lifecycle state | Actions that fire | Event to advance |
+| Lifecycle state | Actions that fire | Event to advance | Evidence required |
+|---|---|---|---|
+| `closing:review` | review, sweep_config, [selected sweep sub-steps] | `review_pass` | `review_result` |
+| `closing:verified` | promote (mechanical) | `promote_pass` | `promoted_files`, `target_repos` |
+| `closing:promoted` | trajectory (non-blocking), squash, rebase (mechanical), land (mechanical) | `push_pass` → `merge_pass` → `stamp_pass` | See per-event below |
+| `closing:stamped` | user_input (cleanup items) | `cleanup_pass` or `cleanup_main` | See per-event below |
+
+**Per-event evidence:**
+
+| Event | Evidence keys | Source |
 |---|---|---|
-| `closing:review` | review, sweep_config, [selected sweep sub-steps] | `review_pass` |
-| `closing:verified` | promote (mechanical) | `promote_pass` |
-| `closing:promoted` | squash, rebase (mechanical), land (mechanical) | `push_pass` → `merge_pass` → `stamp_pass` |
-| `closing:stamped` | trajectory, user_input (cleanup items) | `cleanup_pass` |
+| `push_pass` | `pushed_repos`, `pushed_shas` | `land` output `PUSHED=`, `LANDED_SHA=` |
+| `merge_pass` | `landed_shas`, `verified_on_main` | `land` output (main mode: empty dicts) |
+| `stamp_pass` | `stamp_shas` | `land` output `STAMPED=` (main mode: empty dict) |
+| `cleanup_pass` | `repos_on_main`, `work_items_ended` | `checkout-main` result + `close-issues` result |
+| `cleanup_main` | `work_items_ended` | `close-issues` result |
 
 `closing:pushed` and `closing:merged` are transient — rapid succession
 after land completes. The orchestrator fires lifecycle events but does
-not yield LLM actions between them.
+not yield LLM actions between them. In main mode, `merge_pass` and
+`stamp_pass` fire with empty evidence dicts (nothing was merged or stamped).
 
 ---
 
@@ -171,6 +193,12 @@ generic context already in the conversation.
 ```
 ACTION=review
 DIFF_RANGE=main..issue-271-mechanise-work-end-close
+```
+
+```
+ACTION=review_rebase
+DIFF_RANGE=abc123..def456
+SCOPE=code-review only — skip branch-audit, loose-ends, forcing function
 ```
 
 ```
@@ -210,8 +238,17 @@ It simply calls the orchestrator again. The orchestrator validates by
 checking evidence (files, git state, findings.jsonl), not by reading
 LLM output.
 
-Exception: `sweep_config` — the LLM passes user selections on the
-next orchestrator call:
+Exceptions — the LLM passes these structured arguments on specific
+orchestrator calls:
+
+| Argument | After action | Purpose |
+|----------|-------------|---------|
+| `sweep_selected=forage,protocol,...` | `sweep_config` | User's toggle selections |
+| `skip_step=<name>` | `user_input CONTEXT=step_failed` | Skip failed judgment step |
+| `abort=yes` | User requests abort | Fire `abort_close`, exit sequence |
+| `conflict_resolved=yes` | `user_input CONTEXT=rebase_conflict` | Signal conflict resolved |
+
+Example:
 
 ```
 python3 work-end/work_end_orchestrator.py ... sweep_selected=forage,protocol,write_content
@@ -226,14 +263,14 @@ python3 work-end/work_end_orchestrator.py ... sweep_selected=forage,protocol,wri
 | Action | Validation check |
 |--------|-----------------|
 | `review` | `findings.jsonl` exists, all entries have status != `open` |
-| `forage` | Garden entry files created since step start, OR explicit user skip |
-| `protocol` | Protocol files created since step start, OR explicit user skip |
+| `forage` | Garden entry files created since step start, OR `skip_step=forage` |
+| `protocol` | Protocol files created since step start, OR `skip_step=protocol` |
 | `update_claude_md` | CLAUDE.md mtime changed, OR diff shows no changes needed |
 | `impl_doc_sync` | Docs directory mtime changed, OR diff shows no changes needed |
-| `adr` | ADR file created in workspace `adr/`, OR explicit user skip |
+| `adr` | ADR file created in workspace `adr/`, OR `skip_step=adr` |
 | `write_content` | Blog file exists in workspace `blog/`, frontmatter valid, word count > 100 |
 | `squash` | `.squash-plan-<repo>.json` exists, valid JSON, has expected fields |
-| `trajectory` | Enrichment DB updated, OR explicit user skip |
+| `trajectory` | Enrichment DB updated, OR `skip_step=trajectory` |
 
 ### Secondary: Haiku semantic validation (optional)
 
@@ -265,28 +302,39 @@ The close sequence never blocks on Haiku availability.
 
 ### File format
 
-`.close-progress` — flat KEY=VALUE, one line per sub-step:
+`.close-progress` — flat KEY=VALUE, one entry per line. Step names are
+unique keys; additional step metadata uses `<step>_<attr>` compound keys:
 
 ```
-step=review status=done
-step=sweep_config status=done sweep_selected=forage,protocol,write_content
-step=forage status=done
-step=protocol status=done
-step=write_content status=pending attempt=2
-step=promote status=done
-step=rebase status=done
-step=squash status=done
-step=land status=done
+review=done
+sweep_config=done
+sweep_selected=forage,protocol,write_content
+forage=done
+protocol=done
+write_content=pending
+write_content_attempt=2
+promote=done
+rebase=done
+squash=done
+land=done
 ```
+
+This is the same format as `.execute-progress` (unique keys, one per line).
+
+**Location:** workspace root, alongside `.execute-progress`.
 
 ### Atomic writes
 
-Write-then-rename using `os.replace()` (atomic on POSIX):
+Drop-in replacement for the existing `write_progress(path, key, value)`
+signature, adding `os.replace()` for atomic write-then-rename:
 
 ```python
-def write_progress(progress_path: Path, entries: dict):
+def write_progress(progress_path: Path, key: str, value: str) -> None:
+    progress = read_progress(progress_path)
+    progress[key] = value
+    lines = [f"{k}={v}" for k, v in progress.items()]
+    progress_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = progress_path.with_suffix('.tmp')
-    lines = [f"{k}={v}" for k, v in entries.items()]
     tmp.write_text("\n".join(lines) + "\n")
     os.replace(tmp, progress_path)
 ```
@@ -294,7 +342,8 @@ def write_progress(progress_path: Path, entries: dict):
 This matches `lifecycle.py`'s `write_state()` pattern. The existing
 `write_progress()` in `work_end_execute.py` and `_write_progress()` in
 `land_flow.py` use unsafe read-modify-write (`Path.write_text()` truncates
-first) — both must be fixed to use atomic write-then-rename.
+first) — both must be fixed to use atomic write-then-rename with the
+same `(path, key, value)` signature.
 
 ### Crash recovery
 
@@ -336,6 +385,19 @@ locking on `.close-progress` is needed.
 3. After 3 failures: skip with warning, record in `.close-progress`
 4. `verify_slot_close.py` catches gaps downstream
 
+### Abort flow
+
+The LLM can pass `abort=yes` to the orchestrator. The orchestrator:
+
+1. Checks current lifecycle state — abort is valid from `closing:review`
+   or `closing:verified` only
+2. Fires `abort_close` lifecycle transition → returns to `active`
+3. Yields `ACTION=complete SUMMARY=Aborted — returned to active state`
+
+Post-promotion states (`closing:promoted` onward) are forward-only.
+The orchestrator rejects `abort=yes` with an error message explaining
+why abort is unavailable.
+
 ### Rationale
 
 `verify_slot_close.py` checks: merged, stamped, landing SHA, pushed,
@@ -363,6 +425,28 @@ marker). The orchestrator has routing conditionals at 5 decision points:
 This is routing — which script, which arguments — not duplicated
 business logic.
 
+### Main mode routing
+
+When `ON_MAIN=yes` (from ctx.py), the orchestrator applies a third
+routing path alongside branch mode and slot mode:
+
+| Point | Main mode difference |
+|-------|---------------------|
+| Review diff base | `drained-sha` from `.plan` (or `project-sha` if first close) |
+| Rebase | Skip |
+| Squash | Skip |
+| Land | Push only (no merge, no stamp) |
+| Lifecycle after land | `push_pass` only; `merge_pass` and `stamp_pass` fired with empty evidence dicts |
+| Cleanup transition | `cleanup_main` → `drained` (not `cleanup_pass` → `idle`) |
+| Scaffold cleanup | Keep `.plan` (state is `drained`), remove only `JOURNAL.md` |
+| Checkout main | Skip (already there) |
+
+Main mode fires `merge_pass` and `stamp_pass` with empty evidence
+(`{"landed_shas": {}, "verified_on_main": {}}` and `{"stamp_shas": {}}`)
+to traverse the lifecycle state machine to `closing:stamped`. The evidence
+gates accept empty dicts — they validate that present keys have valid
+values but do not require non-empty content.
+
 ---
 
 ## Forward-only Execute (D11)
@@ -380,11 +464,12 @@ last completed sub-step.
 
 ## Existing scripts (D6)
 
-The orchestrator calls the existing 17 work-end scripts without
-modification. They are the proven mechanical layer. The orchestrator
-adds sequencing and validation.
+The orchestrator calls 6 script entry points which internally delegate
+to ~11 more. They are the proven mechanical layer — all remain
+unmodified (except the crash-safety fix). The orchestrator adds
+sequencing, evidence collection, and validation.
 
-### Scripts called by the orchestrator
+### Scripts called by the orchestrator (entry points and internals)
 
 | Script | Phase | What it does |
 |--------|-------|-------------|
@@ -432,8 +517,11 @@ PRE-CLOSE (SKILL.md, not orchestrator):
 
 ORCHESTRATOR SEQUENCE:
 
+  [mechanical] close_report.py init <report-path>
+
 Phase: closing:review
   [yield] ACTION=review → LLM runs code-review, branch-audit, forcing function
+         Main mode: DIFF_RANGE uses drained-sha (or project-sha) as base
   [yield] ACTION=sweep_config → LLM presents toggle, reports selections
   [yield] ACTION=forage (if selected)
   [yield] ACTION=protocol (if selected)
@@ -441,37 +529,54 @@ Phase: closing:review
   [yield] ACTION=impl_doc_sync (if selected)
   [yield] ACTION=adr (if selected)
   [yield] ACTION=write_content (if selected)
-  [mechanical] lifecycle transition: review_pass → closing:verified
+  [mechanical] lifecycle commit-transition: review_pass → closing:verified
+    evidence={"review_result": "pass"}
 
 Phase: closing:verified
   [mechanical] work_end_execute.py promote
-  [mechanical] lifecycle transition: promote_pass → closing:promoted
+  [mechanical] close_report.py record promote
+  [mechanical] lifecycle commit-transition: promote_pass → closing:promoted
+    evidence={"promoted_files": <from output>, "target_repos": <from output>}
 
 Phase: closing:promoted
-  [mechanical] work_end_execute.py rebase
-  [yield if conflicts] ACTION=review DIFF_RANGE=<conflict-resolution-commits>
-  [yield] ACTION=squash → LLM classifies commits, writes plan files
+  [yield] ACTION=trajectory (non-blocking — skip does not block close)
+  [mechanical] work_end_execute.py rebase  (skip in main mode)
+  [yield if conflicts] ACTION=review_rebase DIFF_RANGE=<conflict-resolution-commits>
+  [yield] ACTION=squash → LLM classifies commits, writes plan files  (skip in main mode)
   [mechanical] work_end_execute.py land (applies squash, pushes, stamps)
-  [mechanical] lifecycle transitions: push_pass → merge_pass → stamp_pass
+    Main mode: push only (no merge, no stamp)
+  [mechanical] close_report.py record land
+  [mechanical] lifecycle commit-transitions (rapid succession):
+    push_pass → closing:pushed
+      evidence={"pushed_repos": <list>, "pushed_shas": <dict>}
+    merge_pass → closing:merged  (main mode: empty dicts)
+      evidence={"landed_shas": <dict>, "verified_on_main": <dict>}
+    stamp_pass → closing:stamped  (main mode: empty dicts)
+      evidence={"stamp_shas": <dict>}
 
 Phase: closing:stamped
-  [yield] ACTION=trajectory
   [yield] ACTION=user_input CONTEXT=arc42_scan (if ARC42STORIES.MD exists)
   [yield] ACTION=user_input CONTEXT=session_rename
   [yield] ACTION=user_input CONTEXT=garden_feedback (if GE-IDs in session)
   [yield] ACTION=user_input CONTEXT=notes (if .notes/ exists)
 
 VERIFY:
-  [mechanical] verify_slot_close.py
+  [mechanical] work_end_execute.py close-issues (if COVERS non-empty)
+  [mechanical] close_report.py record close-issues
+  [mechanical] verify_slot_close.py (with covers= and issue_repo= when applicable)
   [yield if failed] ACTION=verify_recover → LLM presents failures
-  [mechanical] work_end_execute.py close-issues
 
 CLOSE:
   [mechanical] work_end_execute.py archive-slot (slot mode)
-  [mechanical] branch_cleanup.py checkout-main
+  [mechanical] branch_cleanup.py checkout-main  (skip in main mode)
   [mechanical] branch_cleanup.py cleanup-scaffold
-  [mechanical] lifecycle transition: cleanup_pass → idle (or cleanup_main → drained)
-  [yield] ACTION=complete SUMMARY=...
+  [mechanical] lifecycle commit-transition:
+    Branch mode: cleanup_pass → idle
+      evidence={"repos_on_main": <dict>, "work_items_ended": true}
+    Main mode: cleanup_main → drained
+      evidence={"work_items_ended": true}
+  [mechanical] close_report.py render <report-path>
+  [yield] ACTION=complete SUMMARY=<rendered report>
 ```
 
 ---
@@ -496,7 +601,7 @@ The orchestrator requires its own test suite — the risk shifts from
 | Validation: 3 consecutive failures on mechanical step | Skip-with-warning, continues |
 | Sweep config: user deselects items | Deselected sub-steps never yielded |
 | Sweep config: all items off | Jumps to post-sweep mechanical steps |
-| Post-rebase conflict | `ACTION=review` with scoped `DIFF_RANGE=` |
+| Post-rebase conflict | `ACTION=review_rebase` with scoped `DIFF_RANGE=` |
 | Verify failure | `ACTION=verify_recover` yielded |
 | Concurrent session | Lifecycle `ConcurrentModification` raised |
 | Main mode | Branch-specific steps skipped (rebase, squash, stamp) |
@@ -528,8 +633,9 @@ Orchestrator tests mock script calls and test sequencing logic.
 3. **SKILL.md rewrite** — replace 660-line skill with ~20-line loop plus
    pre-close context handling.
 
-4. **Haiku validation** (optional, deferred) — add semantic validation
-   for write-content and ADR when heuristic checks prove insufficient.
+4. **Haiku validation** (optional, deferred — tracked as #274) — add
+   semantic validation for write-content and ADR when heuristic checks
+   prove insufficient.
 
 Step 1 can ship independently. Steps 2-3 ship together.
 
@@ -548,7 +654,7 @@ Step 1 can ship independently. Steps 2-3 ship together.
 
 | File | Change |
 |------|--------|
-| `work-end/SKILL.md` | Rewrite to ~20-line loop + pre-close |
+| `work-end/SKILL.md` | Rewrite to ~20-line dispatch loop + ~250-line pre-close and reference |
 | `work-end/work_end_execute.py` | `write_progress()` → atomic write-then-rename |
 | `work-end/land_flow.py` | `_write_progress()` → atomic write-then-rename |
 

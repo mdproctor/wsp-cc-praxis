@@ -1,0 +1,20 @@
+{
+  "repo": "soredium",
+  "strategy": "semantic",
+  "before": 7,
+  "after": 3,
+  "groups": [
+    {
+      "message": "fix: atomic write-then-rename for progress files\n\nwrite_progress() used Path.write_text() which truncates before writing.\nProcess crash between truncation and write loses all prior progress.\nNow writes to .tmp then os.replace() — atomic on POSIX.\n\nRefs #271",
+      "commits": ["d7d1676"]
+    },
+    {
+      "message": "feat: work-end orchestrator — Python-driven close sequence\n\nStateless re-entrant orchestrator that owns the work-end close sequence.\nYields ACTION= lines for judgment steps, runs mechanical steps silently.\nAtomic progress tracking via close_progress.py with stale detection.\n131 tests across orchestrator, close_progress, close_report, and\nexisting work-end test files.\n\nRefs #271",
+      "commits": ["cd3b23d", "a0faebc", "75ae87c"]
+    },
+    {
+      "message": "feat: rewrite work-end for orchestrator dispatch\n\nReplace 662-line LLM-orchestrated skill with 425-line dispatch model.\nPre-close context resolution, ~20-line dispatch loop calling\nwork_end_orchestrator.py, action handlers with per-action judgment\nconstraints. close_report step names updated to match orchestrator\nsequence. Blog, design spec, and decisions promoted from workspace.\n\nRefs #271",
+      "commits": ["20345de", "76c668c", "3ad0369"]
+    }
+  ]
+}

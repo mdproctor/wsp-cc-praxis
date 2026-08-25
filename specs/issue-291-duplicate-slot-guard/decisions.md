@@ -35,3 +35,15 @@
 **Sources:** `slot_manager.py:574-596` (write_slot_md), `slot_manager.py:987-1042` (parse_slot_md)
 **Exploration:** quick
 **Status:** captured
+
+## D4: Ghost slot directories — quarantine, not skip
+
+**Choice:** Quarantine ghost directories (no `.slot` file) to `slots/quarantine/N/` via `reconcile_slots.py`. No changes to `list_slots` — once quarantined, the directory is outside the listing path. Quarantine flow: (1) reconcile audit detects directories with no `.slot`, (2) reconcile strategy checks for meaningful contents (repos with commits ahead of main) and worklog DB records, reports findings, (3) reconcile execute moves to `slots/quarantine/N/` and relocates `.claude/projects` conversations (same pattern as `archive_slot`). If DB has a record, update to `state='quarantined'`. Quarantined entries with no identifiable purpose are eventually deleted manually.
+**Alternatives:**
+- Silent skip in `list_slots` — hides the problem, debris accumulates, no audit trail
+- Delete immediately — too aggressive, could destroy work if the ghost has meaningful contents from a partially successful creation
+**Rationale:** Quarantine preserves data while removing noise from the active listing. The three-phase reconcile pattern already exists and handles this class of DB/disk divergence. `.claude/projects` conversations must travel with the directory to preserve session history.
+**Trade-offs:** Adds a `quarantine/` directory concept alongside `attic/`. Quarantine is for debris of unknown provenance; attic is for completed work. The distinction is clear but adds a path to document.
+**Sources:** `slot_manager.py:1628-1710` (list_slots), `scripts/reconcile_slots.py`, issue #291 (slots 54/67)
+**Exploration:** quick
+**Status:** captured

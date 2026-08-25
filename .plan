@@ -1,0 +1,15 @@
+# Work Plan — issue-291-duplicate-slot-guard
+
+## State
+branch: issue-291-duplicate-slot-guard
+state: scaffolded
+project-sha: 54fd1c656a995d72ecb6f08c60dc9506ddc49bb7
+date: 2026-08-25
+issue-repo: Hortora/soredium
+covers: 291
+design-repo: workspace
+design-section-hashes: 
+flyway-next-v: unknown
+
+## Queue
+- [ ] Hortora/soredium#291 — Issue #291 ← active

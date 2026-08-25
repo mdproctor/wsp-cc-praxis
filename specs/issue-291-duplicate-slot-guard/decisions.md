@@ -23,3 +23,15 @@
 **Exploration:** quick
 **Depends on:** D1 (rollback creates the pending orphans that D2 cleans up on retry)
 **Status:** captured
+
+## D3: Duplicate branch guard — detection mechanism
+
+**Choice:** Disk scan of active slots — iterate `slots/*/.slot`, parse branch name from the `# Slot N — <branch>` header, refuse creation if a match exists. Error message: "Slot N already has branch `<name>`. Use that slot or archive it first."
+**Alternatives:**
+- DB join via `work_items` table — branch exists in `work_items.branch`, no schema change needed. But the branch isn't recorded until `confirm_slot_create`, so the guard misses the exact retry-after-failure scenario we care about most.
+- Add `branch` column to `slots` table — requires schema migration for a check that disk scan handles natively.
+**Rationale:** `.slot` is the source of truth for what branch a slot owns. Successfully created slots always have one; failed creations don't — so the guard catches real duplicates with zero false positives from debris. Disk scan is a handful of directories; performance is negligible.
+**Trade-offs:** Disk scan doesn't see slots whose `.slot` was manually deleted. That's a corruption scenario already covered by `reconcile_slots.py`, not a guard concern.
+**Sources:** `slot_manager.py:574-596` (write_slot_md), `slot_manager.py:987-1042` (parse_slot_md)
+**Exploration:** quick
+**Status:** captured

@@ -1,0 +1,15 @@
+# Work Plan — issue-287-worklog-end-transition
+
+## State
+branch: issue-287-worklog-end-transition
+state: scaffolded
+project-sha: 0889679711a064c6856cd78c614153a92cb7386b
+date: 2026-08-25
+issue-repo: Hortora/soredium
+covers: 287
+design-repo: workspace
+design-section-hashes: 
+flyway-next-v: unknown
+
+## Queue
+- [ ] Hortora/soredium#287 — Issue #287 ← active

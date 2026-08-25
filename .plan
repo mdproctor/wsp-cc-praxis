@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-271-mechanise-work-end
-state: closing:verified
+state: closing:stamped
 project-sha: b730baa6940ea50c5811c570ea6564e90a84a313
 date: 2026-08-24
 issue-repo: Hortora/soredium

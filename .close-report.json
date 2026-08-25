@@ -1,0 +1,23 @@
+{
+  "steps": {
+    "rebase": {
+      "branch": "issue-287-worklog-end-transition",
+      "base": "main"
+    },
+    "squash": {
+      "before": "?",
+      "after": "?",
+      "strategy": "unknown"
+    },
+    "land": {
+      "landed_sha": "f6b34c0f119c68022837e2ac1cbc48f6a17fa986",
+      "pushed_repos": "soredium"
+    },
+    "close-issues": {
+      "closed": "1"
+    },
+    "verify": {
+      "verified": "yes"
+    }
+  }
+}

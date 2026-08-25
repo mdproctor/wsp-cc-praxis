@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-287-worklog-end-transition
-state: closing:review
+state: closing:stamped
 project-sha: 0889679711a064c6856cd78c614153a92cb7386b
 date: 2026-08-25
 issue-repo: Hortora/soredium

@@ -1,0 +1,13 @@
+{"ts": "2026-08-25T15:29:44.212325+00:00", "meta_state": "closing:review", "action": "review", "step": "", "context": "", "steps_executed": [], "error": ""}
+{"ts": "2026-08-25T15:30:06.942516+00:00", "meta_state": "closing:review", "action": "sweep_config", "step": "", "context": "", "steps_executed": [], "error": ""}
+{"ts": "2026-08-25T15:32:57.749622+00:00", "meta_state": "closing:review", "action": "sweep_config", "step": "", "context": "", "steps_executed": [], "error": ""}
+{"ts": "2026-08-25T15:33:16.142882+00:00", "meta_state": "closing:review", "action": "forage", "step": "", "context": "", "steps_executed": [], "error": ""}
+{"ts": "2026-08-25T15:33:23.774843+00:00", "meta_state": "closing:review", "action": "protocol", "step": "", "context": "", "steps_executed": [], "error": ""}
+{"ts": "2026-08-25T15:33:30.456211+00:00", "meta_state": "closing:review", "action": "update_claude_md", "step": "", "context": "", "steps_executed": [], "error": ""}
+{"ts": "2026-08-25T15:33:36.665361+00:00", "meta_state": "closing:review", "action": "impl_doc_sync", "step": "", "context": "", "steps_executed": [], "error": ""}
+{"ts": "2026-08-25T15:33:43.347131+00:00", "meta_state": "closing:review", "action": "adr", "step": "", "context": "", "steps_executed": [], "error": ""}
+{"ts": "2026-08-25T15:33:49.647093+00:00", "meta_state": "closing:review", "action": "write_content", "step": "", "context": "", "steps_executed": [], "error": ""}
+{"ts": "2026-08-25T15:34:04.112753+00:00", "meta_state": "closing:review", "action": "error", "step": "promote", "context": "", "steps_executed": ["review_pass", "promote:ERROR:1"], "error": "PROMOTE_FAILED"}
+{"ts": "2026-08-25T15:34:50.328107+00:00", "meta_state": "closing:promoted", "action": "trajectory", "step": "", "context": "", "steps_executed": ["promote_pass"], "error": ""}
+{"ts": "2026-08-25T15:34:57.283424+00:00", "meta_state": "closing:promoted", "action": "squash", "step": "", "context": "", "steps_executed": ["rebase", "report_rebase"], "error": ""}
+{"ts": "2026-08-25T15:35:14.267668+00:00", "meta_state": "closing:promoted", "action": "error", "step": "checkout_main", "context": "", "steps_executed": ["report_squash", "land", "report_land", "push_pass", "merge_pass", "stamp_pass", "close_issues", "report_close_issues", "verify", "report_verify", "checkout_main:ERROR:1"], "error": "checkout_failed"}

@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-287-worklog-end-transition
-state: scaffolded
+state: closing:review
 project-sha: 0889679711a064c6856cd78c614153a92cb7386b
 date: 2026-08-25
 issue-repo: Hortora/soredium
@@ -11,5 +11,6 @@ design-repo: workspace
 design-section-hashes: 
 flyway-next-v: unknown
 
+evidence-era: true
 ## Queue
 - [ ] Hortora/soredium#287 — Issue #287 ← active

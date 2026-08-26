@@ -1,0 +1,15 @@
+# Work Plan — issue-282-mechanise-wrap
+
+## State
+branch: issue-282-mechanise-wrap
+state: scaffolded
+project-sha: 06a1bd1fa0e6738e817a8ef6a6eaddefd1c11daa
+date: 2026-08-26
+issue-repo: Hortora/soredium
+covers: 282
+design-repo: workspace
+design-section-hashes: 
+flyway-next-v: unknown
+
+## Queue
+- [ ] Hortora/soredium#282 — Issue #282 ← active

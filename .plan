@@ -13,8 +13,8 @@ flyway-next-v: unknown
 
 ## Queue
 - [ ] Hortora/soredium#291 — Issue #291 ← active
-  - [ ] Batch 1: DB-layer
-    - [ ] Task 1: Add fail_slot and find_reusable_slot
+  - [x] Batch 1: DB-layer
+    - [x] Task 1: Add fail_slot and find_reusable_slot
   - [ ] Batch 2: Slot-manager
     - [ ] Task 2: Add guard and ghost filter and exception class
     - [ ] Task 3: Refactor create_slot rollback and pending reuse

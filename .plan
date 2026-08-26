@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-291-duplicate-slot-guard
-state: scaffolded
+state: active
 project-sha: 54fd1c656a995d72ecb6f08c60dc9506ddc49bb7
 date: 2026-08-25
 issue-repo: Hortora/soredium
@@ -13,3 +13,12 @@ flyway-next-v: unknown
 
 ## Queue
 - [ ] Hortora/soredium#291 — Issue #291 ← active
+  - [ ] Batch 1: DB-layer
+    - [ ] Task 1: Add fail_slot and find_reusable_slot
+  - [ ] Batch 2: Slot-manager
+    - [ ] Task 2: Add guard and ghost filter and exception class
+    - [ ] Task 3: Refactor create_slot rollback and pending reuse
+  - [ ] Batch 3: Reconcile
+    - [ ] Task 4: Content-aware quarantine with claude projects
+  - [ ] Batch 4: Verify
+    - [ ] Task 5: Sync worklog and update state compatibility

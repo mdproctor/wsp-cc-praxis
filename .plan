@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-291-duplicate-slot-guard
-state: active
+state: closing:review
 project-sha: 54fd1c656a995d72ecb6f08c60dc9506ddc49bb7
 date: 2026-08-25
 issue-repo: Hortora/soredium
@@ -11,6 +11,7 @@ design-repo: workspace
 design-section-hashes: 
 flyway-next-v: unknown
 
+evidence-era: true
 ## Queue
 - [ ] Hortora/soredium#291 — Issue #291 ← active
   - [x] Batch 1: DB-layer

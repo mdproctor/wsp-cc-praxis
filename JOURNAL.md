@@ -1,1 +1,1 @@
-# Design Journal — issue-271-mechanise-work-end
+# Design Journal — issue-292-garden-feedback-strength

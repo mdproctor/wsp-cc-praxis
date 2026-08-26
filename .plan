@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-292-garden-feedback-strength
-state: scaffolded
+state: closing:review
 project-sha: 06a1bd1fa0e6738e817a8ef6a6eaddefd1c11daa
 date: 2026-08-26
 issue-repo: Hortora/soredium
@@ -11,5 +11,6 @@ design-repo: workspace
 design-section-hashes: 
 flyway-next-v: unknown
 
+evidence-era: true
 ## Queue
 - [ ] Hortora/soredium#292 — Issue #292 ← active

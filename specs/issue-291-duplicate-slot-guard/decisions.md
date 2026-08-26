@@ -2,7 +2,7 @@
 
 ## D1: Rollback strategy for partial slot creation failures
 
-**Choice:** Internal rollback — refactor `create_slot()` error paths from `sys.exit(1)` to raised exceptions, wrap the body in try/except, clean up directory and DB row before re-raising. Post-confirmation failures (after `confirm_slot_create` transitions to `active`) must delete the `active` row and associated `work_items`, not just a `pending` row.
+**Choice:** Internal rollback — refactor `create_slot()` error paths from `sys.exit(1)` to raised exceptions, wrap the body in try/except, clean up directory and transition DB to `state='failed'` before re-raising. Use `fail_slot()` (state transition) instead of deletion — the `events` table references `slots.id` with no `ON DELETE CASCADE`, so deletion would hit FK constraints. The `failed` state preserves the audit trail and is naturally handled by reconcile.
 **Alternatives:**
 - External cleanup command — adds a `cleanup-failed-slot` subcommand callable from SKILL.md or reconciliation; more complex, problem should be prevented at source
 **Rationale:** The failure should be cleaned up where it happens. `sys.exit(1)` in a library function is an anti-pattern — errors should propagate and let the caller decide. `reconcile_slots.py` already handles orphaned state for edge cases (SIGKILL, power loss) where internal cleanup can't run.

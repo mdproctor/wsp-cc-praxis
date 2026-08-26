@@ -41,11 +41,11 @@ Four changes to `slot_manager.py` and `reconcile_slots.py`:
 ### 1. Duplicate branch guard
 
 A new function `find_slot_by_branch(family_root, branch)` scans active slot
-directories and returns the slot number if a `.slot` with a matching branch exists,
-or `None` otherwise.
+directories and returns `(slot_number, is_landed)` if a `.slot` with a matching
+branch exists, or `None` otherwise.
 
 ```python
-def find_slot_by_branch(family_root: Path, branch: str) -> int | None:
+def find_slot_by_branch(family_root: Path, branch: str) -> tuple[int, bool] | None:
     for dir_name in (SLOT_DIR_NAME, LEGACY_SLOT_DIR_NAME):
         slots_dir = family_root / dir_name
         if not slots_dir.exists():
@@ -55,23 +55,31 @@ def find_slot_by_branch(family_root: Path, branch: str) -> int | None:
                 continue
             info = parse_slot_md(d)
             if info.get("branch") == branch:
-                return int(d.name)
+                landed = (d / ".landed").exists()
+                return int(d.name), landed
     return None
 ```
 
 Called at the top of `create_slot()`, before `allocate_slot_number()`:
 
 ```python
-existing = find_slot_by_branch(family_root, branch)
-if existing is not None:
+result = find_slot_by_branch(family_root, branch)
+if result is not None:
+    slot_num, landed = result
+    if landed:
+        raise SlotCreationError(
+            f"Slot {slot_num} has branch `{branch}` (landed, not yet archived). "
+            f"Archive it first."
+        )
     raise SlotCreationError(
-        f"Slot {existing} already has branch `{branch}`. "
+        f"Slot {slot_num} already has branch `{branch}`. "
         f"Use that slot or archive it first."
     )
 ```
 
 **Placement before allocation** prevents wasting a slot number on a duplicate
-and avoids interaction with the rollback/reuse paths.
+and avoids interaction with the rollback/reuse paths. The landed/active
+distinction gives the user actionable information about what to do next.
 
 ### 2. Internal rollback on failure
 
@@ -127,14 +135,11 @@ def create_slot(family_root, repos, branch, ...):
         # Cleanup: remove directory if it exists
         if slot_dir.exists():
             shutil.rmtree(str(slot_dir), ignore_errors=True)
-        # Cleanup: remove DB row
+        # Cleanup: transition DB row to failed state
         if _wl:
             try:
                 conn = _wl.connect()
-                if confirmed:
-                    _wl.delete_slot(conn, slot_num, str(family_root))
-                else:
-                    _wl.delete_pending_slot(conn, slot_num, str(family_root))
+                _wl.fail_slot(conn, slot_num, str(family_root))
                 conn.close()
             except Exception:
                 pass  # Best effort — reconcile handles the rest
@@ -143,34 +148,29 @@ def create_slot(family_root, repos, branch, ...):
 
 #### 2c. New worklog functions
 
-Two new functions in `worklog.py`:
+`fail_slot` transitions a slot to `state='failed'` regardless of current state.
+This preserves the audit trail (event log rows referencing the slot remain
+intact) and avoids FK constraint violations — the `events` table references
+`slots.id` with no `ON DELETE CASCADE`, so deleting a confirmed slot would
+fail. The `failed` state is naturally handled by `reconcile_slots.py` as
+another divergence class.
 
 ```python
-def delete_pending_slot(conn, slot_number, family_root):
-    """Remove a pending slot reservation. No @safe — errors propagate."""
+def fail_slot(conn, slot_number, family_root):
+    """Transition a slot to failed state. Works for both pending and active slots.
+    Preserves audit trail — no deletion. No @safe — errors propagate."""
     family_root = _norm(family_root)
     conn.execute(
-        "DELETE FROM slots WHERE slot_number=? AND family_root=? AND state='pending'",
+        "UPDATE slots SET state='failed' WHERE slot_number=? AND family_root=?",
         (slot_number, family_root),
     )
     conn.commit()
-
-def delete_slot(conn, slot_number, family_root):
-    """Remove a slot and its work_items. For post-confirmation cleanup only."""
-    family_root = _norm(family_root)
-    sid = _find_slot(conn, slot_number, family_root)
-    if sid:
-        conn.execute("DELETE FROM work_item_issues WHERE work_item_id IN "
-                     "(SELECT id FROM work_items WHERE slot_id=?)", (sid,))
-        conn.execute("DELETE FROM work_items WHERE slot_id=?", (sid,))
-        conn.execute("DELETE FROM slots WHERE id=?", (sid,))
-        conn.commit()
 ```
 
 ### 3. Pending slot reuse
 
-Modify `allocate_slot_number()` to check for a reusable pending row before
-allocating a new number:
+Modify `allocate_slot_number()` to check for reusable pending/failed rows
+before allocating a new number:
 
 ```python
 def allocate_slot_number(family_root: Path) -> int:
@@ -178,14 +178,22 @@ def allocate_slot_number(family_root: Path) -> int:
         # ... existing hard fail ...
     conn = _wl.connect()
     try:
-        pending = _wl.find_pending_slot(conn, str(family_root))
-        if pending is not None:
-            slot_num = pending
+        reusable = _wl.find_reusable_slot(conn, str(family_root))
+        if reusable is not None:
+            slot_num, others = reusable
             # Clean up debris directory if it exists
             for dir_name in (SLOT_DIR_NAME, LEGACY_SLOT_DIR_NAME):
                 debris = family_root / dir_name / str(slot_num)
                 if debris.exists():
                     shutil.rmtree(str(debris), ignore_errors=True)
+            # Clean up any older pending/failed slots too
+            for other_num in others:
+                for dir_name in (SLOT_DIR_NAME, LEGACY_SLOT_DIR_NAME):
+                    debris = family_root / dir_name / str(other_num)
+                    if debris.exists():
+                        shutil.rmtree(str(debris), ignore_errors=True)
+                _wl.fail_slot(conn, other_num, str(family_root))
+            print(f"REUSED_PENDING={slot_num}")
             return slot_num
         slot_num = _wl.reserve_slot_number(conn, str(family_root))
     finally:
@@ -196,16 +204,23 @@ def allocate_slot_number(family_root: Path) -> int:
 New worklog function:
 
 ```python
-def find_pending_slot(conn, family_root):
-    """Find the most recent pending slot for a family_root, if any."""
+def find_reusable_slot(conn, family_root):
+    """Find reusable pending/failed slots for a family_root.
+    Returns (highest_number, [other_numbers]) or None.
+    The highest-numbered pending/failed slot is reused; others are
+    transitioned to failed and their debris cleaned up."""
     family_root = _norm(family_root)
-    row = conn.execute(
+    rows = conn.execute(
         "SELECT slot_number FROM slots "
-        "WHERE family_root=? AND state='pending' "
-        "ORDER BY slot_number DESC LIMIT 1",
+        "WHERE family_root=? AND state IN ('pending', 'failed') "
+        "ORDER BY slot_number DESC",
         (family_root,),
-    ).fetchone()
-    return row[0] if row else None
+    ).fetchall()
+    if not rows:
+        return None
+    highest = rows[0][0]
+    others = [r[0] for r in rows[1:]]
+    return highest, others
 ```
 
 ### 4. Ghost quarantine enhancements
@@ -258,22 +273,28 @@ ship with pytest tests in the same commit.
 ### slot_manager tests
 
 - `test_find_slot_by_branch_finds_match` — create a slot with `.slot` file, verify detection
+- `test_find_slot_by_branch_returns_landed_flag` — slot with `.landed` marker → `(num, True)`
 - `test_find_slot_by_branch_no_match` — verify None return when branch doesn't exist
 - `test_find_slot_by_branch_ignores_attic` — archived slot with same branch doesn't match
 - `test_create_slot_duplicate_branch_raises` — create slot, try same branch again → `SlotCreationError`
+- `test_create_slot_duplicate_landed_branch_message` — landed slot → different error message mentioning "archive it first"
 - `test_create_slot_clone_failure_cleans_up_dir` — simulate clone failure, verify directory removed
-- `test_create_slot_clone_failure_cleans_up_db` — simulate clone failure, verify DB row removed
-- `test_create_slot_post_confirm_failure_cleans_up` — fail after `confirm_slot_create`, verify active row + work_items removed
-- `test_allocate_reuses_pending` — create pending row, allocate again → same number returned
+- `test_create_slot_clone_failure_transitions_db_to_failed` — simulate clone failure, verify DB state is `failed`
+- `test_create_slot_post_confirm_failure_transitions_to_failed` — fail after `confirm_slot_create`, verify DB state is `failed` (not deleted — events FK preserved)
+- `test_allocate_reuses_pending` — create pending row, allocate again → same number returned, `REUSED_PENDING` emitted
+- `test_allocate_reuses_failed` — create failed row, allocate again → same number returned
 - `test_allocate_reuses_pending_cleans_debris` — create pending + directory, verify directory removed on reuse
-- `test_allocate_fresh_when_no_pending` — no pending rows → new number allocated
+- `test_allocate_cleans_older_pending_slots` — two pending rows, reuse highest, transition older to failed
+- `test_allocate_fresh_when_no_pending` — no pending/failed rows → new number allocated
 
 ### worklog tests
 
-- `test_find_pending_slot_returns_number`
-- `test_find_pending_slot_returns_none_when_no_pending`
-- `test_delete_pending_slot_removes_row`
-- `test_delete_slot_removes_row_and_work_items`
+- `test_find_reusable_slot_returns_highest_pending`
+- `test_find_reusable_slot_returns_all_pending_as_others`
+- `test_find_reusable_slot_returns_none_when_no_pending`
+- `test_fail_slot_transitions_pending_to_failed`
+- `test_fail_slot_transitions_active_to_failed`
+- `test_fail_slot_preserves_events` — verify events rows still reference the slot after transition
 
 ### reconcile tests
 

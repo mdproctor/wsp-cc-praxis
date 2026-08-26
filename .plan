@@ -20,5 +20,5 @@ flyway-next-v: unknown
     - [x] Task 3: Refactor create_slot rollback and pending reuse
   - [x] Batch 3: Reconcile
     - [x] Task 4: Content-aware quarantine with claude projects
-  - [ ] Batch 4: Verify
-    - [ ] Task 5: Sync worklog and update state compatibility
+  - [x] Batch 4: Verify
+    - [x] Task 5: Sync worklog and update state compatibility

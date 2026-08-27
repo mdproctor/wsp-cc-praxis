@@ -1,0 +1,15 @@
+# Work Plan — issue-301-sync-main-rebase-fix
+
+## State
+branch: issue-301-sync-main-rebase-fix
+state: scaffolded
+project-sha: a546bdc35eb19013f049f2a8bbb209e2977ad354
+date: 2026-08-27
+issue-repo: Hortora/soredium
+covers: 301
+design-repo: project
+design-section-hashes: 
+flyway-next-v: unknown
+
+## Queue
+- [ ] Hortora/soredium#301 — Issue #301 ← active

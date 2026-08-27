@@ -31,3 +31,4 @@ notes_produced=0
 handoff_write_attempt=1
 handoff_write=done
 handoff_write_produced=1
+wip_commit=done

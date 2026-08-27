@@ -1,0 +1,15 @@
+# Work Plan — issue-307-work-end-rebase-abort
+
+## State
+branch: issue-307-work-end-rebase-abort
+state: scaffolded
+project-sha: 005fb536f6cee51fe679a176e2197083338dc8a9
+date: 2026-08-28
+issue-repo: Hortora/soredium
+covers: 307
+design-repo: workspace
+design-section-hashes: 
+flyway-next-v: none
+
+## Queue
+- [ ] Hortora/soredium#307 — Issue #307 ← active

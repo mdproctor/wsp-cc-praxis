@@ -1,0 +1,15 @@
+# Work Plan — issue-304-auto-resume-close
+
+## State
+branch: issue-304-auto-resume-close
+state: scaffolded
+project-sha: 52ffe02507de2d27030e5bc532d344373a7ab293
+date: 2026-08-27
+issue-repo: Hortora/soredium
+covers: 304
+design-repo: project
+design-section-hashes: 
+flyway-next-v: unknown
+
+## Queue
+- [ ] Hortora/soredium#304 — Issue #304 ← active

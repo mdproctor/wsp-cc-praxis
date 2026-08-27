@@ -1,0 +1,15 @@
+# Work Plan — issue-305-orchestrator-reliability
+
+## State
+branch: issue-305-orchestrator-reliability
+state: scaffolded
+project-sha: 8a7d68af61d95ab7ae7f5a8691e4080cc1202a5e
+date: 2026-08-27
+issue-repo: Hortora/soredium
+covers: 305
+design-repo: project
+design-section-hashes: 
+flyway-next-v: none
+
+## Queue
+- [ ] Hortora/soredium#305 — Issue #305 ← active

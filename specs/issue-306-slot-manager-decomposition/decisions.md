@@ -9,3 +9,29 @@
 **Sources:** work-slot/slot_manager.py call graph audit, issue #306 responsibility inventory
 **Exploration:** quick
 **Status:** captured
+
+## D2: Extraction order
+
+**Choice:** Core-first — extract `slot_core.py` (utilities/resolution) as the first module, then follow dependency depth
+**Alternatives:**
+- Metadata-first — easier first win but requires duplicating `run_cmd` temporarily
+- Core + metadata together — larger first commit, no duplication, but harder to review
+**Rationale:** Core is the foundation that every other module imports. Extracting it first means every subsequent extraction is a clean cut with a stable import target. The 16 utility functions are small and the call-site updates are mechanical.
+**Trade-offs:** Larger first commit since core is widely used (~20+ call sites for `run_cmd` alone)
+**Depends on:** D1 (module boundaries)
+**Sources:** Call graph analysis showing `run_cmd`, `parse_slot_md`, resolution helpers as most-called functions
+**Exploration:** quick
+**Status:** captured
+
+Full extraction sequence:
+1. `slot_core.py` — utilities, resolution, constants, exception
+2. `slot_metadata.py` — parse/write .slot, stamps, landed markers
+3. `slot_maven.py` — Maven settings, repo setup
+4. `slot_isx.py` — ISX lifecycle
+5. `slot_claude.py` — Claude project dirs
+6. `slot_git.py` — clone, branch, hooks, alternates, migration
+7. `slot_workspace.py` — workspace discovery, symlinks, CLAUDE.md
+8. `slot_query.py` — list, scan, cross-deps, find
+9. `slot_observability.py` — worklog wrapper, drift detection
+10. `slot_lifecycle.py` — orchestrators (create, add, merge, archive, remove, restore)
+11. `slot_cli.py` — main, parse_args, CLI dispatch

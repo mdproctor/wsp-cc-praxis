@@ -35,3 +35,15 @@ Full extraction sequence:
 9. `slot_observability.py` — worklog wrapper, drift detection
 10. `slot_lifecycle.py` — orchestrators (create, add, merge, archive, remove, restore)
 11. `slot_cli.py` — main, parse_args, CLI dispatch
+
+## D3: Test organization
+
+**Choice:** Tests move with functions — each extraction creates a matching `test_slot_<module>.py` alongside the new module
+**Alternatives:**
+- Tests stay in `test_slot_manager.py` with updated imports, split in a final commit — simpler per-extraction commits but defers the organizational benefit and creates a long period where test file structure doesn't match source structure
+**Rationale:** Matches "tests move with their code" principle. Each extraction is self-contained: new module + its tests arrive in one commit. Protocol `externalised-scripts-require-tests` reinforces this — new modules ship with tests. `test_slot_manager.py` shrinks from 4,315 lines to whatever covers `slot_lifecycle.py` + `slot_cli.py`, then gets renamed in the final extraction.
+**Trade-offs:** Each extraction commit is larger (includes test moves). Test file identification requires careful grep to find which tests exercise which functions.
+**Depends on:** D1 (module boundaries), D2 (extraction order)
+**Sources:** Protocol PP-20260609-df21ed (externalised scripts require tests), user directive "tests move with their code"
+**Exploration:** quick
+**Status:** captured

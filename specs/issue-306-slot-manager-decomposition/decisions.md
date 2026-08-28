@@ -47,3 +47,15 @@ Full extraction sequence:
 **Sources:** Protocol PP-20260609-df21ed (externalised scripts require tests), user directive "tests move with their code"
 **Exploration:** quick
 **Status:** captured
+
+## D4: create_slot/add_repo deduplication
+
+**Choice:** Extract shared `_setup_repo_in_slot()` pipeline during lifecycle extraction (step 10)
+**Alternatives:**
+- Extract early into `slot_git.py` (step 6) — earlier dedup but the pipeline spans git + workspace + maven concerns and doesn't fit cleanly in a leaf module
+**Rationale:** The shared 12-step repo-setup pipeline is orchestration — it calls into git, workspace, and maven. It belongs with the orchestrators in `slot_lifecycle.py`. By step 10, all leaf modules exist, so the pipeline imports cleanly from each. Doing it earlier would force cross-concern coupling in a leaf module.
+**Trade-offs:** Duplication persists through steps 1-9. Acceptable because the duplicated code is being moved, not modified — no risk of divergence during migration.
+**Depends on:** D1 (module boundaries), D2 (extraction order)
+**Sources:** Audit confirming ~80% duplication between create_slot (lines 769-825) and add_repo (lines 928-1007)
+**Exploration:** quick
+**Status:** captured

@@ -13,3 +13,28 @@ flyway-next-v: none
 
 ## Queue
 - [ ] Hortora/soredium#306 — Issue #306 ← active
+  - [ ] Batch 1: Foundation
+    - [ ] Task 1: Extract shared test helpers
+    - [ ] Task 2: Extract slot_core.py
+  - [ ] Batch 2: Data layer
+    - [ ] Task 3: Extract slot_metadata.py
+  - [ ] Batch 3: Build tooling
+    - [ ] Task 4: Extract slot_maven.py
+  - [ ] Batch 4: ISX isolation
+    - [ ] Task 5: Extract slot_isx.py
+  - [ ] Batch 5: Claude dirs
+    - [ ] Task 6: Extract slot_claude.py
+  - [ ] Batch 6: Git infra
+    - [ ] Task 7: Extract slot_git.py
+  - [ ] Batch 7: Workspace
+    - [ ] Task 8: Extract slot_workspace.py
+  - [ ] Batch 8: Queries
+    - [ ] Task 9: Extract slot_query.py
+  - [ ] Batch 9: Observability
+    - [ ] Task 10: Extract slot_observability.py
+  - [ ] Batch 10: Orchestrators
+    - [ ] Task 11: Extract slot_lifecycle.py and dedup
+  - [ ] Batch 11: CLI
+    - [ ] Task 12: Extract slot_cli.py and create shim
+  - [ ] Batch 12: Verification
+    - [ ] Task 13: Final verification and cleanup

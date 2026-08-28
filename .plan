@@ -13,9 +13,9 @@ flyway-next-v: none
 
 ## Queue
 - [ ] Hortora/soredium#306 — Issue #306 ← active
-  - [ ] Batch 1: Foundation
-    - [ ] Task 1: Extract shared test helpers
-    - [ ] Task 2: Extract slot_core.py
+  - [x] Batch 1: Foundation
+    - [x] Task 1: Extract shared test helpers
+    - [x] Task 2: Extract slot_core.py
   - [ ] Batch 2: Data layer
     - [ ] Task 3: Extract slot_metadata.py
   - [ ] Batch 3: Build tooling

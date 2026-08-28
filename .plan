@@ -1,0 +1,15 @@
+# Work Plan — issue-308-is-stale-reset-fix
+
+## State
+branch: issue-308-is-stale-reset-fix
+state: scaffolded
+project-sha: 2069d455a2730cbd938637f66dc53496d1750188
+date: 2026-08-28
+issue-repo: Hortora/soredium
+covers: 308
+design-repo: workspace
+design-section-hashes: 
+flyway-next-v: none
+
+## Queue
+- [ ] Hortora/soredium#308 — Issue #308 ← active

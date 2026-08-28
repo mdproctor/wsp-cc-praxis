@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-306-slot-manager-decomposition
-state: scaffolded
+state: closing:stamped
 project-sha: cbfb778e03d5934275a5d879db37e7e4eba348eb
 date: 2026-08-28
 issue-repo: Hortora/soredium
@@ -11,30 +11,6 @@ design-repo: workspace
 design-section-hashes: 
 flyway-next-v: none
 
+evidence-era: true
 ## Queue
-- [ ] Hortora/soredium#306 — Issue #306 ← active
-  - [x] Batch 1: Foundation
-    - [x] Task 1: Extract shared test helpers
-    - [x] Task 2: Extract slot_core.py
-  - [x] Batch 2: Data layer
-    - [x] Task 3: Extract slot_metadata.py
-  - [x] Batch 3: Build tooling
-    - [x] Task 4: Extract slot_maven.py
-  - [x] Batch 4: ISX isolation
-    - [x] Task 5: Extract slot_isx.py
-  - [x] Batch 5: Claude dirs
-    - [x] Task 6: Extract slot_claude.py
-  - [x] Batch 6: Git infra
-    - [x] Task 7: Extract slot_git.py
-  - [x] Batch 7: Workspace
-    - [x] Task 8: Extract slot_workspace.py
-  - [x] Batch 8: Queries
-    - [x] Task 9: Extract slot_query.py
-  - [x] Batch 9: Observability
-    - [x] Task 10: Extract slot_observability.py
-  - [x] Batch 10: Orchestrators
-    - [x] Task 11: Extract slot_lifecycle.py and dedup
-  - [x] Batch 11: CLI
-    - [x] Task 12: Extract slot_cli.py and create shim
-  - [x] Batch 12: Verification
-    - [x] Task 13: Final verification and cleanup
+- [x] Hortora/soredium#306 — Issue #306

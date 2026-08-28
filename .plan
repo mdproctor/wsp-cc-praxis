@@ -16,14 +16,14 @@ flyway-next-v: none
   - [x] Batch 1: Foundation
     - [x] Task 1: Extract shared test helpers
     - [x] Task 2: Extract slot_core.py
-  - [ ] Batch 2: Data layer
-    - [ ] Task 3: Extract slot_metadata.py
-  - [ ] Batch 3: Build tooling
-    - [ ] Task 4: Extract slot_maven.py
-  - [ ] Batch 4: ISX isolation
-    - [ ] Task 5: Extract slot_isx.py
-  - [ ] Batch 5: Claude dirs
-    - [ ] Task 6: Extract slot_claude.py
+  - [x] Batch 2: Data layer
+    - [x] Task 3: Extract slot_metadata.py
+  - [x] Batch 3: Build tooling
+    - [x] Task 4: Extract slot_maven.py
+  - [x] Batch 4: ISX isolation
+    - [x] Task 5: Extract slot_isx.py
+  - [x] Batch 5: Claude dirs
+    - [x] Task 6: Extract slot_claude.py
   - [ ] Batch 6: Git infra
     - [ ] Task 7: Extract slot_git.py
   - [ ] Batch 7: Workspace

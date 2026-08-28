@@ -1,0 +1,15 @@
+# Work Plan — issue-306-slot-manager-decomposition
+
+## State
+branch: issue-306-slot-manager-decomposition
+state: scaffolded
+project-sha: cbfb778e03d5934275a5d879db37e7e4eba348eb
+date: 2026-08-28
+issue-repo: Hortora/soredium
+covers: 306
+design-repo: workspace
+design-section-hashes: 
+flyway-next-v: none
+
+## Queue
+- [ ] Hortora/soredium#306 — Issue #306 ← active

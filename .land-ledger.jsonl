@@ -1,0 +1,2 @@
+{"event":"promote","branch":"issue-309-checkout-main-dirty-state","files":[],"timestamp":"2026-08-28T15:01:44.283088+00:00"}
+{"event":"land","repo":"soredium","branch":"issue-309-checkout-main-dirty-state","base_branch":"main","landed_sha":"bc3bface1ba87265efc7f8bbf884363848e483a3","push_target":"origin","mirrored":false,"stamped":true,"timestamp":"2026-08-28T15:02:29.900187+00:00"}

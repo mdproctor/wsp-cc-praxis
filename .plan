@@ -13,3 +13,9 @@ flyway-next-v: none
 
 ## Queue
 - [ ] Hortora/soredium#307 — Issue #307 ← active
+  - [ ] Batch 1: Land postcondition
+    - [ ] Task 1: _verify_content_landed in land_flow
+  - [ ] Batch 2: Pre-archive gate
+    - [ ] Task 2: _has_unmerged_content in slot_manager
+  - [ ] Batch 3: Worklog recording
+    - [ ] Task 3: Record rebase failures in DB

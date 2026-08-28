@@ -24,17 +24,17 @@ flyway-next-v: none
     - [x] Task 5: Extract slot_isx.py
   - [x] Batch 5: Claude dirs
     - [x] Task 6: Extract slot_claude.py
-  - [ ] Batch 6: Git infra
-    - [ ] Task 7: Extract slot_git.py
-  - [ ] Batch 7: Workspace
-    - [ ] Task 8: Extract slot_workspace.py
-  - [ ] Batch 8: Queries
-    - [ ] Task 9: Extract slot_query.py
-  - [ ] Batch 9: Observability
-    - [ ] Task 10: Extract slot_observability.py
-  - [ ] Batch 10: Orchestrators
-    - [ ] Task 11: Extract slot_lifecycle.py and dedup
-  - [ ] Batch 11: CLI
-    - [ ] Task 12: Extract slot_cli.py and create shim
-  - [ ] Batch 12: Verification
-    - [ ] Task 13: Final verification and cleanup
+  - [x] Batch 6: Git infra
+    - [x] Task 7: Extract slot_git.py
+  - [x] Batch 7: Workspace
+    - [x] Task 8: Extract slot_workspace.py
+  - [x] Batch 8: Queries
+    - [x] Task 9: Extract slot_query.py
+  - [x] Batch 9: Observability
+    - [x] Task 10: Extract slot_observability.py
+  - [x] Batch 10: Orchestrators
+    - [x] Task 11: Extract slot_lifecycle.py and dedup
+  - [x] Batch 11: CLI
+    - [x] Task 12: Extract slot_cli.py and create shim
+  - [x] Batch 12: Verification
+    - [x] Task 13: Final verification and cleanup

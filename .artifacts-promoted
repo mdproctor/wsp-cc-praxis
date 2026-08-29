@@ -1,7 +1,7 @@
-timestamp=2026-08-28T15:01:44.217205+00:00
-branch=issue-309-checkout-main-dirty-state
+timestamp=2026-08-29T02:03:26.971091+00:00
+branch=issue-310-advance-defers-side-effects
 workspace_promoted=0
 project_promoted=138
 issues_closed=0
 blog_published=0
-plans_archived=1
+plans_archived=0

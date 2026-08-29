@@ -1,0 +1,2 @@
+{"event":"promote","branch":"issue-310-advance-defers-side-effects","files":[],"timestamp":"2026-08-29T02:03:27.068001+00:00"}
+{"event":"land","repo":"soredium","branch":"issue-310-advance-defers-side-effects","base_branch":"main","landed_sha":"29e58415b739f35f885cdbc866f8d7f7454adf84","push_target":"origin","mirrored":false,"stamped":true,"timestamp":"2026-08-29T02:09:14.732423+00:00"}

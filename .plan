@@ -13,3 +13,9 @@ flyway-next-v: unknown
 
 ## Queue
 - [ ] Hortora/soredium#312 — Issue #312 ← active
+  - [ ] Batch 1: Detection core
+    - [ ] Task 1: patch-ids and find-duplicates
+  - [ ] Batch 2: Gate and reconciliation
+    - [ ] Task 2: wire gate into sync-repo
+  - [ ] Batch 3: Audit
+    - [ ] Task 3: standalone audit script

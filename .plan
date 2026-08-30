@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-312-detect-merge-rebase-dupes
-state: scaffolded
+state: active
 project-sha: 1c7dcfca31b62b4518242666a5dcb972a903bfe4
 date: 2026-08-30
 issue-repo: Hortora/soredium
@@ -13,9 +13,9 @@ flyway-next-v: unknown
 
 ## Queue
 - [ ] Hortora/soredium#312 — Issue #312 ← active
-  - [ ] Batch 1: Detection core
-    - [ ] Task 1: patch-ids and find-duplicates
-  - [ ] Batch 2: Gate and reconciliation
-    - [ ] Task 2: wire gate into sync-repo
-  - [ ] Batch 3: Audit
-    - [ ] Task 3: standalone audit script
+  - [x] Batch 1: Detection core
+    - [x] Task 1: patch-ids and find-duplicates
+  - [x] Batch 2: Gate and reconciliation
+    - [x] Task 2: wire gate into sync-repo
+  - [x] Batch 3: Audit
+    - [x] Task 3: standalone audit script

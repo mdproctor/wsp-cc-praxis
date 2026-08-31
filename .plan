@@ -1,0 +1,15 @@
+# Work Plan — issue-315-slot-push-durability
+
+## State
+branch: issue-315-slot-push-durability
+state: scaffolded
+project-sha: 764c754388b09afc6f5cdf00adccd0dd06a0cc17
+date: 2026-08-31
+issue-repo: Hortora/soredium
+covers: 315
+design-repo: project
+design-section-hashes: 
+flyway-next-v: unknown
+
+## Queue
+- [ ] Hortora/soredium#315 — Issue #315 ← active

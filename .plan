@@ -1,0 +1,15 @@
+# Work Plan — issue-319-untracked-dirty-worktree
+
+## State
+branch: issue-319-untracked-dirty-worktree
+state: scaffolded
+project-sha: 9bd2204499857b8d245f22b8c3b6ce1e475702ac
+date: 2026-09-01
+issue-repo: Hortora/soredium
+covers: 319
+design-repo: project
+design-section-hashes: 
+flyway-next-v: unknown
+
+## Queue
+- [ ] Hortora/soredium#319 — Issue #319 ← active

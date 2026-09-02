@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-325-ep-advance-queue-before-wrap
-state: closing:review
+state: closing:stamped
 project-sha: 316267a919f7eb54e19c27de0b21dea8a8184462
 date: 2026-09-03
 issue-repo: Hortora/soredium

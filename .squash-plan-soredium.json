@@ -1,27 +1,17 @@
 {
-  "strategy": "keep-separate",
+  "strategy": "none",
+  "reason": "single commit — nothing to squash",
   "commits": [
     {
-      "sha": "8d3acea",
-      "msg": "fix: advance() no longer closes issues or writes .landed before code lands"
-    },
-    {
-      "sha": "29e5841",
-      "msg": "fix: lifecycle transitions emit META_STATE in planless branch mode"
+      "sha": "8147692",
+      "msg": "fix(#325): advance queue unconditionally before wrap/continue choice",
+      "action": "keep"
     }
   ],
   "groups": [
     {
-      "commits": [
-        "8d3acea"
-      ],
-      "msg": "fix: advance() no longer closes issues or writes .landed before code lands"
-    },
-    {
-      "commits": [
-        "29e5841"
-      ],
-      "msg": "fix: lifecycle transitions emit META_STATE in planless branch mode"
+      "commits": ["8147692"],
+      "msg": "fix(#325): advance queue unconditionally before wrap/continue choice"
     }
   ],
   "verified": true

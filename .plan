@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-325-ep-advance-queue-before-wrap
-state: scaffolded
+state: active
 project-sha: 316267a919f7eb54e19c27de0b21dea8a8184462
 date: 2026-09-03
 issue-repo: Hortora/soredium
@@ -12,6 +12,6 @@ design-section-hashes:
 flyway-next-v: none
 
 ## Queue
-- [ ] Hortora/soredium#325 — Issue #325 ← active
-  - [ ] Batch 1: Rewrite Step 4
-    - [ ] Task 1: Replace Step 4 routing in executing-plans SKILL.md
+- [ ] hortora/soredium#325 — Issue #325 ← active
+  - [x] Batch 1: Rewrite Step 4
+    - [x] Task 1: Replace Step 4 routing in executing-plans SKILL.md

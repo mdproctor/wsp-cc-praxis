@@ -13,3 +13,5 @@ flyway-next-v: none
 
 ## Queue
 - [ ] Hortora/soredium#325 — Issue #325 ← active
+  - [ ] Batch 1: Rewrite Step 4
+    - [ ] Task 1: Replace Step 4 routing in executing-plans SKILL.md

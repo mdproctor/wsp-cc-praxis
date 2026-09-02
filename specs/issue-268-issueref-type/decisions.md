@@ -89,14 +89,16 @@
 
 ## D8: Match-by-IssueRef semantics (the core fix)
 
-**Choice:** All issue-matching functions (`_mark_completed`, `_mark_active`, `_collect_issue_numbers`, `reorder_queue`, `remove_from_queue`) key by `IssueRef` instead of bare `int`.
+**Choice:** All issue-matching functions (`_mark_completed`, `_mark_active`, `_collect_issue_numbers`, `reorder_queue`, `remove_from_queue`, and the public `mark_completed`) key by `IssueRef` instead of bare `int`. The CLI layer for `reorder` and `remove` resolves bare numbers by looking up the matching QueueItem in the loaded plan — automatic when unambiguous, error when the same number appears in multiple repos.
 **Alternatives:**
 - Keep bare int matching with repo as a secondary check — half-measure that doesn't eliminate ambiguity
-**Rationale:** This is the load-bearing change that fixes #268. `_mark_completed(items, issue_number: int)` currently matches by bare int — if two items have the same number in different repos, the first match wins silently. After IssueRef, matching uses `item.ref == ref` which compares both repo and number. The return type of `_collect_issue_numbers()` changes from `set[int]` to `set[IssueRef]`, making deduplication cross-repo correct. `reorder_queue` and `remove_from_queue` take `list[IssueRef]` instead of `list[int]`.
-**Trade-offs:** CLI callers that pass bare issue numbers must now pass repo-qualified refs. This is the forced explicitness that prevents the bug.
-**Sources:** plan_manager.py `_mark_completed`, `_mark_active`, `_collect_issue_numbers`, `reorder_queue`, `remove_from_queue`
-**Exploration:** quick (surfaced by R1-20)
-**Status:** captured
+**Rationale:** This is the load-bearing change that fixes #268. `_mark_completed(items, issue_number: int)` currently matches by bare int — if two items have the same number in different repos, the first match wins silently. After IssueRef, matching uses `item.ref == ref` which compares both repo and number. The return type of `_collect_issue_numbers()` changes from `set[int]` to `set[IssueRef]`, making deduplication cross-repo correct. `reorder_queue` and `remove_from_queue` take `list[IssueRef]` instead of `list[int]`. The public `mark_completed(plan_path, issue_number)` changes to `mark_completed(plan_path, ref: IssueRef)` — this is the entry point used by `check_plan_state()` in work_health.py.
+
+CLI convenience: `reorder` and `remove` operate on items already in the plan, so the plan already has the repo for each item. The CLI layer parses bare numbers by looking up the matching item in the loaded queue. When a number is unambiguous (only one item), resolution is automatic. When ambiguous (same number in different repos — the cross-repo collision this fix addresses), the CLI errors and requires the full `owner/repo#N`. This is NOT a backfill from `issue-repo` (D3) — it's a lookup within the parsed plan's own data. The `append` command still requires full `owner/repo#N:title` because it adds new items not yet in the plan.
+**Trade-offs:** Domain functions take `IssueRef` (strict). CLI layer provides convenience resolution for commands operating on existing plan items (ergonomic). Full refs always accepted.
+**Sources:** plan_manager.py `_mark_completed`, `_mark_active`, `_collect_issue_numbers`, `reorder_queue`, `remove_from_queue`, `mark_completed`; project/work_health.py `check_plan_state()`
+**Exploration:** quick (surfaced by R1-20, refined by R2-01, R2-02)
+**Status:** revised (R2-01: added CLI convenience resolution for reorder/remove; R2-02: added public mark_completed to function list)
 
 ## D9: detect() CLI output format
 

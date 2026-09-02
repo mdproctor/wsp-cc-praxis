@@ -1,0 +1,15 @@
+# Work Plan — issue-326-workspace-lifecycle-leak
+
+## State
+branch: issue-326-workspace-lifecycle-leak
+state: scaffolded
+project-sha: 6b8b4fb04338aceb06ed45dcb1c97ac8512c6447
+date: 2026-09-03
+issue-repo: Hortora/soredium
+covers: 326
+design-repo: workspace
+design-section-hashes: 
+flyway-next-v: none
+
+## Queue
+- [ ] hortora/soredium#326 — Issue #326 ← active

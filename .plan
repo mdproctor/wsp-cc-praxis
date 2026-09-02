@@ -13,3 +13,14 @@ flyway-next-v: none
 
 ## Queue
 - [ ] Hortora/soredium#268 — Issue #268 ← active
+  - [ ] Batch 1: Foundation
+    - [ ] Task 1: IssueRef type and data model
+    - [ ] Task 2: Parser writer backfill removal
+  - [ ] Batch 2: Core fix
+    - [ ] Task 3: Matching and advance functions
+    - [ ] Task 4: Queue operations and epic building
+  - [ ] Batch 3: Full stack
+    - [ ] Task 5: Events and command layer
+    - [ ] Task 6: Downstream consumers
+  - [ ] Batch 4: Validation
+    - [ ] Task 7: Pre-commit hook

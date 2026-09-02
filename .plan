@@ -1,0 +1,15 @@
+# Work Plan — issue-268-issueref-type
+
+## State
+branch: issue-268-issueref-type
+state: scaffolded
+project-sha: 316267a919f7eb54e19c27de0b21dea8a8184462
+date: 2026-09-02
+issue-repo: Hortora/soredium
+covers: 268
+design-repo: workspace
+design-section-hashes: 
+flyway-next-v: none
+
+## Queue
+- [ ] Hortora/soredium#268 — Issue #268 ← active

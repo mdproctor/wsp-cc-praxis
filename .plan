@@ -13,3 +13,12 @@ flyway-next-v: none
 
 ## Queue
 - [ ] hortora/soredium#327 — Issue #327 ← active
+  - [ ] Batch 1: Foundation
+    - [ ] Task 1: Read API plan_io.py
+    - [ ] Task 2: Write API plan_io.py
+  - [ ] Batch 2: Bug fix
+    - [ ] Task 3: Fix corruption.py S3 and S8
+  - [ ] Batch 3: Migrations
+    - [ ] Task 4: Migrate project/ files
+    - [ ] Task 5: Migrate work-end/ files
+    - [ ] Task 6: Migrate remaining consumers

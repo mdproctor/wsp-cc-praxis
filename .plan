@@ -1,0 +1,15 @@
+# Work Plan — issue-328-fix-absolute-paths
+
+## State
+branch: issue-328-fix-absolute-paths
+state: scaffolded
+project-sha: placeholder
+date: 2026-09-03
+issue-repo: Hortora/soredium
+covers: 328
+design-repo: project
+design-section-hashes: 
+flyway-next-v: unknown
+
+## Queue
+- [ ] hortora/soredium#328 — Issue #328 ← active

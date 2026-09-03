@@ -23,6 +23,17 @@
 **Exploration:** quick
 **Status:** captured
 
+## D2b: Module name
+
+**Choice:** `plan_io.py` — covers create, read, update, delete (full CRUD lifecycle)
+**Alternatives:**
+- `plan_reader.py` — read-only. But user identified writes and deletes also need unifying, so read-only scope is insufficient.
+**Rationale:** The `.plan` lifecycle is create/read/update/delete. All four operations share the section parser. One module, one parser, four operations.
+**Trade-offs:** None significant — natural extension of D2.
+**Sources:** project/lifecycle.py `_write_lifecycle_state()` and `_write_branch()`, work-start/scaffold.py inline plan building
+**Exploration:** quick
+**Status:** captured
+
 ## D3: Traceability design
 
 **Choice:** Structured parse result with unparsed-line tracking, and enriched corruption findings that include parsed context

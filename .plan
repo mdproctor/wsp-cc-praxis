@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-327-s3-cross-repo-queue
-state: scaffolded
+state: active
 project-sha: a3bc1193e0e12fc1fc3891b0945bbd28e2a34599
 date: 2026-09-03
 issue-repo: Hortora/soredium
@@ -13,12 +13,12 @@ flyway-next-v: none
 
 ## Queue
 - [ ] hortora/soredium#327 — Issue #327 ← active
-  - [ ] Batch 1: Foundation
-    - [ ] Task 1: Read API plan_io.py
-    - [ ] Task 2: Write API plan_io.py
-  - [ ] Batch 2: Bug fix
-    - [ ] Task 3: Fix corruption.py S3 and S8
-  - [ ] Batch 3: Migrations
-    - [ ] Task 4: Migrate project/ files
-    - [ ] Task 5: Migrate work-end/ files
-    - [ ] Task 6: Migrate remaining consumers
+  - [x] Batch 1: Foundation
+    - [x] Task 1: Read API plan_io.py
+    - [x] Task 2: Write API plan_io.py
+  - [x] Batch 2: Bug fix
+    - [x] Task 3: Fix corruption.py S3 and S8
+  - [x] Batch 3: Migrations
+    - [x] Task 4: Migrate project/ files
+    - [x] Task 5: Migrate work-end/ files
+    - [x] Task 6: Migrate remaining consumers

@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-328-fix-absolute-paths
-state: scaffolded
+state: closing:review
 project-sha: placeholder
 date: 2026-09-03
 issue-repo: Hortora/soredium
@@ -10,7 +10,8 @@ covers: 328,329
 design-repo: project
 design-section-hashes: 
 flyway-next-v: unknown
+evidence-era: true
 
 ## Queue
 - [x] hortora/soredium#328 — Issue #328
-- [ ] hortora/soredium#329 — fix close_artifacts.py slot workspace topology ← active
+- [x] hortora/soredium#329 — fix close_artifacts.py slot workspace topology

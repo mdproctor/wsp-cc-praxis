@@ -12,4 +12,5 @@ design-section-hashes:
 flyway-next-v: unknown
 
 ## Queue
-- [ ] hortora/soredium#328 — Issue #328 ← active
+- [x] hortora/soredium#328 — Issue #328
+- [ ] hortora/soredium#329 — fix close_artifacts.py slot workspace topology ← active

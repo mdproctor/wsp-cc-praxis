@@ -6,7 +6,7 @@ state: scaffolded
 project-sha: placeholder
 date: 2026-09-03
 issue-repo: Hortora/soredium
-covers: 328
+covers: 328,329
 design-repo: project
 design-section-hashes: 
 flyway-next-v: unknown

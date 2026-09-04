@@ -1,1 +1,2 @@
 {"event":"land","repo":"soredium","branch":"issue-327-s3-cross-repo-queue","base_branch":"main","landed_sha":"6c92fc859a029581f93964c30a8f4f819b6c4e0f","push_target":"origin","mirrored":false,"stamped":true,"timestamp":"2026-09-03T09:18:00.185631+00:00"}
+{"event":"promote","branch":"issue-328-fix-absolute-paths","files":[],"timestamp":"2026-09-04T21:05:51.506701+00:00"}

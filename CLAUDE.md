@@ -1,12 +1,11 @@
 # soredium Workspace
 
 **Name:** soredium
-**Project repo:** /Users/mdproctor/claude/hortora/soredium
+**Project repo:** proj/
 **Workspace type:** public
 
 ## Session Start
 
-Run `add-dir /Users/mdproctor/claude/hortora/soredium` before any other work.
 
 ## Artifact Locations
 
@@ -35,12 +34,12 @@ Run `add-dir /Users/mdproctor/claude/hortora/soredium` before any other work.
 
 Two git repositories are active in every session:
 - **Workspace** (`~/claude/public/cc-praxis`) — plans, blog (staging), snapshots, handover
-- **Project repo** (`/Users/mdproctor/claude/hortora/soredium`) — source code, ADRs (`docs/adr/`)
+- **Project repo** (proj/) — source code, ADRs (`docs/adr/`)
 
 Never rely on CWD for git operations — the session may have started in either repo. Always use explicit paths:
 ```bash
 git -C ~/claude/public/cc-praxis add <file>                    # workspace artifacts
-git -C /Users/mdproctor/claude/hortora/soredium add <file>     # project artifacts
+git -C proj/ add <file>     # project artifacts
 ```
 
 ## Rules

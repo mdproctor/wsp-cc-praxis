@@ -1,0 +1,15 @@
+# Work Plan — issue-333-subfolder-scoped-workspaces
+
+## State
+branch: issue-333-subfolder-scoped-workspaces
+state: scaffolded
+project-sha: 1b93560d36e6b485a6ed4d6b9eee457682144b44
+date: 2026-09-05
+issue-repo: Hortora/soredium
+covers: 333
+design-repo: workspace
+design-section-hashes: 
+flyway-next-v: unknown
+
+## Queue
+- [ ] hortora/soredium#333 — Issue #333 ← active

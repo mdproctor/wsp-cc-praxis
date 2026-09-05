@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-330-conflict-resolved-loop
-state: scaffolded
+state: active
 project-sha: 8d1e5b476fc51eeed98d3c9402b1104c51fa163f
 date: 2026-09-05
 issue-repo: Hortora/soredium
@@ -13,4 +13,4 @@ flyway-next-v: unknown
 
 ## Queue
 - [x] hortora/soredium#330 — Issue #330
-- [ ] hortora/soredium#332 — fix is_stale per-repo key defaults ← active
+- [x] hortora/soredium#332 — fix is_stale per-repo key defaults

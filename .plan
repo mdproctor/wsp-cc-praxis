@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-333-subfolder-scoped-workspaces
-state: scaffolded
+state: active
 project-sha: 1b93560d36e6b485a6ed4d6b9eee457682144b44
 date: 2026-09-05
 issue-repo: Hortora/soredium
@@ -13,3 +13,10 @@ flyway-next-v: unknown
 
 ## Queue
 - [ ] hortora/soredium#333 — Issue #333 ← active
+  - [ ] Batch 1: Topology
+    - [ ] Task 1: Add git_root and properties
+    - [ ] Task 2: Walk-up symlink search
+  - [ ] Batch 2: ctx.py
+    - [ ] Task 3: CLAUDE.md merge and GIT_ROOT
+  - [ ] Batch 3: workspace-init
+    - [ ] Task 4: Subfolder detection and setup

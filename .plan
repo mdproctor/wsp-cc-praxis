@@ -13,10 +13,10 @@ flyway-next-v: unknown
 
 ## Queue
 - [ ] hortora/soredium#333 — Issue #333 ← active
-  - [ ] Batch 1: Topology
-    - [ ] Task 1: Add git_root and properties
-    - [ ] Task 2: Walk-up symlink search
-  - [ ] Batch 2: ctx.py
-    - [ ] Task 3: CLAUDE.md merge and GIT_ROOT
-  - [ ] Batch 3: workspace-init
-    - [ ] Task 4: Subfolder detection and setup
+  - [x] Batch 1: Topology
+    - [x] Task 1: Add git_root and properties
+    - [x] Task 2: Walk-up symlink search
+  - [x] Batch 2: ctx.py
+    - [x] Task 3: CLAUDE.md merge and GIT_ROOT
+  - [x] Batch 3: workspace-init
+    - [x] Task 4: Subfolder detection and setup

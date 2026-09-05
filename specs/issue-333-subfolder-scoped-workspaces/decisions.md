@@ -5,7 +5,7 @@
 - Add `IN_SUBFOLDER` flag and conditional paths — consumers branch on mode
 - Keep `PROJECT` as git root, add `PROJECT_SCOPE` for subfolder-aware consumers only
 **Rationale:** Normalizing at the boundary (topology.py) and running one pipeline eliminates scattered conditionals. No consumer needs to know whether it's a subfolder or not — it uses `PROJECT` for project things and `GIT_ROOT` for git things.
-**Trade-offs:** Every consumer must use the correct field (`PROJECT` vs `GIT_ROOT`). Since `git -C` works from subdirectories, using `PROJECT` for git operations is imprecise but not broken — migration can be gradual.
+**Trade-offs:** Every consumer must use the correct field (`PROJECT` vs `GIT_ROOT`). Consumers that run `git add .`, `git diff -- .`, or `git status .` via `git -C $PROJECT` will scope-limit results to the app folder — this is a correctness bug, not cosmetic. Migration to `$GIT_ROOT` for staging/diff/status consumers is mandatory, not gradual. Branch/checkout/log commands (without `-- .`) are safe from subdirectories.
 **Sources:** Brainstorming conversation, existing topology.py (flat dataclass pattern from D3 of issue-220)
 **Exploration:** deep-analysis
 **Status:** captured
@@ -29,8 +29,8 @@
 **Alternatives:**
 - Only check git root (existing behavior) — breaks subfolder mode
 - Check both without priority — ambiguous when root and subfolder both have symlinks
-**Rationale:** CWD is where the user is. If they're in an app folder with `wksp/`, that's their project context. The priority chain handles all entry points uniformly.
-**Trade-offs:** Slightly more complex search path. Mitigated by clear priority documentation.
+**Rationale:** CWD is where the user is. If they're in an app folder with `wksp/`, that's their project context. Walk-up from CWD toward git root (not just CWD itself) handles cases where the user is nested deeper than the app root (e.g., `apps/foo/src/main/java/`).
+**Trade-offs:** Walk-up loop is slightly more complex than a single check. Bounded by directory depth to git root — typically 2-4 iterations.
 **Depends on:** D2 (project = scope)
 **Sources:** topology.py lines 114-121 (current git-root-only search), GE-20260529-182916 (CWD subdirectory bug)
 **Exploration:** deep-analysis

@@ -62,8 +62,11 @@ convenience accessors — no pipeline logic branches on them.
 
 `resolve()` looks for symlinks in this order:
 
-1. **CWD** — `wksp/` or `proj/` at the actual working directory
-2. **Git root** — if not found at CWD (existing behavior)
+1. **Walk up from CWD toward git root** — check each directory from
+   CWD upward for `wksp/` or `proj/`. Stop at the first match. This
+   handles both `apps/foo/` (exact CWD) and `apps/foo/src/main/java/`
+   (nested within app folder) — same pattern as git finding `.git`.
+2. **Git root** — if not found during walk-up (existing behavior)
 3. **Main worktree** — if in a worktree (existing fallback)
 
 This is a search order, not a conditional. It handles every entry point:
@@ -86,14 +89,23 @@ ctx.py always reads two CLAUDE.md files and merges them:
 scope_text = read(topo.project / "CLAUDE.md")
 root_text  = read(topo.git_root / "CLAUDE.md")
 
-owner_repo = extract(scope_text, "GitHub repo") or extract(root_text, "GitHub repo")
-project_type = extract(scope_text, "Type") or extract(root_text, "Type")
-issues_status = extract(scope_text, "Issue tracking") or extract(root_text, "Issue tracking")
+def _merge(field: str) -> str | None:
+    scope_val = extract(scope_text, field)
+    if scope_val is not None:
+        return scope_val
+    return extract(root_text, field)
+
+owner_repo = _merge("GitHub repo")
+project_type = _merge("Type")
+issues_status = _merge("Issue tracking")
 ```
 
-For single-repo: both reads hit the same file. The `or` fallback is a
-no-op because scope already has the field. Same result as today. No
-conditional needed.
+Uses `is not None` (not `or`) to distinguish "field present but empty"
+from "field absent." An app that sets `Blog directory:` (empty) should
+NOT inherit the root's blog directory.
+
+For single-repo: both reads hit the same file. The fallback is a
+no-op because scope already has every field. Same result as today.
 
 ### Layer 4: ctx.py output
 
@@ -133,8 +145,10 @@ Root CLAUDE.md provides shared conventions.
 1. Add `git_root: Path` to `Topology` dataclass
 2. Add `is_scoped` and `scope_rel` computed properties
 3. Restructure `resolve()` symlink search:
-   - Check CWD for `wksp/` and `proj/` BEFORE checking git root
-   - When `wksp/` found at CWD and CWD != git root: `project = CWD`
+   - Walk up from CWD toward git root, checking each directory for
+     `wksp/` or `proj/`. Stop at the first match.
+   - When `wksp/` found and its directory != git root: `project = that directory`
+   - If no match during walk-up: fall back to git root check (existing)
    - Always: `git_root = git rev-parse --show-toplevel` from project
 4. Set `git_root` in every code path (currently implicit as `project`)
 5. `_resolve_symlink_target()` — no changes needed (already preserves
@@ -167,21 +181,22 @@ Consumers that use `PROJECT` from ctx.py output:
 
 | Consumer | Current use | Change needed |
 |---|---|---|
-| work-start Step 7 | `git -C $PROJECT checkout -b` | Use `$GIT_ROOT` (or leave — git -C works from subdirs) |
-| work-start Step 4d | `git -C $PROJECT fetch/rebase` | Use `$GIT_ROOT` |
-| work-end merge/push | `git -C $PROJECT` | Use `$GIT_ROOT` |
+| work-start Step 7 | `git -C $PROJECT checkout -b` | MUST use `$GIT_ROOT` |
+| work-start Step 4d | `git -C $PROJECT fetch/rebase` | MUST use `$GIT_ROOT` |
+| work-end merge/push | `git -C $PROJECT` | MUST use `$GIT_ROOT` |
 | work-end artifact promotion | workspace paths | None — uses `$WORKSPACE` |
-| git-commit | `git -C $PROJECT add/commit` | Use `$GIT_ROOT` (or leave) |
+| git-commit | `git -C $PROJECT add/commit` | MUST use `$GIT_ROOT` |
+| work_state.py | `git -C project branch` | Safe — branch queries don't use relative paths |
 | brief | reads `.plan` | None — uses `$WORKSPACE` |
 | handover | writes HANDOFF | None — uses `$WORKSPACE` |
 
-Most consumers work unchanged because:
-- `git -C` from a subdirectory still finds `.git` by walking up
-- Workspace operations use `$WORKSPACE`, not `$PROJECT`
-- CLAUDE.md reading is done by ctx.py, not by consumers
-
-Migration to explicit `$GIT_ROOT` for git operations is clean-up, not
-a correctness fix — but should be done for clarity.
+**CRITICAL (from adversarial review):** Consumers that run
+`git add .`, `git diff -- .`, or `git status .` via `git -C $PROJECT`
+will scope-limit results to the app folder. This silently misses
+root-level file changes (e.g., parent pom.xml). Migration to
+`$GIT_ROOT` for staging/diff/status consumers is a correctness fix,
+not cosmetic. Branch/checkout/log (without `-- .`) commands are safe
+from subdirectories.
 
 ### Tests
 
@@ -192,13 +207,17 @@ Per protocol `externalised-scripts-require-tests`:
    - Subfolder via `wksp/` at CWD: `project = CWD`, `git_root = repo root`
    - Subfolder via `proj/` from workspace: `project = app folder`, `git_root = repo root`
    - CWD priority: `wksp/` at CWD takes precedence over `wksp/` at git root
+   - Walk-up: CWD nested inside app folder (e.g., `apps/foo/src/`) finds `wksp/` at `apps/foo/`
+   - Walk-up stops at git root — does not walk beyond
    - Existing single-repo behavior unchanged (regression)
 
 2. **ctx.py tests:**
    - CLAUDE.md merge: scope field wins over root
    - CLAUDE.md merge: root fills gap when scope field is missing
+   - CLAUDE.md merge: empty scope field is NOT overridden by root (is not None vs or)
    - Single-repo: merge is no-op (same file)
    - `GIT_ROOT` emitted in output
+   - Regression: single-repo output identical to current
 
 3. **workspace-init tests:**
    - Subfolder detection: CWD inside repo but not root

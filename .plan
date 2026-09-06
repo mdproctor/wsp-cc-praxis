@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-335-final-gate-verify
-state: active
+state: closing:promoted
 project-sha: 3913faf611447e528cdc9431161e58a946b21aa6
 date: 2026-09-06
 issue-repo: Hortora/soredium
@@ -11,5 +11,6 @@ design-repo: workspace
 design-section-hashes: 
 flyway-next-v: unknown
 
+evidence-era: true
 ## Queue
 - [ ] hortora/soredium#335 — Issue #335 ← active

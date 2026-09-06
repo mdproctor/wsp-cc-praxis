@@ -16,4 +16,4 @@ flyway-next-v: unknown
 - [x] hortora/soredium#267 — hortora attic slot 3 workspace diverged
 - [x] hortora/soredium#318 — landed slots not archived
 - [x] hortora/soredium#322 — slot landing doesnt push to origin
-- [ ] hortora/soredium#320 — upstream_pr step too late — fork drift ← active
+- [x] hortora/soredium#320 — upstream_pr step too late — fork drift

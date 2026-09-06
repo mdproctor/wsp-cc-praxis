@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-337-cleanup-slot-symlinks
-state: active
+state: closing:review
 project-sha: 853bca1c6baedaccf2712fbf0f3d0a2145427235
 date: 2026-09-06
 issue-repo: Hortora/soredium
@@ -11,5 +11,6 @@ design-repo: project
 design-section-hashes: 
 flyway-next-v: unknown
 
+evidence-era: true
 ## Queue
-- [ ] hortora/soredium#337 — Issue #337 ← active
+- [x] hortora/soredium#337 — Issue #337

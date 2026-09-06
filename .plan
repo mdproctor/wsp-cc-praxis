@@ -1,0 +1,15 @@
+# Work Plan — issue-342-plan-in-project-fix
+
+## State
+branch: issue-342-plan-in-project-fix
+state: scaffolded
+project-sha: 114f9da656be6d6298a2dff61f7844528e46d7b3
+date: 2026-09-07
+issue-repo: Hortora/soredium
+covers: 342
+design-repo: project
+design-section-hashes: 
+flyway-next-v: unknown
+
+## Queue
+- [ ] hortora/soredium#342 — Issue #342 ← active

@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-337-cleanup-slot-symlinks
-state: scaffolded
+state: active
 project-sha: 853bca1c6baedaccf2712fbf0f3d0a2145427235
 date: 2026-09-06
 issue-repo: Hortora/soredium

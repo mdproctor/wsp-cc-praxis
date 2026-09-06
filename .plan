@@ -1,0 +1,19 @@
+# Work Plan — issue-322-slot-bugfix-sweep
+
+## State
+branch: issue-322-slot-bugfix-sweep
+state: scaffolded
+project-sha: a6df796187c4bab36c0fef739a124e3606bf307b
+date: 2026-09-06
+issue-repo: Hortora/soredium
+covers: 266,267,318,322,320
+design-repo: project
+design-section-hashes: 
+flyway-next-v: unknown
+
+## Queue
+- [ ] hortora/soredium#266 — Issue #266 ← active
+- [ ] hortora/soredium#267 — hortora attic slot 3 workspace diverged
+- [ ] hortora/soredium#318 — landed slots not archived
+- [ ] hortora/soredium#322 — slot landing doesnt push to origin
+- [ ] hortora/soredium#320 — upstream_pr step too late — fork drift

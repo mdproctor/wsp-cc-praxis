@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-339-shared-verification-library
-state: scaffolded
+state: active
 project-sha: 91f6e644553618c7d52512dcef5d9e494dacbf4b
 date: 2026-09-07
 issue-repo: Hortora/soredium
@@ -13,3 +13,4 @@ flyway-next-v: unknown
 
 ## Queue
 - [ ] hortora/soredium#339 — Issue #339 ← active
+- [ ] hortora/soredium#341 — fix update-claude-md workspace content regeneration

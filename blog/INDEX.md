@@ -17,3 +17,4 @@
 | [2026-09-03-mdp01-the-whack-a-mole-that-wasnt.md](2026-09-03-mdp01-the-whack-a-mole-that-wasnt.md) | 2026-09-03 | Silent regex failures in duplicated parsers caused recurring false positives — extracted plan_io.py as single source of truth |
 | [2026-09-06-mp01-normalise-at-the-boundary.md](2026-09-06-mp01-normalise-at-the-boundary.md) | 2026-09-06 | Design principle for subfolder-scoped workspaces: normalise project scope and git root at the boundary, run one pipeline |
 | [2026-09-06-mp02-the-claim-is-not-the-evidence.md](2026-09-06-mp02-the-claim-is-not-the-evidence.md) | 2026-09-06 | Inescapable final-gate verify: separate done-claims from mechanical evidence in orchestrated workflows |
+| [2026-09-06-mdp01-the-stamp-that-lied.md](2026-09-06-mdp01-the-stamp-that-lied.md) | 2026-09-06 | Branch stamp SHA validation and re-stamp with history trail |

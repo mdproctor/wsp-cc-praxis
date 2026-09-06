@@ -12,5 +12,5 @@ design-section-hashes:
 flyway-next-v: unknown
 
 ## Queue
-- [ ] hortora/soredium#339 — Issue #339 ← active
-- [ ] hortora/soredium#341 — fix update-claude-md workspace content regeneration
+- [x] hortora/soredium#339 — Issue #339
+- [ ] hortora/soredium#341 — fix update-claude-md workspace content regeneration ← active

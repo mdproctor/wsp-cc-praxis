@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-338-stamp-sha-robustness
-state: scaffolded
+state: active
 project-sha: f6d2efabeb6136c34040a0d110a82895e69eab1b
 date: 2026-09-06
 issue-repo: Hortora/soredium
@@ -13,3 +13,12 @@ flyway-next-v: unknown
 
 ## Queue
 - [ ] hortora/soredium#338 — Issue #338 ← active
+  - [ ] Batch 1: Stamp-history-helpers
+    - [ ] Task 1: Add stamp history builder helper
+  - [ ] Batch 2: Validate-and-restamp
+    - [ ] Task 2: Validate-and-re-stamp in _stamp_repo
+    - [ ] Task 3: Validate-and-re-stamp in cmd_stamp
+  - [ ] Batch 3: History-aware-verify
+    - [ ] Task 4: Make check_landing_sha history-aware
+  - [ ] Batch 4: Integration-test
+    - [ ] Task 5: End-to-end squash-after-stamp recovery

@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-322-slot-bugfix-sweep
-state: closing:review
+state: closing:promoted
 project-sha: a6df796187c4bab36c0fef739a124e3606bf307b
 date: 2026-09-06
 issue-repo: Hortora/soredium

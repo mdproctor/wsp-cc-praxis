@@ -6,7 +6,7 @@ state: active
 project-sha: 91f6e644553618c7d52512dcef5d9e494dacbf4b
 date: 2026-09-07
 issue-repo: Hortora/soredium
-covers: 339
+covers: 339,341,340
 design-repo: project
 design-section-hashes: 
 flyway-next-v: unknown

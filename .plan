@@ -13,4 +13,5 @@ flyway-next-v: unknown
 
 ## Queue
 - [x] hortora/soredium#339 — Issue #339
-- [ ] hortora/soredium#341 — fix update-claude-md workspace content regeneration ← active
+- [x] hortora/soredium#341 — fix update-claude-md workspace content regeneration
+- [ ] hortora/soredium#340 — work-end conflict_resolved routes to wrong step ← active

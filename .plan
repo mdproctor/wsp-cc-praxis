@@ -1,0 +1,15 @@
+# Work Plan — issue-338-stamp-sha-robustness
+
+## State
+branch: issue-338-stamp-sha-robustness
+state: scaffolded
+project-sha: f6d2efabeb6136c34040a0d110a82895e69eab1b
+date: 2026-09-06
+issue-repo: Hortora/soredium
+covers: 338
+design-repo: project
+design-section-hashes: 
+flyway-next-v: unknown
+
+## Queue
+- [ ] hortora/soredium#338 — Issue #338 ← active

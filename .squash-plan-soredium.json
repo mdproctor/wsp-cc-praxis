@@ -1,1 +1,0 @@
-{"repo": "soredium", "strategy": "none", "reason": "single commit — nothing to squash", "commits": [{"sha": "917ab36", "message": "fix(#344): remove _symlink_gitignored_assets — slot escape path", "keep": true}], "verified": true}

@@ -1,0 +1,15 @@
+# Work Plan — issue-344-remove-symlink-gitignored
+
+## State
+branch: issue-344-remove-symlink-gitignored
+state: scaffolded
+project-sha: e16b2ce598a1aa4ec5c3e974666eef91d7f8df33
+date: 2026-09-07
+issue-repo: Hortora/soredium
+covers: 344
+design-repo: workspace
+design-section-hashes: 
+flyway-next-v: unknown
+
+## Queue
+- [ ] hortora/soredium#344 — Issue #344 ← active

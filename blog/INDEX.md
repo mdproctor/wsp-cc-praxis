@@ -19,3 +19,4 @@
 | [2026-09-06-mp02-the-claim-is-not-the-evidence.md](2026-09-06-mp02-the-claim-is-not-the-evidence.md) | 2026-09-06 | Inescapable final-gate verify: separate done-claims from mechanical evidence in orchestrated workflows |
 | [2026-09-06-mdp01-the-stamp-that-lied.md](2026-09-06-mdp01-the-stamp-that-lied.md) | 2026-09-06 | Branch stamp SHA validation and re-stamp with history trail |
 | [2026-09-07-mdp01-verification-library-extraction.md](2026-09-07-mdp01-verification-library-extraction.md) | 2026-09-07 | Extracted shared verification library from auditor into soredium lifecycle gates |
+| [2026-09-07-mdp02-two-thousand-ghosts-in-the-database.md](2026-09-07-mdp02-two-thousand-ghosts-in-the-database.md) | 2026-09-07 | Slot state consistency — central API, state machine redesign, 164-slot migration, DB cleanup |

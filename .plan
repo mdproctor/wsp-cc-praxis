@@ -1,0 +1,15 @@
+# Work Plan — issue-353-write-marker-step
+
+## State
+branch: issue-353-write-marker-step
+state: scaffolded
+project-sha: b0448d3e70797ae454b4d4748f702ce5bfbdf742
+date: 2026-09-10
+issue-repo: Hortora/soredium
+covers: 353
+design-repo: project
+design-section-hashes: 
+flyway-next-v: unknown
+
+## Queue
+- [ ] hortora/soredium#353 — Issue #353 ← active

@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-353-write-marker-step
-state: active
+state: closing:promoted
 project-sha: b0448d3e70797ae454b4d4748f702ce5bfbdf742
 date: 2026-09-10
 issue-repo: Hortora/soredium
@@ -11,5 +11,6 @@ design-repo: project
 design-section-hashes: 
 flyway-next-v: unknown
 
+evidence-era: true
 ## Queue
 - [ ] hortora/soredium#353 — Issue #353 ← active

@@ -1,1 +1,2 @@
 {"event":"land","repo":"soredium","branch":"issue-352-landed-shas-persistence","base_branch":"main","landed_sha":"15480d387d7ec6971aeceaf971e1261838c42650","push_target":"origin","mirrored":false,"stamped":true,"timestamp":"2026-09-09T09:30:16.850129+00:00"}
+{"event":"promote","branch":"issue-353-write-marker-step","files":[],"timestamp":"2026-09-10T15:36:41.047432+00:00"}

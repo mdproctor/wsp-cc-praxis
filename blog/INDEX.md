@@ -20,3 +20,4 @@
 | [2026-09-06-mdp01-the-stamp-that-lied.md](2026-09-06-mdp01-the-stamp-that-lied.md) | 2026-09-06 | Branch stamp SHA validation and re-stamp with history trail |
 | [2026-09-07-mdp01-verification-library-extraction.md](2026-09-07-mdp01-verification-library-extraction.md) | 2026-09-07 | Extracted shared verification library from auditor into soredium lifecycle gates |
 | [2026-09-07-mdp02-two-thousand-ghosts-in-the-database.md](2026-09-07-mdp02-two-thousand-ghosts-in-the-database.md) | 2026-09-07 | Slot state consistency — central API, state machine redesign, 164-slot migration, DB cleanup |
+| [2026-09-11-mdp01-the-guard-that-watched-the-wrong-thing.md](2026-09-11-mdp01-the-guard-that-watched-the-wrong-thing.md) | 2026-09-11 | Two slot lifecycle bugs: lsof misses sessions after /clear (fix: PID stamp), promote broadcasts to all repos instead of issue owner (fix: remove from per-repo set) |

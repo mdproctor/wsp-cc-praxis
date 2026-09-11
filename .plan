@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-354-stamp-queue-guard
-state: active
+state: closing:promoted
 project-sha: d6a6cc814726ed073be91cca196e35ee0a93af40
 date: 2026-09-11
 issue-repo: Hortora/soredium
@@ -11,5 +11,6 @@ design-repo: project
 design-section-hashes: 
 flyway-next-v: unknown
 
+evidence-era: true
 ## Queue
 - [ ] hortora/soredium#354 — Issue #354 ← active

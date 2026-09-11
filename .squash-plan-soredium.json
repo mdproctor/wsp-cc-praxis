@@ -1,0 +1,16 @@
+{
+  "repo": "soredium",
+  "strategy": "semantic",
+  "commits": [
+    {"sha": "a314171", "message": "wip: remove promote from PER_REPO_EXECUTE_STEPS"},
+    {"sha": "d6c0ffb", "message": "fix(#362): add occupant-PID guard to archive_slot"}
+  ],
+  "groups": [
+    {
+      "name": "fix-361-362",
+      "commits": ["a314171", "d6c0ffb"],
+      "message": "fix(#361,#362): scope promote to issue-owning repo + PID guard for archive_slot"
+    }
+  ],
+  "verified": true
+}

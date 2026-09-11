@@ -1,0 +1,15 @@
+# Work Plan — issue-363-reject-closed-issues
+
+## State
+branch: issue-363-reject-closed-issues
+state: scaffolded
+project-sha: 2abd995a4518906cfd5a2c654351e542ae795d14
+date: 2026-09-11
+issue-repo: Hortora/soredium
+covers: 363
+design-repo: project
+design-section-hashes: 
+flyway-next-v: unknown
+
+## Queue
+- [ ] hortora/soredium#363 — Issue #363 ← active

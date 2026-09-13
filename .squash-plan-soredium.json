@@ -2,14 +2,17 @@
   "repo": "soredium",
   "strategy": "semantic",
   "commits": [
-    {"sha": "a314171", "message": "wip: remove promote from PER_REPO_EXECUTE_STEPS"},
-    {"sha": "d6c0ffb", "message": "fix(#362): add occupant-PID guard to archive_slot"}
+    {"sha": "5aa5cd6", "message": "fix(#364): elevate .plan to slot root"},
+    {"sha": "a2bf3c6", "message": "fix(#363): reject closed GitHub issues"},
+    {"sha": "287d259", "message": "fix(#363): increase tree-SHA search window"},
+    {"sha": "4dc4192", "message": "fix: plan_manager active marker compat"},
+    {"sha": "44729e1", "message": "fix(#365,#366,#367): elevate_plan step + PID wiring"}
   ],
   "groups": [
     {
-      "name": "fix-361-362",
-      "commits": ["a314171", "d6c0ffb"],
-      "message": "fix(#361,#362): scope promote to issue-owning repo + PID guard for archive_slot"
+      "name": "slot-lifecycle-audit",
+      "commits": ["5aa5cd6", "a2bf3c6", "287d259", "4dc4192", "44729e1"],
+      "message": "fix(#363,#364,#365,#366,#367): slot lifecycle audit"
     }
   ],
   "verified": true

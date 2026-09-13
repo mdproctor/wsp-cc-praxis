@@ -1,0 +1,15 @@
+# Work Plan — issue-364-slot-scoped-plan
+
+## State
+branch: issue-364-slot-scoped-plan
+state: scaffolded
+project-sha: 2abd995a4518906cfd5a2c654351e542ae795d14
+date: 2026-09-13
+issue-repo: Hortora/soredium
+covers: 364
+design-repo: project
+design-section-hashes: 
+flyway-next-v: unknown
+
+## Queue
+- [ ] hortora/soredium#364 — Issue #364 ← active

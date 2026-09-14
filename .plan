@@ -13,3 +13,12 @@ flyway-next-v: unknown
 
 ## Queue
 - [ ] hortora/soredium#368 — Issue #368 ← active
+  - [ ] Batch 1: Auto-skip mechanical
+    - [ ] Task 1: Add MAX_MECHANICAL_RETRIES and skipped_error state
+    - [ ] Task 2: Auto-skip in run_loop
+    - [ ] Task 3: Per-repo auto-skip in slot mode
+    - [ ] Task 4: Surface skipped_error in progress summary
+  - [ ] Batch 2: Scope verify
+    - [ ] Task 5: Parse covers_repos and scope verify functions
+  - [ ] Batch 3: Integration
+    - [ ] Task 6: End-to-end promote-fail-landing-proceeds test

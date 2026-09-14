@@ -1,0 +1,15 @@
+# Work Plan — issue-368-work-end-slot-closure
+
+## State
+branch: issue-368-work-end-slot-closure
+state: scaffolded
+project-sha: 9f4bd20d0e609106488695d7e5ae464f951e865e
+date: 2026-09-14
+issue-repo: Hortora/soredium
+covers: 368
+design-repo: workspace
+design-section-hashes: 
+flyway-next-v: unknown
+
+## Queue
+- [ ] hortora/soredium#368 — Issue #368 ← active

@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-368-work-end-slot-closure
-state: active
+state: closing:promoted
 project-sha: 9f4bd20d0e609106488695d7e5ae464f951e865e
 date: 2026-09-14
 issue-repo: Hortora/soredium
@@ -11,6 +11,7 @@ design-repo: workspace
 design-section-hashes: 
 flyway-next-v: unknown
 
+evidence-era: true
 ## Queue
 - [ ] hortora/soredium#368 — Issue #368 ← active
   - [x] Batch 1: Auto-skip mechanical

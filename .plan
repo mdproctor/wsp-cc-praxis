@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-372-rename-original-to-canonical
-state: active
+state: closing:promoted
 project-sha: ca4ad87c8648f6547029c2f4d196a8af8f0e9989
 date: 2026-09-17
 issue-repo: Hortora/soredium
@@ -11,5 +11,6 @@ design-repo: workspace
 design-section-hashes: 
 flyway-next-v: none
 
+evidence-era: true
 ## Queue
-- [ ] hortora/soredium#372 — Issue #372 ← active
+- [x] hortora/soredium#372 — Issue #372

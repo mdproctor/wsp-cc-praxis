@@ -13,3 +13,10 @@ flyway-next-v: unknown
 
 ## Queue
 - [ ] hortora/soredium#373 — Issue #373 ← active
+  - [ ] Batch 1: Foundation
+    - [ ] Task 1: Skip predicates and combiner
+    - [ ] Task 2: issue_cycle lifecycle transition
+    - [ ] Task 3: landed→active slot state
+  - [ ] Batch 2: Wiring
+    - [ ] Task 4: cycle_pass step and terminal skip predicates
+    - [ ] Task 5: Retroactive .landed cleanup in append_to_queue

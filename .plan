@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-372-rename-original-to-canonical
-state: scaffolded
+state: active
 project-sha: ca4ad87c8648f6547029c2f4d196a8af8f0e9989
 date: 2026-09-17
 issue-repo: Hortora/soredium

@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-373-clear-stale-landed
-state: scaffolded
+state: active
 project-sha: e6f8c4e7a59a975be6964988d3cbeb3d6a04b284
 date: 2026-09-17
 issue-repo: Hortora/soredium
@@ -13,10 +13,10 @@ flyway-next-v: unknown
 
 ## Queue
 - [ ] hortora/soredium#373 — Issue #373 ← active
-  - [ ] Batch 1: Foundation
-    - [ ] Task 1: Skip predicates and combiner
-    - [ ] Task 2: issue_cycle lifecycle transition
-    - [ ] Task 3: landed→active slot state
-  - [ ] Batch 2: Wiring
-    - [ ] Task 4: cycle_pass step and terminal skip predicates
-    - [ ] Task 5: Retroactive .landed cleanup in append_to_queue
+  - [x] Batch 1: Foundation
+    - [x] Task 1: Skip predicates and combiner
+    - [x] Task 2: issue_cycle lifecycle transition
+    - [x] Task 3: landed→active slot state
+  - [x] Batch 2: Wiring
+    - [x] Task 4: cycle_pass step and terminal skip predicates
+    - [x] Task 5: Retroactive .landed cleanup in append_to_queue

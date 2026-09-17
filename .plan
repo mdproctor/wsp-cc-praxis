@@ -1,0 +1,15 @@
+# Work Plan — issue-373-clear-stale-landed
+
+## State
+branch: issue-373-clear-stale-landed
+state: scaffolded
+project-sha: e6f8c4e7a59a975be6964988d3cbeb3d6a04b284
+date: 2026-09-17
+issue-repo: Hortora/soredium
+covers: 373
+design-repo: workspace
+design-section-hashes: 
+flyway-next-v: unknown
+
+## Queue
+- [ ] hortora/soredium#373 — Issue #373 ← active

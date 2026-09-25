@@ -1,1 +1,69 @@
-{"strategy":"keep-all","commits":[{"sha":"528cf2c","action":"keep"},{"sha":"9801209","action":"keep"},{"sha":"380efc6","action":"keep"},{"sha":"d0c9a61","action":"keep"},{"sha":"941de9f","action":"keep"},{"sha":"71bb5dc","action":"keep"},{"sha":"167b33c","action":"keep"}],"groups":[{"keep":"all","reason":"commits already clean"}],"verified":true}
+{
+  "repo": "soredium",
+  "strategy": "preserve",
+  "commits": [
+    {
+      "sha": "479eec7",
+      "subject": "feat(#379): add step postcondition functions for check-execute-verify"
+    },
+    {
+      "sha": "7809794",
+      "subject": "feat(#379): extend StepDef and run_loop with check-execute-verify"
+    },
+    {
+      "sha": "a60d531",
+      "subject": "feat(#379): wire postcondition checks to all mechanical steps"
+    },
+    {
+      "sha": "b3a0cee",
+      "subject": "fix(#379): move progress write after verification in land_flow"
+    },
+    {
+      "sha": "0691688",
+      "subject": "fix(#379): verify operations before reporting success"
+    },
+    {
+      "sha": "c5e82a2",
+      "subject": "test(#379): convergence tests for idempotent pipeline re-runs"
+    },
+    {
+      "sha": "a997821",
+      "subject": "chore: promote workspace artifacts to project"
+    }
+  ],
+  "groups": [
+    {
+      "name": "postcondition-library",
+      "commits": [
+        "479eec7"
+      ]
+    },
+    {
+      "name": "engine-extension",
+      "commits": [
+        "7809794",
+        "a60d531"
+      ]
+    },
+    {
+      "name": "honest-reporting",
+      "commits": [
+        "b3a0cee",
+        "0691688"
+      ]
+    },
+    {
+      "name": "convergence-tests",
+      "commits": [
+        "c5e82a2"
+      ]
+    },
+    {
+      "name": "promotion",
+      "commits": [
+        "a997821"
+      ]
+    }
+  ],
+  "verified": true
+}

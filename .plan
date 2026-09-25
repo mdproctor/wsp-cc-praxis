@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-379-idempotent-work-end
-state: scaffolded
+state: active
 project-sha: eedbddcdf17f79ca5ad3502ff2152f0c7bb48de0
 date: 2026-09-24
 issue-repo: Hortora/soredium
@@ -13,13 +13,13 @@ flyway-next-v: none
 
 ## Queue
 - [ ] hortora/soredium#379 — Issue #379 ← active
-  - [ ] Batch 1: Postcondition Library
-    - [ ] Task 1: Create step postcondition functions + tests
-  - [ ] Batch 2: Engine Extension
-    - [ ] Task 2: Extend StepDef and run_loop with postcondition support
-    - [ ] Task 3: Wire postcondition_fn to orchestrator STEPS
-  - [ ] Batch 3: Honest Reporting
-    - [ ] Task 4: Fix optimistic reporting in land_flow
-    - [ ] Task 5: Fix optimistic reporting in work_end_execute and close_artifacts
-  - [ ] Batch 4: Convergence Testing
-    - [ ] Task 6: Write convergence tests
+  - [x] Batch 1: Postcondition Library
+    - [x] Task 1: Create step postcondition functions + tests
+  - [x] Batch 2: Engine Extension
+    - [x] Task 2: Extend StepDef and run_loop with postcondition support
+    - [x] Task 3: Wire postcondition_fn to orchestrator STEPS
+  - [x] Batch 3: Honest Reporting
+    - [x] Task 4: Fix optimistic reporting in land_flow
+    - [x] Task 5: Fix optimistic reporting in work_end_execute and close_artifacts
+  - [x] Batch 4: Convergence Testing
+    - [x] Task 6: Write convergence tests

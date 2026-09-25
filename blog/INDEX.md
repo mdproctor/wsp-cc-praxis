@@ -25,3 +25,4 @@
 | [2026-09-17-mdp01-original-to-canonical-rename.md](2026-09-17-mdp01-original-to-canonical-rename.md) | 2026-09-17 | Renamed 'original' to 'canonical' across slot infrastructure to prevent LLM origin/original semantic confusion |
 | [2026-09-22-mdp01-the-landing-that-shouldnt-have-tried.md](2026-09-22-mdp01-the-landing-that-shouldnt-have-tried.md) | 2026-09-22 | Bug fix: work-end landing step now skips repos with no branch or zero commits in multi-repo slots |
 | [2026-09-23-mdp01-the-permanent-shadow.md](2026-09-23-mdp01-the-permanent-shadow.md) | 2026-09-23 | Family clone directories — permanent working clones for solo work, disabled by default until ready |
+| [2026-09-25-mdp01-the-postcondition-that-never-lies.md](2026-09-25-mdp01-the-postcondition-that-never-lies.md) | 2026-09-25 | Check-execute-verify postconditions make the work-end pipeline crash-safe and convergent |

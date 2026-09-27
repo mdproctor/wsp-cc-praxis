@@ -13,7 +13,6 @@ flyway-next-v: none
 
 ## Queue
 - [ ] hortora/soredium#382 — Issue #382 ← active
-  - [x] Batch 1: Sync Operation
-    - [x] Task 1: Add work_sync and sync_pass transitions to lifecycle
-    - [x] Task 2: Add sync mode to orchestrator with skip predicates
-    - [x] Task 3: Add sync command to work_chain.py
+  - [x] Batch 1: Continuation
+    - [x] Task 1: Add build-next command to plan_manager
+    - [x] Task 2: Add promote_plan_next pipeline step

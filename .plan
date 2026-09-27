@@ -13,12 +13,13 @@ flyway-next-v: none
 
 ## Queue
 - [ ] hortora/soredium#382 — Issue #382 ← active
-  - [ ] Batch 1: Core
-    - [ ] Task 1: commit_transition commits .plan to git
-    - [ ] Task 2: write_field validates state field
-  - [ ] Batch 2: Close Bypass
-    - [ ] Task 3: Remove .plan from LIFECYCLE_FILES
-    - [ ] Task 4: Replace elevate and reset with lifecycle transitions
-    - [ ] Task 5: Remove plan_manager set-state
-  - [ ] Batch 3: Integration
-    - [ ] Task 6: State durability integration tests
+  - [ ] Batch 1: Sync Operation
+    - [ ] Task 1: Add work_sync and sync_pass transitions to lifecycle
+    - [ ] Task 2: Add sync mode to orchestrator with skip predicates
+    - [ ] Task 3: Add sync command to work_chain.py
+  - [ ] Batch 2: Continuation
+    - [ ] Task 4: Add plan-next promotion pipeline step
+    - [ ] Task 5: Add HANDOFF-next promotion step
+  - [ ] Batch 3: Auto-Recovery
+    - [ ] Task 6: Add auto_recoverable flag to corruption findings
+    - [ ] Task 7: Implement deterministic recovery rules

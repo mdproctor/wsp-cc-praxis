@@ -17,9 +17,3 @@ flyway-next-v: none
     - [ ] Task 1: Add work_sync and sync_pass transitions to lifecycle
     - [ ] Task 2: Add sync mode to orchestrator with skip predicates
     - [ ] Task 3: Add sync command to work_chain.py
-  - [ ] Batch 2: Continuation
-    - [ ] Task 4: Add plan-next promotion pipeline step
-    - [ ] Task 5: Add HANDOFF-next promotion step
-  - [ ] Batch 3: Auto-Recovery
-    - [ ] Task 6: Add auto_recoverable flag to corruption findings
-    - [ ] Task 7: Implement deterministic recovery rules

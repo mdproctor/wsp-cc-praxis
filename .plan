@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-382-unified-pipeline
-state: closing:review
+state: closing:verified
 project-sha: aafa154877c708ef7c4822b8e2164fe6fdd43246
 date: 2026-09-27
 issue-repo: Hortora/soredium

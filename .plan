@@ -13,6 +13,6 @@ flyway-next-v: none
 
 ## Queue
 - [ ] hortora/soredium#382 — Issue #382 ← active
-  - [x] Batch 1: Continuation
-    - [x] Task 1: Add build-next command to plan_manager
-    - [x] Task 2: Add promote_plan_next pipeline step
+  - [x] Batch 1: Auto-Recovery
+    - [x] Task 1: Add auto_recoverable fields to Finding
+    - [x] Task 2: Implement deterministic recovery rules

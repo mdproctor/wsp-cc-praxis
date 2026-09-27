@@ -1,0 +1,15 @@
+# Work Plan — issue-384-pipeline-lifecycle
+
+## State
+branch: issue-384-pipeline-lifecycle
+state: scaffolded
+project-sha: 110e438a9603fe2b1ce7bf121a2dc315567a8be5
+date: 2026-09-28
+issue-repo: Hortora/soredium
+covers: 384
+design-repo: workspace
+design-section-hashes: 
+flyway-next-v: none
+
+## Queue
+- [ ] hortora/soredium#384 — Issue #384 ← active

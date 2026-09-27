@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-382-unified-pipeline
-state: scaffolded
+state: active
 project-sha: aafa154877c708ef7c4822b8e2164fe6fdd43246
 date: 2026-09-27
 issue-repo: Hortora/soredium
@@ -13,3 +13,12 @@ flyway-next-v: none
 
 ## Queue
 - [ ] hortora/soredium#382 — Issue #382 ← active
+  - [ ] Batch 1: Core
+    - [ ] Task 1: commit_transition commits .plan to git
+    - [ ] Task 2: write_field validates state field
+  - [ ] Batch 2: Close Bypass
+    - [ ] Task 3: Remove .plan from LIFECYCLE_FILES
+    - [ ] Task 4: Replace elevate and reset with lifecycle transitions
+    - [ ] Task 5: Remove plan_manager set-state
+  - [ ] Batch 3: Integration
+    - [ ] Task 6: State durability integration tests

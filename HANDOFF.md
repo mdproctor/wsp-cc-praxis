@@ -1,28 +1,35 @@
-# Session Handover — 2026-08-28
+# Session Handover
 
-## Last Session
+**Branch:** `issue-382-unified-pipeline`
+**Issue:** #382 — Unified mechanical pipeline
+**Date:** 2026-09-27
 
-Three issues: #306 (filed), #307 (landed), #308 (landed).
+## What happened
 
-**#307** — Work-end silently abandons branch content after rebase abort. Root-caused to slot 140 (casehub, 849 commits, 377 files lost). Landed three prevention layers: `_verify_content_landed` postcondition in `land_flow.py`, `_has_unmerged_content` hard gate in `archive_slot()`, worklog recording for rebase failures.
+Two issues this session: #379 (idempotent work-end pipeline) and Phase 1 of #382 (state hardening). Both address the same root problem — the pipeline leaves inconsistent state when steps fail mid-execution.
 
-**#308** — Orchestrator close-progress reset bug. `is_stale()` compared progress against stale `meta_state` argument while lifecycle transitions advanced `.plan` state — nuked progress mid-loop. Fixed: `is_stale()` reads `.plan` from disk, orchestrator returns `META_STATE=` in output. Skills synced.
+**#379** added check-execute-verify postconditions to the orchestrator engine — 10 postcondition functions, engine enforcement in `run_loop`, honest reporting fixes in `land_flow.py` / `close_artifacts.py` / `work_end_execute.py`. Landed on main.
 
-**#306** — `slot_manager.py` stability audit filed. 2,265 lines, 67 functions, 1:1 fix-to-feat ratio, 6 oversized orchestrators, 16 tangled concerns. Full decomposition analysis in issue body.
+**#382 Phase 1** hardened state management: `commit_transition` now commits `.plan` to git (state survives branch ops), `write_field` validates state values against VALID_STATES, all bypass paths closed (elevate_plan_inline, _reset_plan_state, plan_manager set-state). On branch, not yet landed.
 
-## Immediate Next Step
+Also fixed `verify_slot_close.py` `check_branch_merged` — two patches on main for lifecycle file residue and post-stamp main evolution false positives.
 
-**Full audit and restructuring of `slot_manager.py` — issue #306.**
+## Decisions
 
-The user wants this done properly: good separation of concerns, correct layering, clean pipelines. The issue body has a complete responsibility inventory, coupling analysis, and 10 suggested decomposition modules — use it as a starting point, not a finished spec. Brainstorm the approach.
+- `.plan` stays versioned — the problem was uncommitted state changes, not versioning (D2)
+- `work sync` as first-class operation — land without closing (D4)
+- `.plan-next` / `HANDOFF-next` built before ceremony, promoted as pipeline step (D5)
+- Auto-recovery for deterministic situations (D6)
 
-Key constraints:
-- 298 existing tests must keep passing through the restructure
-- CLI contract (KEY=VALUE output) must be maintained
-- Implicit ordering in orchestrator functions (escape_cwd → repack → teardown → move → relocate) must be preserved or made explicit
+## What didn't work
+
+The #379 work-end ceremony hit friction: promote postcondition failure from stale `.execute-progress`, `push_postcondition` returning False when `landed_shas` empty across re-invocations, workspace_merged tree mismatch. Each needed a fix or workaround. These are symptoms of the broader problem #382 addresses.
 
 ## References
 
-- Issue: Hortora/soredium#306
-- Issue: Hortora/soredium#307
-- Issue: Hortora/soredium#308
+| Artifact | Path |
+|----------|------|
+| Design spec (all phases) | `specs/issue-382-unified-pipeline/2026-09-27-unified-pipeline-design.md` |
+| Decisions | `specs/issue-382-unified-pipeline/decisions.md` |
+| Phase 1 plan | `plans/2026-09-27-state-hardening.md` |
+| Diary | `blog/2026-09-25-mdp01-the-postcondition-that-never-lies.md` |

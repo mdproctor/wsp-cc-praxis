@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-384-pipeline-lifecycle
-state: active
+state: closing:review
 project-sha: 110e438a9603fe2b1ce7bf121a2dc315567a8be5
 date: 2026-09-28
 issue-repo: Hortora/soredium
@@ -11,6 +11,7 @@ design-repo: workspace
 design-section-hashes: 
 flyway-next-v: none
 
+evidence-era: true
 ## Queue
 - [ ] hortora/soredium#384 — Issue #384 ← active
   - [x] Batch 1: Foundation

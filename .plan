@@ -13,17 +13,17 @@ flyway-next-v: none
 
 ## Queue
 - [ ] hortora/soredium#384 — Issue #384 ← active
-  - [ ] Batch 1: Foundation
-    - [ ] Task 1: Create work_progress.py
-    - [ ] Task 2: Move engine to project
-  - [ ] Batch 2: Core
-    - [ ] Task 3: Create work.py skeleton
-    - [ ] Task 4: Add pause pipeline
-    - [ ] Task 5: Add resume pipeline
-  - [ ] Batch 3: Full
-    - [ ] Task 6: Add start pipeline
-    - [ ] Task 7: Add continue+next+find pipelines
-  - [ ] Batch 4: Handlers
-    - [ ] Task 8: Create handlers and shrink SKILL.md
-  - [ ] Batch 5: Conflict
-    - [ ] Task 9: Implement conflict resolution tiers
+  - [x] Batch 1: Foundation
+    - [x] Task 1: Create work_progress.py
+    - [x] Task 2: Move engine to project
+  - [x] Batch 2: Core
+    - [x] Task 3: Create work.py skeleton
+    - [x] Task 4: Add pause pipeline
+    - [x] Task 5: Add resume pipeline
+  - [x] Batch 3: Full
+    - [x] Task 6: Add start pipeline
+    - [x] Task 7: Add continue+next+find pipelines
+  - [x] Batch 4: Handlers
+    - [x] Task 8: Create handlers and shrink SKILL.md
+  - [x] Batch 5: Conflict
+    - [x] Task 9: Implement conflict resolution tiers

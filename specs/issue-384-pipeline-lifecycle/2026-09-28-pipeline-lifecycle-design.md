@@ -68,6 +68,11 @@ point, exit. Identical to the work-end pattern.
 - `end` — work_end_orchestrator.py (1644 lines, proven, stays in work-end/)
 - `sync` — work_end_orchestrator.py with mode=sync (shares end pipeline)
 
+The `work/SKILL.md` dispatch table routes `end`/`sync` to
+`work_end_orchestrator.py` and all other commands to `work.py`. This is
+the incremental migration per D4 — full unification into work.py is a
+follow-up once work-end imports are stable under the new paths.
+
 ### Engine migration — project/orchestrator_engine.py
 
 Move `orchestrator_engine.py` (322 lines) from `work-end/` to `project/`.
@@ -132,22 +137,24 @@ Built from `ctx.py` output — all KEY=VALUE pairs mapped to typed fields.
 
 | # | Step | Type | Implementation | Skip condition |
 |---|------|------|---------------|----------------|
-| 1 | `sync_main` | mechanical | `branch_create.py sync-main` | — |
-| 2 | `resolve_issue` | judgment | Yield ACTION=resolve_issue. LLM invokes issue-workflow Phase 2. | issue already resolved (passed as arg) |
-| 3 | `stacked_pr_detect` | mechanical | Check issue body for dependency language, find open PR branches | no issue, no issue body |
-| 4 | `activate_issues` | mechanical | `issue_setup.py activate-issues` | no GITHUB_PROJECT |
-| 5 | `branch_name` | judgment | Yield ACTION=branch_name with suggested slug. LLM confirms/overrides. | — |
-| 6 | `flyway_scan` | mechanical | `flyway_scan.py` | flyway_next_v == "none" |
-| 7 | `create_branches` | mechanical | `branch_create.py create-branches` | — |
-| 8 | `design_routing` | mechanical | `routing.py` + `section_hashes.py` | — |
-| 9 | `scaffold` | mechanical | `scaffold.py` | — |
-| 10 | `commit_scaffold` | mechanical | `branch_create.py commit-scaffold` | — |
-| 11 | `platform_coherence` | judgment | Yield ACTION=platform_coherence with platform doc path | no platform doc |
-| 12 | `check_protocols` | judgment | Yield ACTION=check_protocols with protocol paths | no protocols dir |
-| 13 | `garden_search` | mechanical | Search garden, return results | no garden configured |
-| 14 | `load_specs` | mechanical | Find and list spec files for issue | — |
-| 15 | `check_intellij` | mechanical | Check MCP availability | — |
-| 16 | `brainstorm_offer` | judgment | Yield ACTION=brainstorm_offer | — |
+| 1 | `clone_redirect` | mechanical | Check clone feature gate, offer redirect | clone feature OFF (default) |
+| 2 | `sync_main` | mechanical | `branch_create.py sync-main` | — |
+| 3 | `resolve_issue` | judgment | Yield ACTION=resolve_issue. LLM invokes issue-workflow Phase 2. | issue already resolved (passed as arg) |
+| 4 | `stacked_pr_detect` | mechanical | Check issue body for dependency language, find open PR branches | no issue, no issue body |
+| 5 | `activate_issues` | mechanical | `issue_setup.py activate-issues` | no GITHUB_PROJECT |
+| 6 | `branch_name` | judgment | Yield ACTION=branch_name with suggested slug. LLM confirms/overrides. | — |
+| 7 | `flyway_scan` | mechanical | `flyway_scan.py` | flyway_next_v == "none" |
+| 8 | `create_branches` | mechanical | `branch_create.py create-branches` | — |
+| 9 | `design_routing` | mechanical | `routing.py` + `section_hashes.py` | — |
+| 10 | `scaffold` | mechanical | `scaffold.py` | — |
+| 11 | `commit_scaffold` | mechanical | `branch_create.py commit-scaffold` | — |
+| 12 | `lifecycle_start` | lifecycle | Fire `work_start` transition (idle → scaffolded) | — |
+| 13 | `platform_coherence` | judgment | Yield ACTION=platform_coherence with platform doc path | no platform doc |
+| 14 | `check_protocols` | judgment | Yield ACTION=check_protocols with protocol paths | no protocols dir |
+| 15 | `garden_search` | mechanical | Search garden, return results | no garden configured |
+| 16 | `load_specs` | mechanical | Find and list spec files for issue | — |
+| 17 | `check_intellij` | mechanical | Check MCP availability | — |
+| 18 | `brainstorm_offer` | judgment | Yield ACTION=brainstorm_offer | — |
 
 **Postconditions:**
 - `create_branches`: both repos on same branch name
@@ -159,9 +166,10 @@ Built from `ctx.py` output — all KEY=VALUE pairs mapped to typed fields.
 | # | Step | Type | Implementation | Skip condition |
 |---|------|------|---------------|----------------|
 | 1 | `auto_resolve_transient` | mechanical | Lifecycle transitions for scaffolded/transitioning → active | state already active |
-| 2 | `health_check` | mechanical | `work_health.py --scope entry` | — |
-| 3 | `load_context` | judgment | Yield ACTION=load_context with .plan queue state, HANDOFF summary, issue context | — |
+| 2 | `lifecycle_continue` | lifecycle | Fire `work_continue` transition (self-transition, emits worklog) | — |
+| 3 | `health_check` | mechanical | `work_health.py --scope entry` | — |
 | 4 | `load_specs` | mechanical | Find and list spec files for active issue | — |
+| 5 | `load_context` | judgment | Yield ACTION=load_context with .plan queue state, HANDOFF summary, issue context | — |
 
 `continue` is intentionally short — the branch already exists. The
 judgment step (load_context) is where the LLM reads the handoff,

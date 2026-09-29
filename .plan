@@ -1,0 +1,15 @@
+# Work Plan — issue-394-forcing-function-branch-scope
+
+## State
+branch: issue-394-forcing-function-branch-scope
+state: scaffolded
+project-sha: 
+date: 
+issue-repo: Hortora/soredium
+covers: 394
+design-repo: workspace
+design-section-hashes: 
+flyway-next-v: none
+
+## Queue
+- [ ] hortora/soredium#394 — Issue #394 ← active

@@ -1,0 +1,15 @@
+# Work Plan — issue-404-close-artifact-cleanup
+
+## State
+branch: issue-404-close-artifact-cleanup
+state: scaffolded
+project-sha: 
+date: 
+issue-repo: Hortora/soredium
+covers: 404
+design-repo: 
+design-section-hashes: 
+flyway-next-v: 
+
+## Queue
+- [ ] hortora/soredium#404 — Issue #404 ← active

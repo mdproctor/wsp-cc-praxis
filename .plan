@@ -1,0 +1,15 @@
+# Work Plan — issue-407-fix-pause-dirty-workspace
+
+## State
+branch: issue-407-fix-pause-dirty-workspace
+state: scaffolded
+project-sha: 
+date: 
+issue-repo: Hortora/soredium
+covers: 407
+design-repo: 
+design-section-hashes: 
+flyway-next-v: 
+
+## Queue
+- [ ] hortora/soredium#407 — Issue #407 ← active

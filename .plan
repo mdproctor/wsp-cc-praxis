@@ -1,0 +1,15 @@
+# Work Plan — issue-406-harden-archive-slot
+
+## State
+branch: issue-406-harden-archive-slot
+state: scaffolded
+project-sha: 
+date: 
+issue-repo: Hortora/soredium
+covers: 406
+design-repo: 
+design-section-hashes: 
+flyway-next-v: 
+
+## Queue
+- [ ] hortora/soredium#406 — Issue #406 ← active

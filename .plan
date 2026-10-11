@@ -2,11 +2,11 @@
 
 ## State
 branch: issue-438-archive-slot-check-all-repos
-state: scaffolded
+state: active
 project-sha: 
 date: 
 issue-repo: Hortora/soredium
-covers: 438
+covers: 437,438,439,440
 design-repo: 
 design-section-hashes: 
 flyway-next-v: 

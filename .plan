@@ -1,0 +1,15 @@
+# Work Plan — issue-432-work-end-stability
+
+## State
+branch: issue-432-work-end-stability
+state: scaffolded
+project-sha: 
+date: 
+issue-repo: Hortora/soredium
+covers: 432,433,434,435
+design-repo: project
+design-section-hashes: 
+flyway-next-v: unknown
+
+## Queue
+- [ ] hortora/soredium#432 — Issue #432 ← active

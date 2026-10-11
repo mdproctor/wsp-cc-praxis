@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-438-archive-slot-check-all-repos
-state: active
+state: closing:review
 project-sha: 
 date: 
 issue-repo: Hortora/soredium
@@ -11,5 +11,6 @@ design-repo:
 design-section-hashes: 
 flyway-next-v: 
 
+evidence-era: true
 ## Queue
 - [ ] hortora/soredium#438 — Issue #438 ← active

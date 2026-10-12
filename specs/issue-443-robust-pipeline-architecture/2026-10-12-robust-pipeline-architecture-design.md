@@ -47,22 +47,18 @@ The approach is evolution, not replacement. The primitives exist (worklog DB eve
 
 - `lifecycle.py` has a data-driven state machine with 12 states, 24 transitions, CAS writes, and evidence gates on closing transitions.
 - The worklog DB `events` table captures lifecycle transitions — but as a write-only audit trail. Nothing reads events to derive state.
-- `.plan` is the primary state store. Seven code paths write to it. `plan_io.write_fields` is the canonical writer but six paths bypass it with raw `write_text()`.
+- `.plan` is the primary state store. 14 writes across 7 files target it. `plan_io.write_fields` is the canonical writer but multiple paths bypass it with raw `write_text()` or `replace()`.
 - `.plan` participates in git operations (committed by `_commit_plan_to_git`), making it subject to rebase corruption.
+- `.plan` contains two categories of data: **lifecycle state** (`state:`, `branch:`, `covers:`) and **work queue** (`## Queue`, `## Deferred`, design fields). The DB currently stores lifecycle events but NOT queue structure, ordering, or design-related fields.
+- Progress tracking files (`.work-progress`, `.execute-progress`) have the same multi-writer, no-schema problems as `.plan` — addressed in a future phase (see Scope Limitations).
 
 ### Design
 
-**Events become the primary state source.** The pipeline reads lifecycle state from DB queries, not `.plan` parsing.
+**Events become the primary source for lifecycle state.** The pipeline reads lifecycle state from DB queries, not `.plan` parsing. Queue and design-related `.plan` fields remain file-based in Phase 1, with `plan_manager.py` as their single owner — event-sourcing the queue is deferred.
 
-#### Event Schema Extension
+#### Existing Event Infrastructure
 
-Add `repo_path` to the existing `events` table:
-
-```sql
-ALTER TABLE events ADD COLUMN repo_path TEXT;
-```
-
-Events already capture `work_item_id`, `event_type`, `from_state`, `to_state`, `timestamp`. The `repo_path` column enables per-repo state queries within a single work-item lifecycle.
+The worklog DB `events` table already includes `repo_path TEXT` (schema V1, `worklog.py` line 72). `lifecycle.py`'s `_emit_to_worklog` already passes `repo_path` to `log_transition`. No schema extension needed — the column exists but is write-only.
 
 #### State Derivation
 
@@ -74,15 +70,15 @@ def get_lifecycle_state(work_item_id: int, repo_path: str | None = None) -> str:
 
 This replaces every `.plan` state: field read. One function, one source.
 
-#### .plan as Derived Snapshot
+#### .plan as Hybrid Snapshot
 
-After each lifecycle event, `plan_io.write_snapshot()` regenerates `.plan` from DB state:
+`.plan` contains lifecycle state AND work queue data. After each lifecycle event, `plan_io.update_lifecycle_fields()` updates the lifecycle fields (`state:`, `branch:`, `evidence-era:`, etc.) from DB state while preserving the queue sections (`## Queue`, `## Deferred`, design fields) that are file-native:
 
 ```python
-def write_snapshot(workspace: Path, work_item_id: int):
-    """Regenerate .plan from current DB state.
-    Called after every lifecycle event emission.
-    Committed to git for human visibility and clone bootstrap."""
+def update_lifecycle_fields(workspace: Path, work_item_id: int):
+    """Update lifecycle fields in .plan from current DB state.
+    Preserves queue sections and design fields unchanged.
+    Called after every lifecycle event emission."""
 ```
 
 `.plan` is committed to git for:
@@ -90,26 +86,42 @@ def write_snapshot(workspace: Path, work_item_id: int):
 - Clone bootstrap (fresh clones with no DB start from `.plan` snapshot)
 - CI/hook consumption (non-Python tools that parse `.plan`)
 
-But no pipeline code reads `.plan` for state decisions. If events and `.plan` disagree, events win.
+Pipeline code reads lifecycle state from DB events (`get_lifecycle_state()`). Queue data is read from `.plan` via `plan_io` or `plan_manager.py`. If DB lifecycle state and `.plan` `state:` field disagree, DB events win.
 
-**Post-rebase .plan regeneration:** Since `.plan` participates in git operations, rebase can corrupt it. After any rebase or merge, the pipeline regenerates `.plan` from DB state. This ensures the recovery snapshot stays consistent even though `.plan` is in git.
+**Post-rebase .plan regeneration:** Since `.plan` participates in git operations, rebase can corrupt its lifecycle fields. After any rebase or merge, the pipeline calls `update_lifecycle_fields()` to restore lifecycle state from DB. Queue sections may also be corrupted by rebase — this is detected by `plan_io.validate_queue()` and flagged as a corruption condition (existing `S13_MERGE_CONFLICT` check handles conflict markers).
 
 #### Single-Writer Enforcement
 
-All `.plan` mutations must route through `lifecycle.py` → `plan_io.write_snapshot()`. The six bypass paths:
+All `.plan` lifecycle state mutations must route through `lifecycle.py` → `plan_io.update_lifecycle_fields()`. All queue mutations must route through `plan_manager.py` → `plan_io`. The bypass paths (verified against codebase):
 
 | Bypass path | Current behavior | Migration |
 |---|---|---|
-| `scaffold.py` (3 writes) | Direct `write_text()` for initial `.plan` creation | Emit `scaffolded` event → lifecycle.py → write_snapshot() |
-| `recover_plan.py` (2 writes) | Direct `write_text()` for corruption recovery | Emit `recovered` event → lifecycle.py → write_snapshot() |
-| `plan_manager.py` (3 writes) | Direct `write_text()` for queue manipulation | Queue operations become events (queue_advanced, queue_appended) |
-| `plan_migrate.py` (2 writes) | Direct `write_text()` for format migration | One-time migration — emit `migrated` event after |
-| `migrate_meta.py` (1 write) | Direct `write_text()` for .meta → .plan migration | Legacy — emit `migrated` event after |
-| `audit_work_end.py` (1 write) | Direct `write_text()` for test fixtures | Test-only — exempt from enforcement, guarded by test context check |
+| `scaffold.py` (3 writes) | Direct `write_text()` for initial `.plan` creation | Emit `scaffolded` event → lifecycle.py → update_lifecycle_fields() |
+| `lifecycle.py` `_write_evidence_era` (1 write) | Reads `.plan`, inserts `evidence-era:` line, atomic replace. Has a bug: matches `state:` prefix without checking section context | Route through `plan_io.write_field(plan_path, 'evidence-era', 'true')` — immediate fix, eliminates bypass and bug |
+| `lifecycle.py` `commit_transition` (1 write) | `plan_path.unlink(missing_ok=True)` — removes `.plan` during idle transition | Emit `plan_removed` event, remove via plan_io |
+| `work_end_orchestrator.py` `_cleanup_close_artifacts` (1 write) | `plan.unlink()` — removes `.plan` during close | Route through plan_io removal |
+| `work_end_orchestrator.py` `_promote_plan_next_inline` (1 write) | `copy2(plan_next, .plan)` — replaces `.plan` with next-branch plan | Route through plan_io |
+| `work_end_orchestrator.py` `_elevate_plan_inline` (1 write) | `copy2(ws_plan, slot_plan)` — copies workspace plan to slot | Route through plan_io |
+| `plan_manager.py` (2 writes) | Direct `write_text()` for queue manipulation | Route through plan_io (queue operations stay file-based) |
+| `plan_migrate.py` (2 writes) | Direct `write_text()` for format migration | One-time migration — route through plan_io |
+| `migrate_meta.py` (1 write) | Direct `write_text()` for .meta → .plan migration | Legacy — route through plan_io |
+| `audit_work_end.py` (1 write) | Direct `write_text()` for test fixtures | Test-only — exempt from enforcement |
+
+**Note:** `recover_plan.py` writes `.orphaned-plan`, not `.plan` — it is not a bypass path.
+
+**Enforcement mechanism:** Static analysis test that greps for `.write_text()` / `.replace()` / `.unlink()` targeting `.plan` paths outside the canonical writers (`plan_io.py`, `lifecycle.py`). Runs at commit tier. Prevents regression permanently.
 
 #### SQLite as Primary Store
 
-SQLite with WAL mode (already configured in `worklog.py` line 169). Proven infrastructure — same DB, same connection management, same schema patterns. `busy_timeout` handles rare write contention between concurrent sessions. The `@safe` decorator on write operations is removed from primary-path calls — errors are raised, not silently dropped.
+SQLite with WAL mode (already configured in `worklog.py` line 169). Proven infrastructure — same DB, same connection management, same schema patterns. `busy_timeout` handles rare write contention between concurrent sessions.
+
+**Reliability inversion (R1-08, critical):** The current event emission path is designed to be lossy — `_emit_to_worklog` wraps in try/except, `log_transition` is `@safe`. If events are primary, emission failures must propagate as errors and halt the lifecycle transition. Migration order matters: make emission fail-loud BEFORE any reader switches to querying events. Otherwise there's a window where `.plan` writes succeed, event emission fails silently, and readers see stale event state.
+
+Specifically:
+1. Remove `@safe` from `worklog.py` `log_transition` and `update_work_item_state`
+2. Remove the blanket `try/except` in `lifecycle.py` `_emit_to_worklog`
+3. Add `busy_timeout=5000` to the connection for write contention
+4. Add explicit error handling: if DB write fails, the lifecycle transition fails — no silent degradation
 
 **Recovery from DB corruption/loss:** Bootstrap from `.plan` snapshot + start a new event sequence. This is a defined disaster-recovery path, not an active dual-source model.
 
@@ -117,81 +129,87 @@ SQLite with WAL mode (already configured in `worklog.py` line 169). Proven infra
 
 | Step | What | Dependencies | Shippable? |
 |---|---|---|---|
-| 1a | Add `repo_path` column to `events` table | None | Yes |
-| 1b | Build `get_lifecycle_state()` query function | 1a | Yes |
-| 1c | Route each bypass writer through lifecycle.py (6 paths, one at a time) | None | Yes per path |
-| 1d | Build `plan_io.write_snapshot()` from DB state | 1b | Yes |
-| 1e | Replace `.plan` readers: ctx.py → work.py → work_end_orchestrator.py → postconditions | 1b | Yes per reader |
-| 1f | Add post-rebase `.plan` regeneration | 1d | Yes |
+| 1a | Make event emission fail-loud: remove `@safe`, remove try/except, add busy_timeout | None | Yes — **must be first** |
+| 1b | Build `get_lifecycle_state()` query function | None | Yes |
+| 1c | Route each bypass writer through lifecycle.py / plan_io (14 paths, one at a time) | None | Yes per path |
+| 1d | Build `plan_io.update_lifecycle_fields()` — merge DB lifecycle state into existing `.plan` | 1b | Yes |
+| 1e | Replace `.plan` lifecycle state readers: `project/ctx.py` → `project/work.py` → `work_end_orchestrator.py` → postconditions | 1a, 1b | Yes per reader |
+| 1f | Add post-rebase `.plan` regeneration via `update_lifecycle_fields()` | 1d | Yes |
+| 1g | Static analysis test: grep for `.plan` writes outside canonical paths | 1c | Yes |
 
-**First win:** After 1c, all state mutations go through lifecycle.py. This alone fixes the multi-writer class of bugs (12+ issues) even before the read side migrates.
+**First win:** After 1a, event emission is reliable — no more silent drops. After 1c, all state mutations go through canonical writers. These two eliminate the multi-writer class of bugs (12+ issues) even before the read side migrates.
 
 ## Phase 2: Classify-Once Context
 
 ### Current State
 
-- `classify_repo()` in `project/repo_state.py` returns a frozen dataclass. `work.py` uses it in `build_context()`.
-- `work_end_orchestrator.py` ignores `RepoState` entirely — builds its own `OrchestratorContext`.
+- `classify_repo()` in `project/repo_state.py` returns a frozen `RepoState` dataclass with `disposition: RepoDisposition`. The enum already has: `HAS_WORK`, `EMPTY_BRANCH`, `NO_BRANCH`, `ALREADY_LANDED`.
+- `work.py` uses `classify_repos()` in `build_context()`.
+- `work_end_orchestrator.py` ignores `RepoState` — builds its own `OrchestratorContext`. Skip predicates like `_skip_empty_branch` (line 316) check `disposition` but only for the repos that were classified; the orchestrator itself probes git independently.
 - 12 postcondition functions in `step_postconditions.py` shell out to git independently.
-- 13 skip predicates evaluate repo state per-step via subprocess calls.
 - The `modes` field on `StepDef` (added in #427) declares which pipeline modes a step runs in, but is not yet connected to repo disposition.
 
 ### Design
 
-#### RepoContext: Classification + Lifecycle in One Type
+#### RepoContext: RepoState + Verification Fields
+
+`RepoContext` extends `RepoState` via composition — it wraps an existing `RepoState` and adds the fields needed for outcome verification and lifecycle tracking. `RepoState` is not renamed or deleted; `classify_repo()` continues to return `RepoState`. `RepoContext` adds the layer.
 
 ```python
 @dataclass(frozen=True)
 class RepoContext:
-    path: Path
-    repo_type: RepoType           # PROJECT | WORKSPACE | CLONE | CANONICAL
-    disposition: Disposition      # HAS_CHANGES | EMPTY_BRANCH | NO_BRANCH | MAIN_ONLY
-    branch: str | None
-    base_branch: str
-    commits_ahead: int
+    # Existing RepoState (composition — all current fields preserved)
+    state: RepoState              # includes path, name, repo_type, disposition,
+                                  # branch, base_branch, commits_ahead, is_dirty,
+                                  # has_remote, remote_branch_exists, has_upstream,
+                                  # push_remote, canonical_path, is_slot_clone,
+                                  # landing_sha
+
+    # New fields for verification and lifecycle
     tree_sha: str                 # branch tip tree SHA at classification time
     main_tree_sha: str            # main tip tree SHA
-    is_dirty: bool
-    remote_synced: bool
+    remote_synced: bool           # local main == origin main
     lifecycle_state: str          # from DB events (Phase 1), not .plan
 ```
 
-#### Disposition Enum
+#### Existing Disposition Enum
 
-The key field. Collapses all edge cases into one classification:
+`RepoDisposition` already exists with the right values:
 
 | Disposition | Meaning | Pipeline behavior |
 |---|---|---|
-| `HAS_CHANGES` | Feature branch, commits ahead of main | Full pipeline |
+| `HAS_WORK` | Feature branch, commits ahead of main | Full pipeline |
 | `EMPTY_BRANCH` | Feature branch, zero commits ahead | Skip review/squash/land, trivial close |
 | `NO_BRANCH` | No feature branch in this repo | Skip entirely |
-| `MAIN_ONLY` | Work done directly on main | No merge needed |
+| `ALREADY_LANDED` | Branch content is ancestor of main (post-landing) | Skip land, trivial verify |
 
-Every step checks `disposition` instead of shelling out to git. The 13 skip predicates reduce to `modes` declarations on `StepDef` evaluated against `disposition` at the engine level.
+**Note:** `ALREADY_LANDED` is distinct from "work done on main" (which is handled by `PipelineMode.MAIN` and `OrchestratorContext.on_main`). These are orthogonal: `ALREADY_LANDED` is a post-merge repo disposition, `MAIN` is a pipeline mode for branchless work. Both are preserved.
+
+Every step checks `state.disposition` instead of shelling out to git. The 13 skip predicates reduce to `modes` declarations on `StepDef` evaluated against `disposition` at the engine level.
 
 #### Per-Repo Orchestration
 
 Single lifecycle per work item (D2). The orchestrator fans out within each lifecycle state for per-repo concerns:
 
-- **PER_REPO_EXECUTE_STEPS** (rebase, land): iterate repos with `disposition=HAS_CHANGES`
+- **PER_REPO_EXECUTE_STEPS** (rebase, land): iterate repos with `disposition=HAS_WORK`
 - **PER_REPO_SWEEP_STEPS** (protocol, update_claude_md, doc_freshness): iterate only the active repo (the one the session actually changed)
 - **Archive precondition**: check ALL repos in the slot before offering archive
 
-The existing composite progress keys (`rebase:engine=done`) already support this. What changes: the fan-out uses `RepoContext.disposition` to filter, not per-step git probes.
+The existing composite progress keys (`rebase:engine=done`) already support this. What changes: the fan-out uses `context.state.disposition` to filter, not per-step git probes.
 
 #### Migration Steps
 
 | Step | What | Dependencies | Shippable? |
 |---|---|---|---|
-| 2a | Add `disposition` enum and field to `RepoState` | None | Yes |
-| 2b | Build `RepoContext` combining RepoState + lifecycle state | Phase 1b | Yes |
-| 2c | Propagate `RepoContext` into `work_end_orchestrator.py`, replacing `OrchestratorContext` | 2b | Self-contained |
-| 2d | Replace per-step git probes with `disposition` checks | 2c | Yes per step |
-| 2e | Connect `modes` on `StepDef` to `disposition` evaluation | 2a | Yes |
+| 2a | Build `RepoContext` wrapping `RepoState` + new verification fields | Phase 1b | Yes |
+| 2b | Add `tree_sha`, `main_tree_sha`, `remote_synced` to `classify_repo()` output | None | Yes |
+| 2c | Propagate `RepoContext` into `work_end_orchestrator.py`, replacing `OrchestratorContext` | 2a | Self-contained |
+| 2d | Replace per-step git probes with `state.disposition` checks | 2c | Yes per step |
+| 2e | Connect `modes` on `StepDef` to `disposition` evaluation | Existing RepoDisposition | Yes |
 | 2f | Fix active-repo filtering in sweep fan-out (#437) | 2c | Yes |
 | 2g | Add peer-repo precondition to archive step (#438) | 2c | Yes |
 
-**First win:** After 2a-2b, new code uses `RepoContext`. After 2c, the biggest consumer uses it. Edge-case whack-a-mole stops because classification happens once, immutably.
+**First win:** After 2a + 2c, the biggest consumer uses `RepoContext`. Edge-case whack-a-mole stops because classification happens once, immutably.
 
 ## Phase 3: Outcome-Based Verification
 
@@ -199,7 +217,7 @@ The existing composite progress keys (`rebase:engine=done`) already support this
 
 - Postconditions check stamp files (`.artifacts-promoted`, `.landed`, `.phase-a-complete`).
 - Missing stamps → retry loop (#435, #386). Present stamps → trust without checking (#375).
-- Empty data returns True (#436: `content_landed_postcondition` returns True when `landed_shas` is empty).
+- Empty data historically returned True (#436: `content_landed_postcondition` returned True when `landed_shas` was empty — fixed narrowly in #436 to return False, but the systemic pattern of stamp-checking remains across other postconditions).
 - Two verification systems exist with overlapping checks and different return types (#429).
 
 ### Design
@@ -260,7 +278,7 @@ The event log replaces stamps — it records WHEN something happened and WHAT th
 | 3b | Build `verify_outcome()` functions — git state + event checks | Phase 1b, 2a | Yes |
 | 3c | Replace `content_landed_postcondition` (highest-failure) | 3b | Yes |
 | 3d | Replace remaining postconditions one at a time | 3b | Yes per postcondition |
-| 3e | Build UNKNOWN→fallback→escalation resolution path | 3a, Phase 4 (for escalation) | Yes |
+| 3e | Build UNKNOWN→fallback→escalation resolution path | 3a. Escalation uses existing ACTION= protocol during migration; switches to JudgmentRequest after Phase 4d | Yes |
 | 3f | Remove stamp files after all consumers migrate | 3c, 3d | Yes per file |
 
 **First win:** After 3c, the most common postcondition failure class (#436, #386, #388) is eliminated.
@@ -299,8 +317,22 @@ class JudgmentResponse:
     block_reason: str | None     # if blocked, why
 ```
 
+#### StepType Enum
+
+`StepDef.step_type` is currently a plain string (`"mechanical"`, `"judgment"`, `"lifecycle"`), checked via string comparison. Since Phase 4 types the LLM interface, it should also type the step classification:
+
+```python
+class StepType(Enum):
+    MECHANICAL = "mechanical"
+    JUDGMENT = "judgment"
+    LIFECYCLE = "lifecycle"
+```
+
+This catches typos at definition time and makes the `run_loop` dispatch exhaustive.
+
 #### What Changes
 
+- `StepDef.step_type` becomes `StepType` enum
 - `action_context_fn` returns `JudgmentRequest` instead of ad-hoc dict
 - `verify_fn` validates `JudgmentResponse` against the schema
 - SKILL.md orchestrator loop parses `JudgmentRequest` and returns `JudgmentResponse`
@@ -330,46 +362,58 @@ class JudgmentResponse:
 ## Phasing and Dependencies
 
 ```
-Phase 1a-c (single writer enforcement)    ← highest leverage, do first
+Phase 1a-c (single writer + fail-loud)    ← highest leverage, do first
     │
-    ├── Phase 1d-f (read migration, .plan snapshot)
+    ├── Phase 1d-g (read migration, snapshot, static analysis)
     │       │
-    │       └── Phase 3 (outcome verification)
+    │       └── Phase 3a-d (outcome verification)
+    │                │
+    │                └── Phase 3e (UNKNOWN escalation) ──→ uses Phase 4 typed interface
     │
     └── Phase 2 (classify-once context)
             │
-            └── Phase 3 (outcome verification)
+            └── Phase 3a-d (outcome verification)
 
-Phase 4 (typed LLM interface)  ← independent, parallel with everything
+Phase 4a-d (typed LLM interface)  ← independent, parallel with 1-2
+    │
+    └── Phase 3e (UNKNOWN escalation uses JudgmentRequest)
 ```
 
-Phase 1a-c is the critical path. Closing the six bypass writers eliminates the multi-writer class of bugs immediately. Everything else builds on that foundation but each step is independently valuable.
+Phase 1a-c is the critical path. Closing bypass writers and making event emission fail-loud eliminates the multi-writer class of bugs immediately. Phase 3e has a soft dependency on Phase 4 for escalation, but uses the existing `ACTION=` protocol as a bridge during migration. Phase 4 is independent of Phase 3a-d.
 
 ## What NOT to Do
 
 - **Don't migrate everything at once.** Each step is a separate issue with its own tests.
-- **Don't remove `.plan` files.** They become derived snapshots — still committed, still human-readable. The change is invisible to the developer experience.
+- **Don't remove `.plan` files.** Lifecycle fields become DB-derived; queue sections stay file-native. `.plan` is still committed, still human-readable. The change is invisible to the developer experience.
 - **Don't break the existing protocol during migration.** Old `ACTION=` / `step_done=` stays as fallback until all steps are converted.
 - **Don't build complex slot coordination.** D2 (revised) keeps a single lifecycle per work item with per-repo fan-out at the orchestrator level — no new state machines.
 - **Don't use `@safe` on primary write paths.** Errors must be raised, not silently dropped. `@safe` stays only on truly best-effort secondary operations.
+
+## Scope Limitations
+
+**Progress tracking files** (`.work-progress`, `.execute-progress`, `.land-ledger.jsonl`) suffer from the same multi-writer, no-schema problems as `.plan`. These are NOT addressed in this design — they remain file-based. Rationale: progress state is ephemeral (scoped to a single close sequence) and less critical than lifecycle state (which persists across sessions and branches). A future phase may event-source progress tracking, but the lifecycle migration must land first.
+
+**Queue and design fields** in `.plan` (`## Queue`, `## Deferred`, design-repo, design-section-hashes, flyway-next-v) remain file-based with `plan_manager.py` as their single owner. Event-sourcing the queue would require significant DB schema extension. The lifecycle/queue split keeps the migration scope manageable.
+
+**`.meta` files** are deprecated (14 files still reference for backward compat). Full removal of `.meta` read paths is cleanup work, not part of this architecture. It should happen but is independent of the four phases.
 
 ## Testing Strategy
 
 Each phase has a testing approach:
 
-**Phase 1:** Test `get_lifecycle_state()` with event sequences. Test `write_snapshot()` produces correct `.plan` from DB state. Test bypass closure — each former bypass path now emits events. Integration test: event → state derivation → snapshot → matches expected .plan content.
+**Phase 1:** Test `get_lifecycle_state()` with event sequences (unit tests with in-memory SQLite). Test `update_lifecycle_fields()` merges DB lifecycle state into existing `.plan` without corrupting queue sections. Test bypass closure — each former bypass path now routes through canonical writers. **Static analysis test** (commit-tier): grep for `.write_text()` / `.replace()` / `.unlink()` targeting `.plan` paths outside `plan_io.py` and `lifecycle.py` — fail if any found. This prevents regression permanently. Integration test: event → state derivation → `update_lifecycle_fields()` → `.plan` lifecycle fields match expected values.
 
-**Phase 2:** Test `classify_repo()` disposition for each edge case (zero commits, no branch, main-only, dirty). Test `RepoContext` immutability. Test skip predicate replacement — same steps skipped with `disposition` as with git probes.
+**Phase 2:** Test `classify_repo()` produces correct `RepoDisposition` for each edge case (zero commits, no branch, already-landed, dirty). Test `RepoContext` immutability. Test skip predicate replacement — same steps skipped with `state.disposition` as with git probes. Test that no step shells out to git to determine repo type after classification.
 
-**Phase 3:** Test each `verify_outcome()` for PASS, FAIL, UNKNOWN states. Test UNKNOWN resolution path — fallback before escalation. Test that no verification function returns PASS on empty/missing evidence.
+**Phase 3:** Test each `verify_outcome()` for PASS, FAIL, UNKNOWN states. Test UNKNOWN resolution path — fallback before escalation. **Critical regression test:** no verification function returns PASS on empty/missing evidence (parameterized test with None, empty string, empty dict for every evidence field).
 
-**Phase 4:** Test `JudgmentRequest` → `JudgmentResponse` round-trip. Test schema validation rejects malformed responses. Test coexistence — old protocol responses handled during migration.
+**Phase 4:** Test `JudgmentRequest` → `JudgmentResponse` round-trip. Test schema validation rejects malformed responses. Test coexistence — old protocol responses handled during migration. Test `StepType` enum covers all step_type values in existing StepDefs.
 
 ## Success Criteria
 
 The redesign is complete when:
 
-1. All `.plan` writes route through `plan_io.write_snapshot()` (zero direct file manipulation)
+1. All `.plan` lifecycle writes route through `plan_io.update_lifecycle_fields()`, all queue writes through `plan_manager.py` → `plan_io` (zero direct file manipulation)
 2. All lifecycle transitions route through `lifecycle.py` with event emission
 3. All state reads use `get_lifecycle_state()` from DB, not `.plan` parsing
 4. All steps use `RepoContext.disposition` for classification, not git probes

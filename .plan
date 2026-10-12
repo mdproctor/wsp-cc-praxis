@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-441-stale-plan-cleanup
-state: active
+state: closing:review
 project-sha: 
 date: 
 issue-repo: Hortora/soredium
@@ -11,5 +11,6 @@ design-repo:
 design-section-hashes: 
 flyway-next-v: 
 
+evidence-era: true
 ## Queue
 - [ ] hortora/soredium#441 — Issue #441 ← active

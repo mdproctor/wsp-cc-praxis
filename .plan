@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-441-stale-plan-cleanup
-state: closing:pushed
+state: closing:merged
 project-sha: 
 date: 
 issue-repo: Hortora/soredium

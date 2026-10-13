@@ -13,3 +13,15 @@ flyway-next-v: unknown
 
 ## Queue
 - [ ] hortora/soredium#450 — Issue #450 ← active
+  - [ ] Batch 1: Foundation
+    - [ ] Task 1: Types and helpers
+    - [ ] Task 2: Engine three-way dispatch
+  - [ ] Batch 2: First verify
+    - [ ] Task 3: verify_content_landed and verify_push
+    - [ ] Task 4: Wire land step
+  - [ ] Batch 3: Remaining verify
+    - [ ] Task 5: rebase+stamped+promoted
+    - [ ] Task 6: All remaining functions+wiring
+  - [ ] Batch 4: Close-verify
+    - [ ] Task 7: Adapt close_verify.py
+    - [ ] Task 8: Remove deprecated code

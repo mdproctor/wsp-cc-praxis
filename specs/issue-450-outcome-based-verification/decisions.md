@@ -35,3 +35,16 @@
 **Exploration:** quick
 **Status:** captured
 **Depends on:** D1 (unified layer), D2 (engine-level resolution — engine needs a single VerifyResult to dispatch on)
+
+## D4: Stamp file migration strategy
+
+**Choice:** Dual-read during migration, remove stamps after
+**Alternatives:**
+- Hard cutover per stamp — replace each stamp file's write and all reads in a single commit. No fallback. Cleaner but higher risk — if git-state checks have edge cases the stamp covered, failure surfaces in production rather than during migration
+- Event log required first — wait until Phase 1 event-sourced lifecycle is fully primary before eliminating stamps. Safest but blocks Phase 3 on full Phase 1 completion, which defeats the independently-shippable phase design
+**Rationale:** New verify_*() functions check git state first (primary evidence). If git state returns UNKNOWN (e.g., SHA not found, branch deleted before check), fall back to reading the stamp file as secondary evidence — the stamp contributes to UNKNOWN → PASS when git state is insufficient. Two-phase removal: (1) migrate all consumers to verify_*() with dual-read, stop writing stamps; (2) once tests pass without stamps being written, remove the reads. This gives a safety net during migration while the git-state checks prove themselves against real close sequences.
+**Trade-offs:** Stamp files persist longer during migration. Dual-read adds a fallback code path that itself needs eventual removal. But the alternative (hard cutover) risks discovering edge cases in production.
+**Sources:** work-end/land_branch.py (writes .landed), work-end/artifact_promote.py (writes .artifacts-promoted), verification/step_postconditions.py (reads stamps), verification/close_checks.py (reads stamps). Phase 1 partial landing: get_lifecycle_state() exists but events not yet primary for all state
+**Exploration:** quick
+**Status:** captured
+**Depends on:** D1 (unified layer — verify functions are the consumer being migrated)

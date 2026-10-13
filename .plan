@@ -13,3 +13,15 @@ flyway-next-v: unknown
 
 ## Queue
 - [ ] hortora/soredium#449 — Issue #449 ← active
+  - [ ] Batch 1: Foundation
+    - [ ] Task 1: get_lifecycle_state in worklog.py
+    - [ ] Task 2: RepoContext dataclass and builders
+  - [ ] Batch 2: Engine
+    - [ ] Task 3: disposition filtering on StepDef
+  - [ ] Batch 3: Integration
+    - [ ] Task 4: propagate RepoContext into orchestrator
+    - [ ] Task 5: replace _skip_empty_branch with dispositions
+  - [ ] Batch 4: Fan-out
+    - [ ] Task 6: sweep and archive fixes
+  - [ ] Batch 5: Robustness
+    - [ ] Task 7: classify_repos fallback and base type

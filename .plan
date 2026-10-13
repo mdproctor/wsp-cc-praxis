@@ -1,0 +1,17 @@
+# Work Plan — robust-pipeline-architecture
+
+## State
+branch: main
+state: active
+project-sha: 07b3f6d5013f73ad78738eb910472bc992425ff8
+date: 2026-10-13
+issue-repo: Hortora/soredium
+covers: 449,450,451
+design-repo: project
+design-section-hashes: 
+flyway-next-v: unknown
+
+## Queue
+- [ ] Hortora/soredium#449 — Classify-once RepoContext ← active
+- [ ] Hortora/soredium#450 — Outcome-based verification
+- [ ] Hortora/soredium#451 — Typed LLM interface

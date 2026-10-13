@@ -1,16 +1,16 @@
-# Work Plan — issue-453-queue-aware-close
+# Work Plan — main
 
 ## State
-branch: issue-453-queue-aware-close
-state: closing:promoted
+branch: main
+state: active
 project-sha: 
-date: 
+date: 2026-10-13
 issue-repo: Hortora/soredium
-covers: 453,450,451
+covers: 450,451
 design-repo: project
 design-section-hashes: 
 flyway-next-v: unknown
 
-evidence-era: true
 ## Queue
-- [ ] hortora/soredium#453 — Issue #453 ← active
+- [ ] hortora/soredium#450 — Phase 3 Outcome-based verification ← active
+- [ ] hortora/soredium#451 — Phase 4 Typed LLM interface

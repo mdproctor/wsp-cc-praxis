@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-450-outcome-based-verification
-state: active
+state: closing:review
 project-sha: 
 date: 
 issue-repo: Hortora/soredium
@@ -11,6 +11,7 @@ design-repo: project
 design-section-hashes: 
 flyway-next-v: unknown
 
+evidence-era: true
 ## Queue
 - [ ] hortora/soredium#450 — Issue #450 ← active
   - [x] Batch 1: Foundation

@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-449-classify-once-repo-context
-state: scaffolded
+state: active
 project-sha: 
 date: 
 issue-repo: Hortora/soredium
@@ -12,16 +12,4 @@ design-section-hashes:
 flyway-next-v: unknown
 
 ## Queue
-- [ ] hortora/soredium#449 — Issue #449 ← active
-  - [x] Batch 1: Foundation
-    - [x] Task 1: get_lifecycle_state in worklog.py
-    - [x] Task 2: RepoContext dataclass and builders
-  - [x] Batch 2: Engine
-    - [x] Task 3: disposition filtering on StepDef
-  - [x] Batch 3: Integration
-    - [x] Task 4: propagate RepoContext into orchestrator
-    - [x] Task 5: replace _skip_empty_branch with dispositions
-  - [x] Batch 4: Fan-out
-    - [x] Task 6: sweep and archive fixes
-  - [x] Batch 5: Robustness
-    - [x] Task 7: classify_repos fallback and base type
+- [x] hortora/soredium#449 — Issue #449

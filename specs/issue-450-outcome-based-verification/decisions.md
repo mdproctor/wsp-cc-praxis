@@ -48,3 +48,15 @@
 **Exploration:** quick
 **Status:** captured
 **Depends on:** D1 (unified layer — verify functions are the consumer being migrated)
+
+## D5: close_verify.py output compatibility
+
+**Choice:** Verification → Finding adapter
+**Alternatives:**
+- Replace Finding entirely — close_verify.py works directly with Verification objects, new formatting logic, new output format. Cleaner long-term but breaks downstream parsing of VERIFIED=, FAILURE_N=, BLOCKING_FAIL= output that the orchestrator SKILL.md and close_resume.py already depend on
+**Rationale:** Add a to_finding() method (or standalone function) that maps Verification to list[Finding]: PASS → [], FAIL → [Finding("ERROR", check, evidence summary)], UNKNOWN → [Finding("WARN", check, evidence summary)]. close_verify.py calls verify_*() functions, converts via to_finding(), and existing reporting logic (blocking categories, emoji formatting, KEY=VALUE output) stays unchanged. Finding becomes a presentation concern; Verification is the domain model.
+**Trade-offs:** Adapter is one more mapping layer. But the output format is a stable contract consumed by multiple callers — changing it requires migrating all parsers simultaneously, which is out of scope for this phase.
+**Sources:** verification/close_verify.py (output format), work-end/close_resume.py (parses VERIFIED=, FAILURE_N=), work-end/work_end_orchestrator.py SKILL.md (parses BLOCKING_FAIL=)
+**Exploration:** quick
+**Status:** captured
+**Depends on:** D1 (unified layer — adapter bridges Verification to Finding)

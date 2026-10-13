@@ -19,9 +19,9 @@ flyway-next-v: unknown
   - [x] Batch 2: First verify
     - [x] Task 3: verify_content_landed and verify_push
     - [x] Task 4: Wire land step
-  - [ ] Batch 3: Remaining verify
-    - [ ] Task 5: rebase+stamped+promoted
-    - [ ] Task 6: All remaining functions+wiring
+  - [x] Batch 3: Remaining verify
+    - [x] Task 5: rebase+stamped+promoted
+    - [x] Task 6: All remaining functions+wiring
   - [ ] Batch 4: Close-verify
     - [ ] Task 7: Adapt close_verify.py
     - [ ] Task 8: Remove deprecated code

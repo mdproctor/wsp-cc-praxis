@@ -323,9 +323,8 @@ by event log query.
 
 `postcondition_fn` on `StepDef` changes from `Callable[[ctx], bool]`
 to `Callable[[ctx], Verification]`. Rename to `verify_fn` to reflect
-the semantic change (note: `StepDef` already has a `verify_fn` field
-used for judgment step response validation — that field is renamed to
-`response_validate_fn` to disambiguate).
+the semantic change. The existing `verify_fn` field on `StepDef` is
+declared but has zero consumers — it can be repurposed directly.
 
 ```python
 @dataclass
@@ -334,8 +333,8 @@ class StepDef:
     phase: str
     step_type: str
     # ... existing fields ...
-    verify_fn: Callable | None = None           # was postcondition_fn
-    response_validate_fn: Callable | None = None  # was verify_fn
+    verify_fn: Callable | None = None    # was postcondition_fn; returns Verification
+    # verify_fn (old) was unused — no rename needed
 ```
 
 ### run_loop() three-way dispatch
@@ -444,8 +443,8 @@ shippable.
 
 - Wire `verify_content_landed` into the step that uses
   `content_landed_postcondition`
-- Rename `postcondition_fn` → `verify_fn` on `StepDef` (rename
-  existing `verify_fn` → `response_validate_fn` first)
+- Repurpose `verify_fn` on `StepDef` (currently unused) for
+  `Verification`-returning postconditions; remove `postcondition_fn`
 - Update `run_loop()` for three-way dispatch
 - Update `close_verify.py` to use `verify_content_landed` via adapter
 - Remove `content_landed_postcondition` from `step_postconditions.py`

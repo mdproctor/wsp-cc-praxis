@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-443-robust-pipeline-architecture
-state: closing:promoted
+state: closing:pushed
 project-sha: dd08302a2e53a85440d130bea6a64fa78e95d967
 date: 2026-10-13
 issue-repo: Hortora/soredium

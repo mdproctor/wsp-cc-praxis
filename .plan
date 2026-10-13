@@ -13,9 +13,9 @@ flyway-next-v: unknown
 
 ## Queue
 - [ ] hortora/soredium#450 — Issue #450 ← active
-  - [ ] Batch 1: Foundation
-    - [ ] Task 1: Types and helpers
-    - [ ] Task 2: Engine three-way dispatch
+  - [x] Batch 1: Foundation
+    - [x] Task 1: Types and helpers
+    - [x] Task 2: Engine three-way dispatch
   - [ ] Batch 2: First verify
     - [ ] Task 3: verify_content_landed and verify_push
     - [ ] Task 4: Wire land step

@@ -1,10 +1,10 @@
-# Work Plan — main
+# Work Plan — issue-450-outcome-based-verification
 
 ## State
-branch: main
-state: active
+branch: issue-450-outcome-based-verification
+state: scaffolded
 project-sha: 
-date: 2026-10-13
+date: 
 issue-repo: Hortora/soredium
 covers: 450,451
 design-repo: project
@@ -12,5 +12,4 @@ design-section-hashes:
 flyway-next-v: unknown
 
 ## Queue
-- [ ] hortora/soredium#450 — Phase 3 Outcome-based verification ← active
-- [ ] hortora/soredium#451 — Phase 4 Typed LLM interface
+- [ ] hortora/soredium#450 — Issue #450 ← active

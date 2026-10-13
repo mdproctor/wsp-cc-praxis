@@ -6,12 +6,12 @@ state: active
 project-sha: 
 date: 2026-10-13
 issue-repo: Hortora/soredium
-covers: 450,451
+covers: 453,450,451
 design-repo: project
 design-section-hashes: 
 flyway-next-v: unknown
 
 ## Queue
-- [ ] hortora/soredium#453 — work-end closes all covers issues regardless of queue completion state
-- [ ] hortora/soredium#450 — Phase 3 Outcome-based verification ← active
+- [ ] hortora/soredium#453 — work-end closes all covers issues regardless of queue completion state ← active
+- [ ] hortora/soredium#450 — Phase 3 Outcome-based verification
 - [ ] hortora/soredium#451 — Phase 4 Typed LLM interface

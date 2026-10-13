@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-449-classify-once-repo-context
-state: active
+state: closing:review
 project-sha: 
 date: 
 issue-repo: Hortora/soredium
@@ -11,5 +11,6 @@ design-repo: project
 design-section-hashes: 
 flyway-next-v: unknown
 
+evidence-era: true
 ## Queue
 - [x] hortora/soredium#449 — Issue #449

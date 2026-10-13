@@ -13,17 +13,17 @@ flyway-next-v: unknown
 
 ## Queue
 - [ ] hortora/soredium#443 — Issue #443 ← active
-  - [ ] Batch 1: Fail-Loud Emission
-    - [ ] Task 1: Remove @safe and add busy_timeout
-  - [ ] Batch 2: State Derivation
-    - [ ] Task 2: Build get_lifecycle_state
-    - [ ] Task 3: Build update_lifecycle_fields
-  - [ ] Batch 3: Bypass Closure Lifecycle
-    - [ ] Task 4: Route lifecycle.py bypasses
-    - [ ] Task 5: Route scaffold.py bypasses
-  - [ ] Batch 4: Bypass Closure Orchestrator
-    - [ ] Task 6: Route orchestrator bypasses
-    - [ ] Task 7: Route plan_manager bypasses
-  - [ ] Batch 5: Enforcement
-    - [ ] Task 8: Static analysis bypass test
-    - [ ] Task 9: Post-rebase regeneration hook
+  - [x] Batch 1: Fail-Loud Emission
+    - [x] Task 1: Remove @safe and add busy_timeout
+  - [x] Batch 2: State Derivation
+    - [x] Task 2: Build get_lifecycle_state
+    - [x] Task 3: Build update_lifecycle_fields
+  - [x] Batch 3: Bypass Closure Lifecycle
+    - [x] Task 4: Route lifecycle.py bypasses
+    - [x] Task 5: Route scaffold.py bypasses
+  - [x] Batch 4: Bypass Closure Orchestrator
+    - [x] Task 6: Route orchestrator bypasses
+    - [x] Task 7: Route plan_manager bypasses
+  - [x] Batch 5: Enforcement
+    - [x] Task 8: Static analysis bypass test
+    - [x] Task 9: Post-rebase regeneration hook

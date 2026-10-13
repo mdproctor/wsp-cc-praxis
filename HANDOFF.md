@@ -1,56 +1,58 @@
 # Session Handover
 
-**Branch:** `issue-443-robust-pipeline-architecture`
-**Issue:** #443 — Robust pipeline architecture: event-sourced lifecycle, classify-once context, outcome verification
+**Branch:** `main` (Phase 1 landed, Phases 2-4 queued)
+**Issues:** #449, #450, #451 — Robust pipeline architecture Phases 2-4
 **Date:** 2026-10-13
 
 ## What Was Done
 
-### Analysis
-Deep analysis of 100 post-refactor issues (#343-#442, 36 days, 63% fix-to-feature ratio). Identified 7 failure patterns reducing to 3 root causes:
-1. Shared mutable state without a guardian (.plan: 7 writers, 28+ readers)
-2. Distributed classification without centralization (N consumers x M edge cases)
-3. Implicit contracts between components (stamps checked, not outcomes)
+### Phase 1 Complete (#443 — closed)
 
-### Design (complete, reviewed)
-Four-phase evolution of existing infrastructure:
-- **Phase 1:** Event-sourced lifecycle — DB events primary, .plan derived, single writer
-- **Phase 2:** Classify-once RepoContext — disposition enum, propagate to work_end_orchestrator
-- **Phase 3:** Outcome-based verification — git state + events, three-valued (PASS/FAIL/UNKNOWN)
-- **Phase 4:** Typed LLM interface — JudgmentRequest/Response formalizing existing pattern
+Implemented all 9 tasks across 5 batches of the Event Foundation plan:
 
-6 decisions captured and reviewed (Standard, 3 rounds, 20 issues, all resolved). Key revision: D2 changed from per-repo lifecycle to single lifecycle with per-repo orchestration.
+1. **Fail-loud emission** — removed `@safe` from worklog write path, added `busy_timeout=5000`
+2. **State derivation** — `get_lifecycle_state()` query in worklog.py, `update_lifecycle_fields()` in plan_io.py
+3. **Bypass closure (lifecycle + scaffold)** — routed `_write_evidence_era` and `commit_transition` through plan_io, routed scaffold.py 3 writes through plan_io
+4. **Bypass closure (orchestrator + plan_manager)** — routed 5 orchestrator operations and 5 plan_manager/migration writes through plan_io
+5. **Enforcement** — static analysis test prevents new bypass writers; post-transition regeneration hook restores .plan from authoritative source
 
-Spec reviewed (Light, 18 findings, all addressed).
+New plan_io functions: `copy_plan()`, `write_plan()`, `update_lifecycle_fields()`
 
-### Implementation (Phase 1 started)
-Plan written for Phase 1 (Event Foundation): 5 batches, 9 tasks.
+15 bypass paths closed across 8 files. Squashed to 3 semantic commits on main.
 
-**Batch 1 complete:** Task 1 — fail-loud event emission
-- Removed `@safe` from `log_transition` and `update_work_item_state` in `scripts/worklog.py`
-- Removed blanket try/except from `_emit_to_worklog` in `project/lifecycle.py`
-- Connection failures degrade gracefully; write failures propagate
-- Added `busy_timeout=5000` to `connect()`
-- 3 new tests, all passing. 271/273 pass (2 pre-existing V3 migration hardcodes).
+### Issues Created
+
+| Issue | Title | Scale | Complexity | Blocked by |
+|-------|-------|-------|------------|------------|
+| #446 | Register enforcement test in validation framework | XS | Low | — |
+| #448 | Replace _check_cleanup_stack stub | S | Med | — |
+| #449 | Phase 2: Classify-once RepoContext | L | High | Phase 1 (done) |
+| #450 | Phase 3: Outcome-based verification | L | High | #449 |
+| #451 | Phase 4: Typed LLM interface | M | Med | Parallel with 2-3, converges at 4e |
+
+### .plan Queue
+
+Populated with #449 → #450 → #451. Next session: `work start` picks up #449.
 
 ## What Remains
 
-### Phase 1 (8 tasks remaining)
-- **Batch 2:** `get_lifecycle_state()` query + `update_lifecycle_fields()` merge function
-- **Batch 3:** Bypass closure — lifecycle.py (2 paths) + scaffold.py (3 paths)
-- **Batch 4:** Bypass closure — work_end_orchestrator.py (4 paths) + plan_manager.py (2 paths) + migrations (3 paths)
-- **Batch 5:** Static analysis bypass enforcement test + post-rebase .plan regeneration
+### Phase 2 (#449) — Classify-once RepoContext
+Build `RepoContext` wrapping `RepoState` + verification fields. Propagate into orchestrator. Replace per-step git probes with `state.disposition` checks. 7 migration steps.
 
-### Phases 2-4 (not yet planned)
-Write plans after Phase 1 lands.
+### Phase 3 (#450) — Outcome-based verification
+Three-valued `VerifyResult` (PASS/FAIL/UNKNOWN). Replace stamp-file postconditions with git state + event log evidence. 6 migration steps.
+
+### Phase 4 (#451) — Typed LLM interface
+`JudgmentRequest`/`JudgmentResponse` dataclasses. JSON schema validation. `StepType` enum. 6 migration steps.
 
 ## Key Files
 
 | File | What changed |
 |------|-------------|
-| `scripts/worklog.py` | Removed @safe from write path, added busy_timeout |
-| `project/lifecycle.py` | Fail-loud _emit_to_worklog, added sqlite3 import |
-| `tests/test_worklog.py` | 3 new tests in TestFailLoudEmission |
+| `project/plan_io.py` | Added `copy_plan`, `write_plan`, `update_lifecycle_fields` — canonical .plan writers |
+| `project/lifecycle.py` | Routed bypasses through plan_io, added regeneration hook |
+| `scripts/worklog.py` | Added `get_lifecycle_state()`, removed `@safe` from write path |
+| `tests/test_plan_bypass_enforcement.py` | Static analysis enforcement (new) |
 
 ## Artifacts
 
@@ -58,11 +60,10 @@ Write plans after Phase 1 lands.
 |----------|------|
 | Design spec | `specs/issue-443-robust-pipeline-architecture/2026-10-12-robust-pipeline-architecture-design.md` |
 | Decisions | `specs/issue-443-robust-pipeline-architecture/decisions.md` |
-| Implementation plan | `plans/2026-10-13-event-foundation.md` |
-| Pipeline state | `specs/issue-443-robust-pipeline-architecture/pipeline.state` |
+| Phase 1 plan | `plans/2026-10-13-event-foundation.md` |
 
 ## Notes
 
-- Lifecycle guard hook temporarily modified: `lifecycle.py` removed from block list in `~/.claude/hooks/lifecycle-guard-write.sh`. Restore after Phase 1 lands.
-- Wrap orchestrator has a pre-existing bug: `progress` dict vs typed Progress mismatch in `shared_steps.py:70`. Not related to #443.
-- Two pre-existing test failures: `TestV3Migration::test_v3_schema_version` and `test_v2_to_v3_upgrade` hardcode schema version 3 but schema is now V4.
+- Wrap orchestrator has a pre-existing bug: `progress` dict vs typed `Progress` mismatch in `shared_steps.py:70`. Blocks wrap_orchestrator.py execution.
+- Two pre-existing test failures: `TestV3Migration` hardcodes schema version 3 (now V4).
+- Pre-existing `test_scaffold_plan_is_parseable` failure: uses wrong attribute `issue_number` vs `number`.

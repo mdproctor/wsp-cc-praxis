@@ -23,3 +23,15 @@
 **Exploration:** quick
 **Status:** captured
 **Depends on:** D1 (unified layer — engine consumes Verification, not bool)
+
+## D3: Verification cardinality per step
+
+**Choice:** Single Verification return per step
+**Alternatives:**
+- list[Verification] return — each step produces multiple independent verification results. Richer reporting but engine must decide what to do when some are PASS and others UNKNOWN (partial success semantics). Adds complexity without clear benefit since current postconditions are already 1:1 with steps
+**Rationale:** One step, one verification. postcondition_fn becomes verify_fn: (ctx) -> Verification. Compound checks (e.g., "content landed AND pushed") compose inside the verify function and return the most serious result (FAIL > UNKNOWN > PASS). Close-verify can still call individual verify_*() functions directly for its multi-check reporting view — the composition happens at different levels for different consumers.
+**Trade-offs:** A step that checks multiple things must pick a single result to return. But "first non-PASS wins" is the current behavior (postcondition returns False on first failure) — no semantic change.
+**Sources:** shared_steps.py StepDef.postcondition_fn, orchestrator_engine.py run_loop() binary dispatch
+**Exploration:** quick
+**Status:** captured
+**Depends on:** D1 (unified layer), D2 (engine-level resolution — engine needs a single VerifyResult to dispatch on)

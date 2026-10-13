@@ -10,8 +10,9 @@
 The work-end pipeline uses two overlapping verification systems with
 different return types:
 
-1. `step_postconditions.py` — 15 functions returning `bool`, used by the
-   orchestrator engine's check-execute-verify pattern
+1. `step_postconditions.py` — 14 functions returning `bool` (12 active,
+   2 dead code: `stamp_postcondition`, `archive_move_postcondition`),
+   used by the orchestrator engine's check-execute-verify pattern
 2. `close_checks.py` / `close_verify.py` — functions returning
    `list[Finding]`, used for close-time verification reports
 
@@ -44,13 +45,27 @@ verification/
   outcomes.py          # VerifyResult, Verification, verify_*() functions
   __init__.py          # Finding (unchanged — presentation type)
   close_verify.py      # composes verify_*() → to_finding() → report
-  close_checks.py      # deprecated, consumers migrate to outcomes.py
-  step_postconditions.py  # deprecated, consumers migrate to outcomes.py
+  close_checks.py      # partially deprecated: overlapping checks migrate
+                       #   to outcomes.py; non-overlapping checks remain:
+                       #   check_no_open_findings, check_no_stale_scaffold,
+                       #   check_slot_archive_status, check_landed_completeness,
+                       #   resolve_canonical_repos (utility)
+  step_postconditions.py  # fully deprecated, all consumers migrate to outcomes.py
   postconditions.py    # unchanged (Finding-based lifecycle gate checks)
   slot_checks.py       # unchanged (slot isolation checks)
   repo_checks.py       # unchanged (stuck-state checks)
   cross_checks.py      # unchanged
 ```
+
+**Deprecation scope:** `step_postconditions.py` is fully deprecated —
+every function moves to `outcomes.py`. `close_checks.py` is partially
+deprecated — only functions that overlap with `step_postconditions.py`
+move. Non-overlapping close-time checks (`check_no_open_findings`,
+`check_no_stale_scaffold`, `check_slot_archive_status`,
+`check_landed_completeness`) remain in `close_checks.py` because they
+serve the close-verify report and have no orchestrator-engine
+counterpart. `resolve_canonical_repos` is a utility function, not a
+check — it stays.
 
 ## Types
 
@@ -98,24 +113,70 @@ Verification("content_landed", VerifyResult.UNKNOWN,
 ### Composition helper
 
 ```python
-def worst_of(*verifications: Verification) -> Verification:
-    """Return the most serious result: FAIL > UNKNOWN > PASS."""
-    for target in (VerifyResult.FAIL, VerifyResult.UNKNOWN):
-        for v in verifications:
-            if v.result == target:
-                return v
-    return verifications[0]
+def compose_verifications(check: str, *verifications: Verification) -> Verification:
+    """Compose multiple verifications into one, preserving all evidence.
+
+    Returns the worst result (FAIL > UNKNOWN > PASS) with a composite
+    evidence dict containing all constituent results. No information is
+    lost — the engine sees the worst result, and the evidence dict
+    contains the full picture for diagnostics and escalation.
+    """
+    worst = VerifyResult.PASS
+    composite_evidence: dict = {}
+    for v in verifications:
+        composite_evidence[v.check] = {
+            "result": v.result.value,
+            "evidence": v.evidence,
+            "repo": v.repo,
+        }
+        if v.result == VerifyResult.FAIL:
+            worst = VerifyResult.FAIL
+        elif v.result == VerifyResult.UNKNOWN and worst != VerifyResult.FAIL:
+            worst = VerifyResult.UNKNOWN
+    repo = verifications[0].repo if verifications else ""
+    return Verification(check, worst, composite_evidence, repo)
 ```
 
 Used when a step needs to compose multiple checks into a single
-`Verification` (D3 — one Verification per step). `close_verify.py`
-calls individual functions directly for its multi-check report.
+`Verification` (D3 — one Verification per step). All constituent
+results are preserved in the evidence dict, so the engine and LLM
+escalation can see which specific check failed or returned UNKNOWN.
+`close_verify.py` calls individual functions directly for its
+multi-check report.
 
 ## Verify Functions
 
-All live in `verification/outcomes.py`. Each takes a `RepoContext`
-(or `OrchestratorContextBase`) and returns `Verification`. Pure
-functions — observe and report, never retry (D2).
+All live in `verification/outcomes.py`. Each returns `Verification`.
+Pure functions — observe and report, never retry (D2).
+
+**Signature convention:** Verify functions that need repo context
+take explicit parameters (repo path, branch, base_branch, landed_sha)
+rather than a context object. This makes them testable without
+constructing full context objects and explicit about their inputs.
+
+**Context type note:** `work_end_orchestrator.py`'s `OrchestratorContext`
+does NOT inherit from `OrchestratorContextBase` — it is an independent
+dataclass with additional fields (`landed_shas`, `meta_state`,
+`pipeline_mode`, `current_repo_project`, etc.). The `outcome_fn`
+lambda binds specific fields from whichever context type the
+orchestrator uses, so verify functions are context-type-agnostic.
+
+**Binding at step definition time:** When wiring a verify function
+to a `StepDef.outcome_fn`, use a lambda or partial to bind the
+repo-specific parameters from the orchestrator context:
+
+```python
+StepDef("land", "close", "mechanical",
+    outcome_fn=lambda ctx: compose_verifications("land",
+        verify_push(ctx.current_repo_project, ctx.base_branch),
+        verify_content_landed(ctx.current_repo_project,
+            ctx.landed_shas.get(ctx.current_repo_project.name, ""),
+            ctx.base_branch)),
+    ...)
+```
+
+This preserves the engine's `(ctx) -> Verification` contract while
+verify functions remain pure and context-free.
 
 ### verify_content_landed
 
@@ -137,7 +198,7 @@ def verify_content_landed(ctx, repo: RepoContext) -> Verification:
 
 **UNKNOWN conditions:**
 - No `landed_sha` available (not yet recorded) — falls back to stamp
-  file `.landed` as secondary evidence (D4 dual-read)
+  file `.landed` as secondary evidence (this spec's D4: dual-read stamp migration)
 - Main tip unchanged since classification (`main_tree_sha` matches
   current) — evidence may be propagating from a remote push
 
@@ -229,8 +290,8 @@ def verify_artifacts_promoted(ctx, repo: RepoContext) -> Verification:
 ```
 
 **PASS evidence:**
-- `.artifacts-promoted` stamp exists (D4 — stamp read as secondary
-  evidence during migration), OR
+- `.artifacts-promoted` stamp exists (this spec's D4 — stamp read
+  as secondary evidence during migration), OR
 - Promotion stamp commit found in git log, OR
 - Branch has no diff against base (nothing to promote)
 
@@ -288,10 +349,13 @@ def verify_canonical_sync(ctx, slot_dir, repo_name, canonical_path) -> Verificat
 - Diff between landed SHA and canonical main is empty
 
 **FAIL evidence:**
-- SHA not resolvable in canonical repo
+- All fallbacks exhausted (ancestry, tree-SHA match, diff) and
+  content differences confirmed
 
 **UNKNOWN conditions:**
-- Canonical repo unreachable
+- SHA not resolvable in canonical repo (object may not have been
+  fetched yet — propagation delay, not definitive failure)
+- Canonical repo unreachable (network error)
 
 ### verify_landed_marker
 
@@ -302,7 +366,7 @@ def verify_landed_marker(ctx, slot_dir) -> Verification:
     """Verify .landed marker exists with valid SHA data."""
 ```
 
-During D4 migration: reads `.landed` file as primary (stamp file
+During stamp migration (this spec's D4): reads `.landed` file as primary (stamp file
 still written). After migration: replaced by event log query.
 
 ### verify_slot_phase_complete
@@ -314,17 +378,23 @@ def verify_slot_phase_complete(ctx, slot_dir, marker) -> Verification:
     """Verify a slot phase marker exists."""
 ```
 
-During D4 migration: reads marker file. After migration: replaced
+During stamp migration (this spec's D4): reads marker file. After migration: replaced
 by event log query.
 
 ## Engine Integration
 
 ### StepDef changes
 
-`postcondition_fn` on `StepDef` changes from `Callable[[ctx], bool]`
-to `Callable[[ctx], Verification]`. Rename to `verify_fn` to reflect
-the semantic change. The existing `verify_fn` field on `StepDef` is
-declared but has zero consumers — it can be repurposed directly.
+`postcondition_fn` on `StepDef` is replaced by `outcome_fn`, which
+returns `Verification` instead of `bool`.
+
+The existing `verify_fn` field on `StepDef` is actively used by 8
+judgment steps in `work_end_orchestrator.py` for LLM response
+validation (e.g., `_verify_produced_required`, `_verify_squash`,
+`_verify_forcing_function`). It has a different signature
+`(workspace, produced, **kw) -> str | None` and serves a different
+purpose — it validates judgment responses, not mechanical outcomes.
+**`verify_fn` is unchanged.**
 
 ```python
 @dataclass
@@ -332,20 +402,44 @@ class StepDef:
     name: str
     phase: str
     step_type: str
-    # ... existing fields ...
-    verify_fn: Callable | None = None    # was postcondition_fn; returns Verification
-    # verify_fn (old) was unused — no rename needed
+    script_fn: Callable | None = None
+    skip_fn: Callable | None = None
+    action_context_fn: Callable | None = None
+    verify_fn: Callable | None = None        # unchanged — judgment response validation
+    outcome_fn: Callable | None = None       # NEW — replaces postcondition_fn; returns Verification
+    # postcondition_fn removed
+    from_state: str | None = None
+    to_state: str | None = None
+    event: str | None = None
+    modes: frozenset[PipelineMode] = ALL_MODES
+    dispositions: frozenset[RepoDisposition] = ALL_DISPOSITIONS
+    disposition_repo_types: frozenset[RepoType] = ALL_REPO_TYPES
+    requires: tuple[str, ...] = ()
+    staleness_relevant: bool = True
 ```
 
 ### run_loop() three-way dispatch
 
 The orchestrator engine's mechanical step handling changes from
-binary (bool) to three-way (VerifyResult):
+binary (bool) to three-way (VerifyResult).
+
+**Re-execute vs re-verify:** Some steps are idempotent (rebase,
+push) — re-execution can resolve an UNKNOWN. Others are
+non-idempotent (land) — re-execution is dangerous and only
+re-verification makes sense. A new `idempotent` flag on `StepDef`
+(default `True`) controls the retry strategy:
+
+```python
+@dataclass
+class StepDef:
+    # ... existing fields ...
+    idempotent: bool = True  # False for steps like "land" where re-execution is dangerous
+```
 
 ```python
 # Pre-execution check
-if step.verify_fn:
-    v = step.verify_fn(ctx)
+if step.outcome_fn:
+    v = step.outcome_fn(ctx)
     if v.result == VerifyResult.PASS:
         _mark_done(ctx, step.name)
         ctx.steps_executed.append(f"{step.name}:verify_skip")
@@ -354,16 +448,20 @@ if step.verify_fn:
         # Proceed to execution — the step needs to run
         pass
     if v.result == VerifyResult.UNKNOWN:
-        # Retry with backoff, then escalate
         attempt += 1
         if attempt >= MAX_MECHANICAL_RETRIES:
             return _yield_unknown_escalation(step.name, v)
-        # Continue to execution — may resolve the UNKNOWN
+        if not step.idempotent:
+            # Non-idempotent: yield for re-verification only, no re-execution
+            return _make_unknown_retry_result(step.name, attempt, v)
+        # Idempotent: continue to execution — may resolve the UNKNOWN
         pass
 
+# ... execute step ...
+
 # Post-execution verify
-if step.verify_fn:
-    v = step.verify_fn(ctx)
+if step.outcome_fn:
+    v = step.outcome_fn(ctx)
     if v.result == VerifyResult.PASS:
         _mark_done(ctx, step.name)
         continue
@@ -375,6 +473,41 @@ if step.verify_fn:
             return _yield_unknown_escalation(step.name, v)
         return _make_unknown_retry_result(step.name, attempt, v)
 ```
+
+For non-idempotent steps returning UNKNOWN post-execution, the engine
+returns `_make_unknown_retry_result` which causes the orchestrator to
+re-invoke `run_loop()`. On re-entry, the pre-execution check re-runs
+`outcome_fn` — if evidence has propagated (e.g., push reached remote),
+it returns PASS and the step is marked done without re-execution.
+
+### Per-repo fan-out
+
+For `PER_REPO_EXECUTE_STEPS` (rebase, land), the orchestrator
+iterates repos and calls `outcome_fn` per-repo. The existing
+`per_repo_mechanical` callback in `run_loop()` already handles
+this fan-out — it sets `ctx.current_repo_project` temporarily
+and tracks per-repo progress with composite keys
+(`land:soredium=done`).
+
+With `outcome_fn`, the per-repo path works as follows:
+
+1. `per_repo_mechanical` iterates repos with matching disposition
+2. For each repo, it sets `ctx.current_repo_project` and calls
+   `step.outcome_fn(ctx)` — the lambda bound at step definition
+   reads `ctx.current_repo_project` to resolve the repo
+3. Per-repo results are tracked individually:
+   - PASS → `_mark_done(ctx, f"{step.name}:{repo_name}")`
+   - FAIL → return error for this specific repo
+   - UNKNOWN → retry this repo only (other repos' results are
+     preserved in composite progress keys)
+
+Partial completion is natural: repo A may be PASS while repo B
+is UNKNOWN. The composite progress (`land:repoA=done`) ensures
+only unfinished repos retry on the next loop iteration.
+
+The `Verification.repo` field identifies which repo the result
+belongs to, enabling per-repo diagnostics in escalation and
+close-verify reporting.
 
 ### UNKNOWN escalation
 
@@ -434,7 +567,7 @@ shippable.
 
 - Implement all `verify_*()` functions in `verification/outcomes.py`
 - Each function checks git state first, falls back to stamp files
-  as secondary evidence (D4)
+  as secondary evidence (this spec's D4: dual-read stamp migration)
 - Tests: unit tests per function covering PASS, FAIL, UNKNOWN paths
 - **First win target:** `verify_content_landed` — replaces the
   highest-failure postcondition (#436, #386, #388)
@@ -443,8 +576,7 @@ shippable.
 
 - Wire `verify_content_landed` into the step that uses
   `content_landed_postcondition`
-- Repurpose `verify_fn` on `StepDef` (currently unused) for
-  `Verification`-returning postconditions; remove `postcondition_fn`
+- Add `outcome_fn` to `StepDef`, remove `postcondition_fn`
 - Update `run_loop()` for three-way dispatch
 - Update `close_verify.py` to use `verify_content_landed` via adapter
 - Remove `content_landed_postcondition` from `step_postconditions.py`
@@ -479,13 +611,44 @@ time — no check exists in two places.
 
 ### Step 3f: Remove stamp files
 
-After all consumers migrate:
-1. Stop writing `.artifacts-promoted` in `artifact_promote.py`
-2. Stop writing `.phase-a-complete` in slot close flow
-3. Remove stamp-file fallback reads from `verify_*()` functions
-4. Remove `verify_stamp.py` (standalone stamp verifier)
-5. Clean up `LIFECYCLE_FILES` set in `close_checks.py`
-6. Tests: verify all tests pass without stamp files
+After all consumers migrate. Full consumer enumeration:
+
+**`.artifacts-promoted` consumers:**
+- `close_artifacts.py:88-89` — writes the stamp (primary writer)
+- `land_branch.py:102-107` — reads stamp
+- `work_end_execute.py:201` — reads stamp
+- `corruption.py:180-181` — checks for stamp
+- `branch_cleanup.py:100` — lists as scaffold file
+- `land_flow.py:102` — lists as cleanup file
+- `conflict_resolution.py:11` — lists as lifecycle file
+- `step_postconditions.py` — reads in `promote_postcondition`
+- `close_checks.py` — reads in `check_artifacts_promoted`
+
+**`.landed` consumers:**
+- `slot_io.py:145,273` — reads and writes `.landed`
+- `work_end_orchestrator.py:422-423` — writes `.landed` content
+- `ctx.py:59` — checks existence for slot detection
+- `step_postconditions.py` — reads in `landed_marker_postcondition`
+- `close_checks.py` — reads in `check_landed_marker`,
+  `check_canonical_sync`, `check_landed_completeness`
+
+**`.phase-a-complete` consumers:**
+- `work_end_execute.py:384` — writes the marker
+- `step_postconditions.py` — reads in `write_marker_postcondition`
+- `close_checks.py` — reads in `check_slot_marker`
+
+**Removal steps:**
+1. Stop writing `.artifacts-promoted` in `close_artifacts.py`
+2. Stop writing `.phase-a-complete` in `work_end_execute.py`
+3. Stop writing `.landed` in `slot_io.py` and
+   `work_end_orchestrator.py` (migrate to event log)
+4. Remove stamp-file fallback reads from `verify_*()` functions
+5. Remove `verify_stamp.py` (standalone stamp verifier)
+6. Clean up `LIFECYCLE_FILES` set in `close_checks.py`
+7. Update non-verification consumers (`corruption.py`,
+   `branch_cleanup.py`, `land_flow.py`, `conflict_resolution.py`,
+   `ctx.py`) to use event log or remove references
+8. Tests: verify all tests pass without stamp files
 
 ## Scope Boundaries
 
@@ -523,7 +686,7 @@ After all consumers migrate:
 
 - Parent spec: `specs/issue-443-robust-pipeline-architecture/2026-10-12-robust-pipeline-architecture-design.md` § Phase 3
 - Parent decisions: D5 (verification model), D2 (single lifecycle), D3 (events primary)
-- `verification/step_postconditions.py` — 15 bool postconditions being replaced
+- `verification/step_postconditions.py` — 14 bool postconditions (12 active, 2 dead code) being replaced
 - `verification/close_checks.py` — Finding-based checks being replaced
 - `verification/close_verify.py` — composed reporter being adapted
 - `project/orchestrator_engine.py:265-329` — current binary postcondition dispatch

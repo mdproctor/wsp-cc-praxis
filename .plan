@@ -22,6 +22,6 @@ flyway-next-v: unknown
   - [x] Batch 3: Remaining verify
     - [x] Task 5: rebase+stamped+promoted
     - [x] Task 6: All remaining functions+wiring
-  - [ ] Batch 4: Close-verify
-    - [ ] Task 7: Adapt close_verify.py
-    - [ ] Task 8: Remove deprecated code
+  - [x] Batch 4: Close-verify
+    - [x] Task 7: Adapt close_verify.py
+    - [x] Task 8: Remove deprecated code

@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-455-remove-skip-step-fallback
-state: active
+state: closing:review
 project-sha: 
 date: 
 issue-repo: Hortora/soredium
@@ -11,6 +11,7 @@ design-repo:
 design-section-hashes: 
 flyway-next-v: 
 
+evidence-era: true
 ## Queue
 - [x] hortora/soredium#455 — Issue #455
 - [x] hortora/soredium#456 — Work-end fails to checkout main after landing content

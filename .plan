@@ -1,0 +1,17 @@
+# Work Plan — Work Plan —
+
+## State
+branch: 
+state: active
+project-sha: 
+date: 
+issue-repo: Hortora/soredium
+covers: 455
+design-repo: 
+design-section-hashes: 
+flyway-next-v: 
+
+## Queue
+- [ ] hortora/soredium#455 — Issue #455 ← active
+- [ ] hortora/soredium#456 — Work-end fails to checkout main after landing content
+- [ ] hortora/soredium#457 — Differentiate per-step response schemas from DEFAULT_JUDGMENT_SCHEMA

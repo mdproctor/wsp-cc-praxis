@@ -12,6 +12,6 @@ design-section-hashes:
 flyway-next-v: 
 
 ## Queue
-- [ ] hortora/soredium#455 — Issue #455 ← active
-- [ ] hortora/soredium#456 — Work-end fails to checkout main after landing content
-- [ ] hortora/soredium#457 — Differentiate per-step response schemas from DEFAULT_JUDGMENT_SCHEMA
+- [x] hortora/soredium#455 — Issue #455
+- [x] hortora/soredium#456 — Work-end fails to checkout main after landing content
+- [x] hortora/soredium#457 — Differentiate per-step response schemas from DEFAULT_JUDGMENT_SCHEMA

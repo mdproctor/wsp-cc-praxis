@@ -13,14 +13,14 @@ flyway-next-v:
 
 ## Queue
 - [ ] hortora/soredium#451 — Issue #451 ← active
-  - [ ] Batch 1: Foundation
-    - [ ] Task 1: Create judgment.py with core types
-    - [ ] Task 2: Migrate StepDef to StepType enum
-  - [ ] Batch 2: Protocol
-    - [ ] Task 3: Update run_loop to emit JudgmentRequest
-    - [ ] Task 4: Response parsing and schema validation
-  - [ ] Batch 3: Wiring
-    - [ ] Task 5: Add handler and schema metadata to steps
-    - [ ] Task 6: Update SKILL.md dispatch tables
-  - [ ] Batch 4: Cleanup
-    - [ ] Task 7: Final validation and dead code removal
+  - [x] Batch 1: Foundation
+    - [x] Task 1: Create judgment.py with core types
+    - [x] Task 2: Migrate StepDef to StepType enum
+  - [x] Batch 2: Protocol
+    - [x] Task 3: Update run_loop to emit JudgmentRequest
+    - [x] Task 4: Response parsing and schema validation
+  - [x] Batch 3: Wiring
+    - [x] Task 5: Add handler and schema metadata to steps
+    - [x] Task 6: Update SKILL.md dispatch tables
+  - [x] Batch 4: Cleanup
+    - [x] Task 7: Final validation and dead code removal

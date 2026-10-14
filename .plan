@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-451-typed-llm-interface
-state: active
+state: closing:review
 project-sha: 
 date: 
 issue-repo: Hortora/soredium
@@ -11,6 +11,7 @@ design-repo:
 design-section-hashes: 
 flyway-next-v: 
 
+evidence-era: true
 ## Queue
 - [ ] hortora/soredium#451 — Issue #451 ← active
   - [x] Batch 1: Foundation

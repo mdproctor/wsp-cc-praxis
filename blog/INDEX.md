@@ -28,3 +28,4 @@
 | [2026-09-25-mdp01-the-postcondition-that-never-lies.md](2026-09-25-mdp01-the-postcondition-that-never-lies.md) | 2026-09-25 | Check-execute-verify postconditions make the work-end pipeline crash-safe and convergent |
 | [2026-09-28-mdp01-pipeline-engine.md](2026-09-28-mdp01-pipeline-engine.md) | 2026-09-28 | Pipeline engine replaces LLM-orchestrated lifecycle with Python-driven step lists |
 | [2026-10-12-mdp01-slot-aware-work-end.md](2026-10-12-mdp01-slot-aware-work-end.md) | 2026-10-12 | Four slot-aware work-end bugs fixed: archive safety, sweep scoping, cross-session verify, forcing function data source |
+| [2026-10-14-mdp01-typing-the-llm-interface.md](2026-10-14-mdp01-typing-the-llm-interface.md) | 2026-10-14 | Typing the orchestrator judgment protocol — JudgmentRequest/Response dataclasses, StepType enum, schema validation across 39 steps |

@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-454-stale-progress-counters
-state: active
+state: closing:review
 project-sha: 
 date: 
 issue-repo: Hortora/soredium
@@ -11,5 +11,6 @@ design-repo:
 design-section-hashes: 
 flyway-next-v: 
 
+evidence-era: true
 ## Queue
 - [ ] hortora/soredium#454 — Issue #454 ← active

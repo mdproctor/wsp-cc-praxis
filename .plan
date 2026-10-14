@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-454-stale-progress-counters
-state: closing:verified
+state: closing:promoted
 project-sha: 
 date: 
 issue-repo: Hortora/soredium

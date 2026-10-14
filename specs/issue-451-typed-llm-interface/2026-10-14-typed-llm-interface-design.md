@@ -201,6 +201,10 @@ Full conversion in one branch. No dual-protocol maintenance period.
 7. Update SKILL.md dispatch tables
 8. Remove old `skip_step` arg handling, old `_yield_user_input` separate path
 
+## Risks
+
+**Evidence encoding:** `evidence=` as a JSON-encoded CLI arg may hit shell escaping issues with complex dicts. Mitigation: the orchestrator writes evidence to the progress file (`{step}_evidence={json}`) and reads it back on re-entry, same pattern as `_landed_sha:` keys. The CLI arg is best-effort for simple cases.
+
 ## What Does NOT Change
 
 - Handler `.md` files — content stays the same

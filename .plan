@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-459-lifecycle-gaps
-state: active
+state: closing:review
 project-sha: none
 date: 2026-10-15
 issue-repo: Hortora/soredium
@@ -11,5 +11,6 @@ design-repo: project
 design-section-hashes: 
 flyway-next-v: unknown
 
+evidence-era: true
 ## Queue
 (empty — issues created during design)

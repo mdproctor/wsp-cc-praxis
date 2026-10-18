@@ -5,8 +5,8 @@ branch: issue-461-closing-stamped-corruption
 state: active
 project-sha: none
 date: 2026-10-18
-issue-repo: 
-covers: 
+issue-repo: Hortora/soredium
+covers: 461
 design-repo: project
 design-section-hashes: 
 flyway-next-v: unknown

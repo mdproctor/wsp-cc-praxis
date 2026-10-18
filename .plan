@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-461-closing-stamped-corruption
-state: closing:verified
+state: closing:promoted
 project-sha: none
 date: 2026-10-18
 issue-repo: Hortora/soredium

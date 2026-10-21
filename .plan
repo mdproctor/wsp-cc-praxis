@@ -1,0 +1,6 @@
+branch: issue-468-land-verification-fix
+state: closing:promoted
+covers: Hortora/soredium#468
+---
+- [x] Hortora/soredium#468 work-end orchestrator land step fails to verify its own merge
+evidence-era: true

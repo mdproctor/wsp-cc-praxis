@@ -1,5 +1,6 @@
 branch: issue-469-land-state-tracking
-state: active
+state: closing:review
 covers: Hortora/soredium#469
 ---
 - [x] Hortora/soredium#469 work-end orchestrator loses state during land
+evidence-era: true

@@ -1,6 +1,0 @@
-branch: issue-471-scaffold-commit-fix
-state: closing:promoted
-covers: Hortora/soredium#471
----
-- [x] Hortora/soredium#471 work.py commit_scaffold step fails silently
-evidence-era: true

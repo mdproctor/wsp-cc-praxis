@@ -1,5 +1,5 @@
 branch: issue-471-scaffold-commit-fix
-state: closing:review
+state: closing:verified
 covers: Hortora/soredium#471
 ---
 - [x] Hortora/soredium#471 work.py commit_scaffold step fails silently

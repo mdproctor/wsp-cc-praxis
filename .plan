@@ -1,0 +1,9 @@
+branch: main
+state: active
+covers: Hortora/soredium#448,Hortora/soredium#446,Hortora/soredium#447,Hortora/soredium#452,Hortora/soredium#444
+---
+- [ ] Hortora/soredium#448 Replace _check_cleanup_stack stub with real evidence check
+- [ ] Hortora/soredium#446 Register test_plan_bypass_enforcement.py in validation framework
+- [ ] Hortora/soredium#447 slot_manager archive-slot: --force must not bypass active PID guard
+- [ ] Hortora/soredium#452 Blog publish must verify ALL routing destinations
+- [ ] Hortora/soredium#444 work-end/wrap must sweep ALL unpublished blogs

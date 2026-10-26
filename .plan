@@ -2,8 +2,9 @@
 
 ## State
 branch: fix/issue-475-s3-parse-covers-qualified
-state: active
+state: closing:review
 covers: Hortora/soredium#475
 
+evidence-era: true
 ## Queue
 - [ ] hortora/soredium#475 — S3 false positive on qualified covers refs

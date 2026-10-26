@@ -2,7 +2,7 @@
 
 ## State
 branch: fix/issue-475-s3-parse-covers-qualified
-state: closing:review
+state: closing:verified
 covers: Hortora/soredium#475
 
 evidence-era: true

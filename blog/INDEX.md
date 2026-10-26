@@ -30,3 +30,4 @@
 | [2026-10-12-mdp01-slot-aware-work-end.md](2026-10-12-mdp01-slot-aware-work-end.md) | 2026-10-12 | Four slot-aware work-end bugs fixed: archive safety, sweep scoping, cross-session verify, forcing function data source |
 | [2026-10-14-mdp01-typing-the-llm-interface.md](2026-10-14-mdp01-typing-the-llm-interface.md) | 2026-10-14 | Typing the orchestrator judgment protocol — JudgmentRequest/Response dataclasses, StepType enum, schema validation across 39 steps |
 | [2026-10-14-mdp02-typed-interface-cleanup.md](2026-10-14-mdp02-typed-interface-cleanup.md) | 2026-10-14 | Post-migration cleanup: removing skip_step= fallback, hardening checkout_main against rebase failures, differentiating per-step response schemas |
+| [2026-10-26-mdp01-vacuous-truth-bug.md](2026-10-26-mdp01-vacuous-truth-bug.md) | 2026-10-26 | Vacuous truth bug in corruption detector: empty parse result made all_closed vacuously true |

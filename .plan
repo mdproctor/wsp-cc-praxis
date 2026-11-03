@@ -13,10 +13,10 @@ flyway-next-v:
 
 ## Queue
 - [ ] hortora/soredium#484 — Issue #484 ← active
-  - [ ] Batch 1: Foundation
-    - [ ] Task 1: extract_image_refs and refactored check_broken_images
-  - [ ] Batch 2: Co-promotion
-    - [ ] Task 2: Image co-promotion in artifact_promote
-  - [ ] Batch 3: Verification
-    - [ ] Task 3: check_promoted_images in close_verify
-    - [ ] Task 4: Update publish-blog SKILL.md
+  - [x] Batch 1: Foundation
+    - [x] Task 1: extract_image_refs and refactored check_broken_images
+  - [x] Batch 2: Co-promotion
+    - [x] Task 2: Image co-promotion in artifact_promote
+  - [x] Batch 3: Verification
+    - [x] Task 3: check_promoted_images in close_verify
+    - [x] Task 4: Update publish-blog SKILL.md

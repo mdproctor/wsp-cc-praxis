@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-488-plan-batch-detection
-state: closing:review
+state: closing:verified
 issue-repo: Hortora/soredium
 covers: Hortora/soredium#488
 

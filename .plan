@@ -1,23 +1,11 @@
-# Work Plan — issue-484-verify-image-refs-before-stamp
+# Work Plan — issue-488-plan-batch-detection
 
 ## State
-branch: issue-484-verify-image-refs-before-stamp
-state: closing:stamped
-project-sha: 
-date: 
+branch: issue-488-plan-batch-detection
+state: closing:review
 issue-repo: Hortora/soredium
-covers: 484
-design-repo: 
-design-section-hashes: 
-flyway-next-v: 
+covers: Hortora/soredium#488
 
 evidence-era: true
 ## Queue
-- [ ] hortora/soredium#484 — Issue #484 ← active
-  - [x] Batch 1: Foundation
-    - [x] Task 1: extract_image_refs and refactored check_broken_images
-  - [x] Batch 2: Co-promotion
-    - [x] Task 2: Image co-promotion in artifact_promote
-  - [x] Batch 3: Verification
-    - [x] Task 3: check_promoted_images in close_verify
-    - [x] Task 4: Update publish-blog SKILL.md
+- [ ] hortora/soredium#488 — ctx.py PLAN_BATCH empty when batch has unchecked tasks ← active

@@ -2,7 +2,7 @@
 
 ## State
 branch: issue-484-verify-image-refs-before-stamp
-state: closing:promoted
+state: closing:pushed
 project-sha: 
 date: 
 issue-repo: Hortora/soredium

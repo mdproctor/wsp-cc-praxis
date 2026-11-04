@@ -37,7 +37,7 @@ Six decisions captured in `decisions.md`:
 
 | # | Decision | Key consequence |
 |---|----------|----------------|
-| D1 | Strip to essential close ceremony | 53 steps → 5 steps |
+| D1 | Strip to essential close ceremony | 53 steps → 6 steps |
 | D2 | Separate queue from ceremony state | .plan split into .queue + ephemeral .close-state |
 | D3 | One ceremony, different inputs | 5 modes → resolve phase produces CloseTarget list |
 | D4 | Fully mechanical execution | No LLM loop, no progress file, no reconciliation |
@@ -73,7 +73,8 @@ The LLM runs judgment work through normal skill invocations — not through
 an orchestrator pipeline. Each item writes to git independently:
 
 1. **Code review** — `code-review` / `branch-audit` skill
-2. **Squash strategy** — propose commit consolidation
+2. **Squash plan** — decide on squash commit message and strategy (the actual
+   squash happens in the ceremony's `land` step via `squash_merge`)
 3. **Content creation** — `write-content` skill for blog/diary
 4. **Artifact promotion** — copy specs, ADRs from workspace to project repo
 5. **Uncommitted changes** — commit or stash outstanding work
@@ -83,9 +84,11 @@ are not orchestrator steps. They do not share mutable state with each other
 or with the close ceremony.
 
 The work-end SKILL.md presents a pre-close checklist. The user (or the LLM
-following the checklist) completes items and confirms readiness. The ceremony
-reads only committed git state — anything not committed before ceremony start
-is not included.
+following the checklist) completes items and confirms readiness. **Pre-close
+is advisory, not enforced** — the user can skip it and run the ceremony
+directly. The ceremony reads only committed git state; anything not committed
+before ceremony start is not included. The risk of skipping pre-close is
+landing without review or blog, not data corruption.
 
 **What disappears:**
 - `forcing_function` step — pre-close items don't block the ceremony
@@ -108,23 +111,35 @@ Discover repos and classify which have the branch with commits.
 ```python
 @dataclass(frozen=True)
 class CloseTarget:
-    repo: Path
-    branch: str
+    repo: Path           # the repo to land
+    branch: str          # the feature branch name
+    transport: str       # "direct" or "two-hop" (slot clones use canonical as relay)
+    canonical: Path | None  # canonical repo path (two-hop only)
+    is_workspace: bool   # workspace repos have design artifacts, not source code
 
 def resolve(workspace: Path) -> list[CloseTarget]:
     queue = read_queue(workspace)
     branch = queue.branch
     targets = []
-    for repo in discover_repos(workspace):
+    # Use slot topology if in a slot, otherwise project + workspace
+    for repo, transport, canonical in discover_repo_topology(workspace):
         if branch_exists(repo, branch) and has_commits(repo, branch):
-            targets.append(CloseTarget(repo=repo, branch=branch))
+            is_ws = (repo == workspace)
+            targets.append(CloseTarget(
+                repo=repo, branch=branch,
+                transport=transport, canonical=canonical,
+                is_workspace=is_ws))
     return targets
 ```
 
-Replaces: `determine_pipeline_mode()` (5 modes), `classify_repos()` (5
-dispositions), `OrchestratorContext` construction (~180 lines). A slot with
-3 repos produces 3 targets. A single-repo branch produces 1. The ceremony
-doesn't know or care about the difference.
+`discover_repo_topology()` reads `.slot` files for slot topology (clone →
+canonical → remote) or falls back to project + workspace for non-slot branches.
+Replaces both `classify_repos()` and the slot-specific repo discovery that
+currently lives across `repo_state.py`, `slot_io.py`, and `land_flow.py`.
+
+A slot with 3 repos produces 3 targets. A single-repo branch produces 1 (or 2
+with workspace). The ceremony doesn't know or care about the difference —
+`transport` tells `land()` how to push.
 
 #### Step 2: Pre-flight Checks
 
@@ -151,21 +166,42 @@ checks refuse to run rather than trying to recover after the fact.
 Squash-merge branch to main for each target:
 
 ```python
+LIFECYCLE_FILES = [
+    ".close-state", ".execute-progress", ".land-ledger.jsonl",
+    ".artifacts-promoted", ".squash-plan",
+]
+
 def land(target: CloseTarget) -> str:
+    # Idempotency: if branch content already on main, skip
+    if branch_already_landed(target.repo, target.branch):
+        return find_landed_sha(target.repo, target.branch)
+
+    # Strip lifecycle files from branch before squashing
+    strip_lifecycle_files(target.repo, target.branch, LIFECYCLE_FILES)
+
     checkout(target.repo, "main")
     pull(target.repo)
     sha = squash_merge(target.repo, target.branch)
-    push(target.repo)
+
+    # Two-hop: push to canonical first, then canonical pushes to remote
+    # Direct: push to remote
+    if target.transport == "two-hop":
+        push_two_hop(target.repo, target.canonical)
+    else:
+        push(target.repo)
     return sha
 ```
 
 If any repo fails to land, the ceremony stops with a structured error naming
 the repo and failure. No retry, no reconciliation. The user fixes and re-runs.
 
-**Idempotency:** If re-running after a partial failure, `land()` checks
-whether the branch content is already on main (tree comparison). If so, it
-skips the merge and returns the existing SHA. This handles the "killed after
-push, before stamp" case without needing a progress file.
+**Lifecycle file stripping:** Branch-local files (`.close-state`,
+`.execute-progress`, `.land-ledger.jsonl`, `.artifacts-promoted`, etc.) are
+removed from the branch before squashing so they don't land on main.
+
+**Two-hop transport:** Slot clones don't have direct remote access. They push
+to a canonical repo, which then pushes to origin. `push_two_hop()` handles
+this relay. Non-slot repos use direct push.
 
 #### Step 4: Stamp (per target)
 
@@ -273,9 +309,13 @@ cycles. Never touched by close ceremony except the `advance` step.
 - [ ] Hortora/soredium#383: Dashboard metrics
 
 ## State
+branch: issue-382-retry-logic
 issue-repo: Hortora/soredium
 status: active
 ```
+
+The `branch:` field tracks the current feature branch. It changes when a new
+queue item is activated (each item may use a different branch name).
 
 **Status values:** `active` | `paused` | `drained` | `idle`
 

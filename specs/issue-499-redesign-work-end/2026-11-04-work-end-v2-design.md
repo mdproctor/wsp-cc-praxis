@@ -431,15 +431,27 @@ the issue being closed). On re-run after crash, if `advance()` already
 completed, the active item will be the *next* issue (not the one being closed),
 so the guard prevents double-advancing.
 
-**Ordering:** Advance runs AFTER `checkout_all()` — the workspace is on the
-base branch, so `.queue` on the base branch (merged there by `land()`) is
-what gets updated. The advancement is committed and pushed immediately,
-ensuring it survives session termination or working directory reset.
+**Dual-path ordering:** The ceremony handles slot and non-slot workspaces
+differently because `.queue` accessibility varies by transport mode:
 
-**Slot workspaces (stamp-only):** `.queue` may not exist on the base branch
-because the workspace was never merged (stamp-only). In this case, `advance()`
-reads nothing and is a no-op. The slot root (elevated in Step 5) holds the
-source-of-truth queue for the next work-start.
+- **Non-slot (DIRECT workspace):** `land()` merged the workspace to the base
+  branch, so `.queue` exists on base. The ceremony checks out the base branch
+  first, then advances `.queue` there, then commits and pushes. The queue
+  change is persisted in git.
+
+- **Slot (TWO_HOP workspace):** The workspace was stamp-only — never merged
+  to base. `.queue` does NOT exist on the base branch. The ceremony advances
+  `.queue` while still on the feature branch (where it exists), then elevates
+  the ADVANCED queue to the slot root, then checks out the base branch. The
+  slot root is outside git and persists on disk across sessions. No
+  `commit_and_push` is needed — the next work-start reads from the slot root.
+
+**Crash safety (slot path):** `advance()` writes `.queue` to disk on the
+feature branch (uncommitted). If the session crashes before `elevate_queue()`,
+the on-disk `.queue` has the advanced content. On re-run, `advance()`'s
+expected-issue guard detects that the active item has changed (advance already
+ran) and is a no-op. `elevate_queue()` copies the (now-advanced) on-disk
+`.queue` to the slot root. The advance survives the crash.
 
 This is the **only** function that writes to `.queue` during close. No other
 step reads, writes, or deletes the queue file.
@@ -482,21 +494,27 @@ def close(workspace: Path) -> CloseResult:
         for target, sha in landed.items():
             stamp(target, sha)
 
-        # Elevate queue to slot root BEFORE checkout (while .queue is
-        # accessible on the feature branch). For non-slot this is a no-op.
-        elevate_queue(workspace, detect_slot_root(workspace))
+        # Queue advancement: slot and non-slot paths differ because
+        # .queue accessibility depends on the workspace transport mode.
+        slot_root = detect_slot_root(workspace)
 
-        # Checkout base branch — workspace now on base
-        checkout_all(targets)
-
-        # Advance queue on base branch and persist the change.
-        # For non-slot: .queue exists on base (merged by land()). Advance
-        # writes it, commit_and_push_queue persists it.
-        # For slot (stamp-only workspace): .queue may not exist on base.
-        # advance() is best-effort — if .queue doesn't exist, the slot
-        # root (elevated above) is the source of truth.
-        next_item = advance(workspace, closing_issue)
-        commit_and_push_queue(workspace, closing_issue)
+        if slot_root:
+            # SLOT PATH: advance while on feature branch (where .queue
+            # exists — stamp-only workspace was never merged to base).
+            # Then elevate the ADVANCED queue to slot root.
+            next_item = advance(workspace, closing_issue)
+            elevate_queue(workspace, slot_root)
+            checkout_all(targets)
+            # No commit_and_push needed — slot root is outside git,
+            # persists on disk across sessions. The next work-start
+            # reads from slot root.
+        else:
+            # NON-SLOT PATH: checkout base first (where .queue exists,
+            # merged there by land()). Advance on base, then commit
+            # and push to persist the change.
+            checkout_all(targets)
+            next_item = advance(workspace, closing_issue)
+            commit_and_push_queue(workspace, closing_issue)
 
         remove_close_state(workspace)
         return CloseResult(

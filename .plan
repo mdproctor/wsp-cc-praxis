@@ -1,0 +1,7 @@
+- [ ] Hortora/soredium#499: Redesign work-end: atomic ceremony with separated queue
+
+## State
+branch: issue-499-redesign-work-end
+state: active
+issue-repo: Hortora/soredium
+covers: Hortora/soredium#499

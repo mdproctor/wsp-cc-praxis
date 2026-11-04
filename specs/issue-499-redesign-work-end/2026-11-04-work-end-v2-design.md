@@ -239,14 +239,18 @@ def land(target: CloseTarget) -> str:
         # Workspace repos: strip lifecycle files, then non-ff merge (ADR-0016).
         # Strip is pre-merge for workspace because lifecycle files must not
         # reach base branch (ADR-0016: lifecycle on workspace main → corruption).
+        # No rebase for workspace — non-linear history is acceptable for
+        # methodology artifacts.
         strip_lifecycle_files(target.repo, target.branch, LIFECYCLE_FILES)
         sha = merge_no_ff(target.repo, target.branch)
     else:
-        # Project repos: squash-merge.
-        # Mechanics: on the branch, soft-reset to merge-base and recommit
-        # with the squash plan message. Then checkout base and ff-merge.
-        # This preserves branch-as-ancestor (ancestry check works for
-        # idempotency) and produces clean one-commit-per-issue history.
+        # Project repos: rebase onto base, then squash-merge.
+        # Rebase brings the branch onto the base branch tip so that
+        # ff-merge is possible after squashing. Without rebase, the
+        # branch diverges from base whenever other work has landed,
+        # and git merge --ff-only fails.
+        rebase_onto_base(target.repo, target.branch, target.base_branch,
+                         target.push_target)
         sha = squash_merge(target.repo, target.branch,
                            target.base_branch, squash_msg)
 
@@ -269,13 +273,27 @@ def land(target: CloseTarget) -> str:
     return sha
 ```
 
-**`squash_merge()` semantics:** On the feature branch, soft-reset to the
-merge-base with the base branch and recommit all changes as a single commit
-using the squash plan message. Then checkout the base branch and `git merge
---ff-only` the feature branch. This produces a clean single-commit on the
-base branch while keeping the branch tip as an ancestor of the base (so
-`branch_already_landed()` can use `merge-base --is-ancestor` for idempotency).
-If no squash plan exists, the commit messages are concatenated.
+**`rebase_onto_base()` semantics:** Checkout the feature branch, fetch the
+remote base branch, and rebase onto it. This brings the branch onto the base
+branch tip so that the subsequent ff-merge can succeed. Includes:
+- **Skip check:** If the remote base is already an ancestor of HEAD, the
+  branch is already on top — skip rebase (avoids re-rebasing after a prior
+  squash step, per #486).
+- **3 retry attempts:** Rebase can fail due to conflicts. On each failure,
+  `git rebase --abort` and retry. After 3 failures, record the conflict
+  (repo, branch, commit count, error) and stop the ceremony.
+- **Workspace skip:** Workspace repos are never rebased (ADR-0016) — they
+  use non-ff merge instead.
+
+**`squash_merge()` semantics:** After rebase, the branch is on top of the
+base branch tip. Soft-reset to the base branch tip (which is now the
+merge-base, since rebase made it so) and recommit all changes as a single
+commit using the squash plan message. Then checkout the base branch and
+`git merge --ff-only` the feature branch. This produces a clean
+single-commit on the base branch while keeping the branch tip as an ancestor
+of the base (so `branch_already_landed()` can use `merge-base --is-ancestor`
+for idempotency). If no squash plan exists, the commit messages are
+concatenated.
 
 **`branch_already_landed()` idempotency:** Two detection methods: (a) branch
 HEAD is an ancestor of the base branch (ff-merge or squash-then-ff case), and
@@ -341,9 +359,42 @@ prefix `"chore: branch closed"`), skip.
 observability (used by `work_progress.py` and the TUI). Non-fatal if worklog
 is unavailable.
 
-#### Step 5: Advance Queue
+#### Step 5: Elevate Queue (slots only)
 
-Mark the active item done, activate the next:
+For slot workspaces, elevate `.queue` to the slot root before checking out
+the base branch. The `.queue` lives on the feature branch; after checkout,
+it would be replaced by whatever is on the base branch. Must run while
+still on the feature branch.
+
+```python
+def elevate_queue(workspace: Path, slot_root: Path | None):
+    if not slot_root:
+        return  # non-slot: .queue lands on base via workspace merge
+    ws_queue = workspace / ".queue"
+    slot_queue = slot_root / ".queue"
+    if not ws_queue.exists():
+        return
+    # CRITICAL (#496): Never overwrite a slot-level queue that already
+    # exists. The slot queue is the epic queue (all issues in the slot).
+    # The workspace queue is a single-issue subset.
+    if slot_queue.exists():
+        return
+    copy(ws_queue, slot_queue)
+```
+
+#### Step 6: Checkout Base Branch
+
+Switch all repos to their base branch:
+
+```python
+def checkout_all(targets: list[CloseTarget]):
+    for target in targets:
+        checkout(target.repo, target.base_branch)
+```
+
+#### Step 7: Advance Queue and Persist
+
+Mark the active item done, activate the next, commit and push:
 
 ```python
 def advance(workspace: Path, expected_issue: str) -> QueueItem | None:
@@ -365,6 +416,14 @@ def advance(workspace: Path, expected_issue: str) -> QueueItem | None:
         queue.set_status("drained")
     write_queue(workspace, queue)
     return queue.active_item()
+
+def commit_and_push_queue(workspace: Path, closing_issue: str):
+    """Commit the queue advancement to git and push."""
+    if not (workspace / ".queue").exists():
+        return  # slot stamp-only workspace — .queue not on base branch
+    git_add(workspace, ".queue")
+    git_commit(workspace, f"chore: advance queue — completed {closing_issue}")
+    push(workspace)
 ```
 
 **`expected_issue`** comes from `.close-state` (written at ceremony start with
@@ -372,46 +431,30 @@ the issue being closed). On re-run after crash, if `advance()` already
 completed, the active item will be the *next* issue (not the one being closed),
 so the guard prevents double-advancing.
 
+**Ordering:** Advance runs AFTER `checkout_all()` — the workspace is on the
+base branch, so `.queue` on the base branch (merged there by `land()`) is
+what gets updated. The advancement is committed and pushed immediately,
+ensuring it survives session termination or working directory reset.
+
+**Slot workspaces (stamp-only):** `.queue` may not exist on the base branch
+because the workspace was never merged (stamp-only). In this case, `advance()`
+reads nothing and is a no-op. The slot root (elevated in Step 5) holds the
+source-of-truth queue for the next work-start.
+
 This is the **only** function that writes to `.queue` during close. No other
 step reads, writes, or deletes the queue file.
-
-#### Step 6: Elevate Queue (slots only)
-
-For slot workspaces, elevate `.queue` to the slot root before checking out
-the base branch. The `.queue` lives on the feature branch; after checkout,
-it would be replaced by whatever is on the base branch.
-
-```python
-def elevate_queue(workspace: Path, slot_root: Path | None):
-    if not slot_root:
-        return  # non-slot: .queue lands on base via workspace merge
-    ws_queue = workspace / ".queue"
-    slot_queue = slot_root / ".queue"
-    if not ws_queue.exists():
-        return
-    # CRITICAL (#496): Never overwrite a slot-level queue that already
-    # exists. The slot queue is the epic queue (all issues in the slot).
-    # The workspace queue is a single-issue subset.
-    if slot_queue.exists():
-        return
-    copy(ws_queue, slot_queue)
-```
-
-#### Step 7: Checkout Base Branch
-
-Switch all repos to their base branch:
-
-```python
-def checkout_all(targets: list[CloseTarget]):
-    for target in targets:
-        checkout(target.repo, target.base_branch)
-```
 
 #### Orchestration
 
 ```python
 def close(workspace: Path) -> CloseResult:
     targets = resolve(workspace)
+
+    # Guard: refuse to proceed with no targets
+    if not targets:
+        return CloseResult(success=False,
+            errors=["no targets found — branch may not exist or has no commits"])
+
     queue = read_queue(workspace)
     closing_issue = queue.active_item().ref
 
@@ -439,9 +482,21 @@ def close(workspace: Path) -> CloseResult:
         for target, sha in landed.items():
             stamp(target, sha)
 
-        next_item = advance(workspace, closing_issue)
+        # Elevate queue to slot root BEFORE checkout (while .queue is
+        # accessible on the feature branch). For non-slot this is a no-op.
         elevate_queue(workspace, detect_slot_root(workspace))
+
+        # Checkout base branch — workspace now on base
         checkout_all(targets)
+
+        # Advance queue on base branch and persist the change.
+        # For non-slot: .queue exists on base (merged by land()). Advance
+        # writes it, commit_and_push_queue persists it.
+        # For slot (stamp-only workspace): .queue may not exist on base.
+        # advance() is best-effort — if .queue doesn't exist, the slot
+        # root (elevated above) is the source of truth.
+        next_item = advance(workspace, closing_issue)
+        commit_and_push_queue(workspace, closing_issue)
 
         remove_close_state(workspace)
         return CloseResult(
@@ -461,6 +516,13 @@ Each step is idempotent. Re-running after a partial failure picks up where it
 left off by checking what's already done (landed? stamped? advanced?). The
 error handler ensures repos aren't left on mixed branches after a failure —
 `checkout_all()` runs before re-raising.
+
+**Queue persistence:** `commit_and_push_queue()` commits the `.queue` change
+to the base branch and pushes. This ensures queue advancement survives session
+termination, `git checkout .`, or `git reset`. Without this commit, the
+advancement would be an uncommitted modification lost on any working directory
+reset. Mirrors the current `fork_next_branch.py` behavior (line 106:
+`_git(workspace, "add", ".plan")` then `_git(workspace, "commit", ...)`).
 
 **Concurrent session protection:** `write_close_state()` checks for an
 existing `.close-state` file. If one exists with a different `session_id`,

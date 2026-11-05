@@ -1,0 +1,13 @@
+# Work Plan — Work Plan —
+
+## State
+branch: issue-499-redesign-work-end
+status: active
+issue-repo: Hortora/soredium
+covers: Hortora/soredium#499
+
+## Queue
+(empty — issues created during design)
+
+## Deferred
+- [ ] slot_lifecycle.py: replace land_flow import with close.py land (slot archival rewrite) (M / Med) []

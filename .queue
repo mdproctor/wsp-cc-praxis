@@ -1,10 +1,10 @@
 # Work Plan —
 
 ## State
-branch: issue-524-epic-tick
+branch: issue-515-remove-land-flow
 status: active
 issue-repo: Hortora/soredium
-covers: Hortora/soredium#524
+covers: Hortora/soredium#515
 
 ## Queue
 (empty — issues created during design)

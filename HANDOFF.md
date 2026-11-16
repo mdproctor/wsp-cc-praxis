@@ -49,10 +49,11 @@ session a hard stop in `archive_slot` that `--force` cannot bypass. Tests added 
 
 soredium `origin/main` is at `c528bad`. #516, #518, #519, #520 and #521 are closed.
 
-## #517 landed on local main, installed, NOT pushed (2026-11-16)
+## #517 landed, pushed and installed; issue closed (2026-11-16)
 
-Local `main` is 4 commits ahead of `origin/main` (tip `971b114`). Push awaits the
-user's go-ahead; then close #517 on GitHub.
+soredium `main` equals `origin/main` at `52cdfb7`. That tip is #522, committed
+directly onto `main` by another session sharing this checkout: it removed the 26
+stale tests left from the #499 rewrite.
 
 - A queue item can be **done but not closed**: `- [ ] ref — title ← done on <branch>`.
   `plan_manager.py mark-done <queue> [branch=]` writes it. Both queue modules keep it.
@@ -87,7 +88,7 @@ the work-end and slot tooling.
 
 ## Next action
 
-1. Push soredium `main` once approved; close #517.
+1. Check `tick_github` in the `next` pipeline against the done-not-closed state.
 2. #515 stage 1, below. **First item: delete `work-end/land_flow.py`** and replace
    its one caller, `work-slot/slot_lifecycle.py` (`build_slot_batch`, `land_batch`).
    It still hard-resets to the remote (lines near 430 and 570); evidence of lost
@@ -127,7 +128,7 @@ in #512 (stage 4). #512 has a review comment listing four gaps to settle first.
 
 ## State of the repos
 
-- **soredium:** on `main` at `971b114`, 4 commits ahead of `origin/main`, working tree clean.
+- **soredium:** on `main`, equal to `origin/main` at `52cdfb7`, working tree clean.
 - **This workspace:** on `main`. `.queue` has no active item and two deferred items.
 - **Installed skills:** synced to soredium local `main` at `971b114` on 2026-11-16.
 - **Deferred in `.queue`:** `pre_push_hook.py` still imports `lifecycle.read_state`;
@@ -137,9 +138,6 @@ in #512 (stage 4). #512 has a review comment listing four gaps to settle first.
 
 ## Known gaps
 
-- 26 tests fail on `main` and predate this work: `tests/test_close_report.py` (22),
-  `tests/test_close_verify.py`, `tests/test_close_checks_images.py`,
-  `tests/test_post_close_audit.py`. Not yet diagnosed.
 
 - `verification/outcomes.py` `verify_content_landed` compares source-extension files
   only (the #519 flaw). No callers found; delete or fix under #515.

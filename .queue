@@ -1,13 +1,14 @@
 # Work Plan —
 
 ## State
-branch: issue-515-remove-land-flow
+branch: issue-525-restore-adr-skill
 status: active
 issue-repo: Hortora/soredium
-covers: Hortora/soredium#515
+covers: hortora/soredium#525
 
 ## Queue
-(empty — issues created during design)
+- [ ] hortora/soredium#473 — Correct stale statements in CLAUDE.md ← done on issue-473-claude-md-staleness
+- [ ] hortora/soredium#525 — Restore the adr skill to its own directory ← active
 
 ## Deferred
 - [ ] slot_lifecycle.py: replace land_flow import with close.py land (slot archival rewrite) (M / Med) [] — folds into #515 stage 1

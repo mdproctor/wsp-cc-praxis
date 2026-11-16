@@ -128,7 +128,13 @@ in #512 (stage 4). #512 has a review comment listing four gaps to settle first.
 
 ## State of the repos
 
-- **soredium:** on `main`, equal to `origin/main` at `e83d075`, working tree clean.
+- **soredium:** on `main` at `d018592`, 4 commits ahead of `origin/main`, working tree
+  clean. Unpushed: #473 (CLAUDE.md staleness corrected; the issue itself is broader and
+  stays open), #526, #525. Installed with sync-local. Push awaits the user's go-ahead;
+  then close #525 and #526.
+- **Worktree:** this session works in `.worktrees/fable`. Detach it
+  (`git checkout --detach`) before each close: the ceremony checks the branch out in
+  the main checkout, and a branch cannot be checked out in two places.
 - **This workspace:** on `main`. `.queue` has no active item and two deferred items.
 - **Installed skills:** synced to soredium local `main` at `971b114` on 2026-11-16.
 - **Deferred in `.queue`:** `pre_push_hook.py` still imports `lifecycle.read_state`;
@@ -137,6 +143,17 @@ in #512 (stage 4). #512 has a review comment listing four gaps to settle first.
   both use the soredium checkout. Check `git log` before landing a branch.
 
 ## Known gaps
+
+- #526 (landed): the close ceremony rebased onto the remote base and ignored a local
+  base that had moved on, so any close with unpushed commits on local `main` failed
+  with "not a fast-forward". Found by the first real batch close; the fixture repos had
+  no remote. `tests/test_close_batch.py::TestLocalBaseAheadOfRemote` uses a real one.
+- #525 (landed): the `adr` skill's own files had been moved into `docs/adr/` by an
+  artifact migration in August, so the repo had no `adr` skill. Restored.
+- `plan_manager append` to a queue with no active item leaves nothing active; `reorder`
+  activates the first open item. Not changed.
+- `tests/test_marketplace.py::test_every_skill_in_marketplace` fails on `main`:
+  `branch-audit` and `doc-freshness` have no marketplace entry.
 
 - #524 (landed, pushed, closed): slots never ticked epic checkboxes on GitHub; both call
   sites passed three arguments to a two-argument function and the error was swallowed.

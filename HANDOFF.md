@@ -88,11 +88,11 @@ the work-end and slot tooling.
 
 ## Next action
 
-1. Check `tick_github` in the `next` pipeline against the done-not-closed state.
-2. #515 stage 1, below. **First item: delete `work-end/land_flow.py`** and replace
-   its one caller, `work-slot/slot_lifecycle.py` (`build_slot_batch`, `land_batch`).
-   It still hard-resets to the remote (lines near 430 and 570); evidence of lost
-   workspace commits is recorded on #515.
+1. Push soredium `main` once approved (2 commits: #524, #515 first step); close #524.
+2. #515 stage 1 from item 1 below (the shared sync module). `land_flow.py` is gone. **Done 2026-11-16:** `work-end/land_flow.py` deleted;
+   `merge-slot` is a stub (`ERROR=merge_slot_removed`). It could not run anyway:
+   nothing writes `.phase-a-complete` any more. The behaviours its tests pinned, to
+   be re-pinned on the sync module, are listed in a comment on #515.
 
 ### #515 stage 1
 
@@ -101,7 +101,7 @@ Stage 1, in order:
 1. One module that owns every push and every base-branch change (sync from remote,
    rebase, hold in canonical, publish, advance, mirror, branch backup), tested on a
    fixture of canonical, a slot clone and two bare remotes.
-2. Move the callers onto it: `close.py`, `land_flow.py`, `artifact_promote.py`,
+2. Move the callers onto it: `close.py`, `artifact_promote.py`,
    `pause_exec.py`, `branch_create.py`, `safe_commit.py`, `quick_fix.py`,
    `git-squash/branch_swap.py`, and the "always push from a slot" text in
    `git-commit/SKILL.md`.
@@ -109,7 +109,7 @@ Stage 1, in order:
 4. Replace `work pause`'s `pull --rebase`, which left the pages workspace stopped
    mid-rebase and cost four commits.
 5. Every script that runs `rebase --abort` first checks no rebase was already in
-   progress (`land_flow.py`, `branch_create.py`, `quick_fix.py`,
+   progress (`branch_create.py`, `quick_fix.py`,
    `git-squash/rebase_exec.py`; `close.py` is already guarded).
 6. Session start reports a repo that is mid-operation or on a detached HEAD.
 7. Commit-tier validator: no push, non-fast-forward merge or soft reset outside the
@@ -128,7 +128,7 @@ in #512 (stage 4). #512 has a review comment listing four gaps to settle first.
 
 ## State of the repos
 
-- **soredium:** on `main`, equal to `origin/main` at `52cdfb7`, working tree clean.
+- **soredium:** on `main` at `e83d075`, 2 commits ahead of `origin/main`, working tree clean.
 - **This workspace:** on `main`. `.queue` has no active item and two deferred items.
 - **Installed skills:** synced to soredium local `main` at `971b114` on 2026-11-16.
 - **Deferred in `.queue`:** `pre_push_hook.py` still imports `lifecycle.read_state`;
@@ -137,6 +137,13 @@ in #512 (stage 4). #512 has a review comment listing four gaps to settle first.
   both use the soredium checkout. Check `git log` before landing a branch.
 
 ## Known gaps
+
+- #524 (landed, not pushed): slots never ticked epic checkboxes on GitHub; both call
+  sites passed three arguments to a two-argument function and the error was swallowed.
+- `slot_metadata.verify_landed_shas` accepts a SHA that is not on main when a commit
+  with the same subject exists, or when the diff of source-code extensions is empty.
+  Docs-only work passes without landing. Recorded on #515, not fixed.
+- `slot_lifecycle._strip_inherited_lifecycle` is defined twice.
 
 
 - `verification/outcomes.py` `verify_content_landed` compares source-extension files

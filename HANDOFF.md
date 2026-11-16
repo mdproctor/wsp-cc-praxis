@@ -130,8 +130,7 @@ in #512 (stage 4). #512 has a review comment listing four gaps to settle first.
 
 - **soredium:** on `main` at `d018592`, 4 commits ahead of `origin/main`, working tree
   clean. Unpushed: #473 (CLAUDE.md staleness corrected; the issue itself is broader and
-  stays open), #526, #525, #527. Installed with sync-local. Push awaits the user's
-  go-ahead; then close #525, #526 and #527.
+  stays open), #526, #525, #527. Installed with sync-local. All pushed.
 - **Worktree:** this session works in `.worktrees/fable`. Detach it
   (`git checkout --detach`) before each close: the ceremony checks the branch out in
   the main checkout, and a branch cannot be checked out in two places.
@@ -153,9 +152,17 @@ in #512 (stage 4). #512 has a review comment listing four gaps to settle first.
   11 real slots with `.landed`: casehub attic 203 fails (neocortex `b461b9d95d0f`, 14
   `SearchBudget*` files never on main); slot 196 and attic 201 record commits canonical
   lacks.
-- #515 stage 1: design proposal for `project/canonical_sync.py` presented; two
-  decisions open (mirror push failure: warn and continue; repo without a remote: land
-  in canonical only). Not started.
+- Pushed 2026-11-16: soredium main at 9bfc418 (#473 corrections, #525, #526, #527);
+  #525, #526, #527 closed. #473 stays open (thinning CLAUDE.md).
+- #515 stage 1, in progress on branch `issue-515-canonical-sync` (worktree
+  `.worktrees/fable`, commit 450f2cb, not landed): `project/canonical_sync.py` with
+  `locate`, `sync_base`, `rebase`, `hold`, `publish`, `advance`, `mirror`, `land`,
+  `land_all`, `refresh`, `backup`, `landing_lock`; `tests/test_canonical_sync.py` (43,
+  canonical + slot clone + two bare remotes). No caller uses it yet. Decided: a mirror
+  push failure warns and the landing stands; a repo with no remote lands in canonical
+  only. Next: migrate `close.py`. Open before that: today `close.py` never pushes, so
+  the migration makes `work end` publish to the remote; and the ceremony's checkouts in
+  canonical (lifecycle strip, stamp, workspace `merge --no-ff`) need replacing.
 - #526 (landed): the close ceremony rebased onto the remote base and ignored a local
   base that had moved on, so any close with unpushed commits on local `main` failed
   with "not a fast-forward". Found by the first real batch close; the fixture repos had

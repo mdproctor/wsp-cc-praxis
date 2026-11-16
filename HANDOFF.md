@@ -1,105 +1,105 @@
 # Session Handover
 
-**Branch:** `issue-499-redesign-work-end`
-**Issue:** Hortora/soredium#499 — Redesign work-end: atomic ceremony with separated queue
-**Date:** 2026-11-05
+**Branch:** `main` (no work branch open)
+**Date:** 2026-11-16
+**Next issue:** Hortora/soredium#515 — Canonical sync: one landing flow with linear history, canonical as the only publisher
 
-## What Was Done
+## Where things stand
 
-### Session 1 (2026-11-04)
-Diagnosed architecture, wrote design spec and implementation plan, both reviewed
-at Standard depth. Completed Batch 1: `queue_io.py` (16 tests).
+The work-end redesign (#499) landed on 2026-11-05 and replaced the orchestrator with
+`work-end/close.py`. Real use then exposed a run of failures, all now fixed and pushed:
 
-### Session 2 (2026-11-05)
-Completed Batch 2: `close.py` — the core ceremony module (24 tests).
+| Issue | What was wrong | Fix |
+|---|---|---|
+| #501, #502, #503 | Staged but never committed; preflight reset `main`; reset before landing | Commit and tip verification; no resets anywhere in `close.py` |
+| #504, #507 | `work start #N` routing on a feature branch | Router distinguishes active vs other issue |
+| #505 | Handover orchestrator called a deleted script | Uses `pause_exec.py commit-wip` |
+| #506, #508 | Artifacts and images never reached the project | `work-end/artifact_sweep.py`, image co-promotion |
+| #509 | Queue branch empty or stale | Start, continue and resume sync it |
+| #510 | No tests on real topologies | Integration suite, slot detection fix |
+| #513 | Closed an already-stamped branch and reported success | Stamped branches are never targets; queue/branch mismatch fails |
+| #514 | `close.py` collapsed commits via `.squash-plan` | No squash code in `close.py`; git-squash records `refs/squash-reviewed/<branch>` |
+| #515 (part) | Reported SHA not `main`'s tip; same-named repos overwrote each other; ceremony ran on a repo stopped mid-rebase | Strip on the branch; `WORKSPACE_LANDED_*`; idle-repo guard |
 
-### Session 3 (2026-11-05)
-Completed Batches 3-5: consumer migration, switchover, and deletion sweep.
+Reference incident: casehubio/casehub-pages#666.
 
-**Batch 3: Consumer migration** (8 production files, 2 test files)
-- Added `validate_queue()` and `Finding` to queue_io.py (replaces 620-line corruption.py)
-- ctx.py: read_queue replaces corruption.diagnose + plan_io imports; outputs both
-  transition keys (HAS_PLAN/HAS_QUEUE, META_STATE/QUEUE_STATUS)
-- work_state.py: read_queue replaces lifecycle.read_state; searches workspace/workspace_root/slot_dir
-- work_chain.py: reads QUEUE_STATUS with META_STATE fallback
-- work_health.py: read_queue replaces plan_io.read_field in 4 check functions
-- work_progress.py, conflict_resolution.py, slot_lifecycle.py, wrap_orchestrator.py: import migration
-- Fixed 4 pre-existing test failures (bare `#10` refs, empty issue-repo fallback, workspace marker)
+## The rules now in force
 
-**Batch 4: Switchover**
-- Rewrote work-end/SKILL.md: 3-phase model (pre-close advisory → close.py ceremony → post-close)
-- Added CLI entry point to close.py
-- Rewrote audit_work_end.py: verifies close.py module and tests resolve()
-- Updated plan_manager.py: detect() checks .queue first; parse_plan() handles .queue format
-- Created ADR-0017: Separate Queue from Ceremony State (supersedes ADR-0013)
-- Updated lifecycle guard hook: .queue protected, lifecycle.py block removed
+Recorded in the project `CLAUDE.md` under "Landing Rules":
 
-**Batch 5: Deletion sweep** — 70 files deleted, ~28,400 LOC removed
-- 29 production files: work_end_orchestrator.py, corruption.py, handlers/, and 26 others
-- 41 test files for deleted production modules
+1. Linear history on every base branch, workspace repos included.
+2. Canonical repos (`~/claude/<family>/<repo>`) are the sync point.
+3. Only canonical pushes to GitHub.
+4. Squashing only through the git-squash skill.
 
-## What Survives (and Why)
+Claims about git or script behaviour must be observed by running them, not assumed.
 
-These files survive until follow-up rewrites:
+## Next action
 
-| File | Needed By | Follow-up |
-|------|-----------|-----------|
-| `project/orchestrator_engine.py` | work.py, wrap_orchestrator.py | Handover rewrite |
-| `project/shared_steps.py` | work.py, wrap_orchestrator.py | Handover rewrite |
-| `project/repo_state.py` | work.py | Handover rewrite |
-| `project/judgment.py` | work.py | Handover rewrite |
-| `project/progress.py` | work.py | Handover rewrite |
-| `project/step_result.py` | shared_steps.py | Handover rewrite |
-| `project/lifecycle.py` | work_health.py, pre_push_hook.py | Queue migration complete |
-| `project/plan_io.py` | plan_manager.py, plan_migrate.py | Queue migration complete |
-| `work-end/land_flow.py` | slot_lifecycle.py | Slot archival rewrite |
-| `work-end/common.py` | slot_git.py | Slot archival rewrite |
-| `work-end/` 3 re-export shims | wrap_orchestrator.py | Handover rewrite |
-| `verification/` 3 modules | orchestrator_engine, slot_lifecycle, artifact_promote | Various |
+`work start soredium#515`, stage 1. The issue holds the eight-step landing flow, the
+table of observed git behaviour, the list of scripts to change and the stages.
 
-## Deferred Items (in .queue)
+Stage 1, in order:
 
-1. `pre_push_hook.py`: replace lifecycle.read_state with .close-state check (XS/Low)
-2. `slot_lifecycle.py`: replace land_flow import with close.py land (M/Med)
+1. One module that owns every push and every base-branch change (sync from remote,
+   rebase, hold in canonical, publish, advance, mirror, branch backup), tested on a
+   fixture of canonical, a slot clone and two bare remotes.
+2. Move the callers onto it: `close.py`, `land_flow.py`, `artifact_promote.py`,
+   `pause_exec.py`, `branch_create.py`, `safe_commit.py`, `quick_fix.py`,
+   `git-squash/branch_swap.py`, and the "always push from a slot" text in
+   `git-commit/SKILL.md`.
+3. Workspace repos land linearly (supersedes ADR-0016).
+4. Replace `work pause`'s `pull --rebase`, which left the pages workspace stopped
+   mid-rebase and cost four commits.
+5. Every script that runs `rebase --abort` first checks no rebase was already in
+   progress (`land_flow.py`, `branch_create.py`, `quick_fix.py`,
+   `git-squash/rebase_exec.py`; `close.py` is already guarded).
+6. Session start reports a repo that is mid-operation or on a detached HEAD.
+7. Commit-tier validator: no push, non-fast-forward merge or soft reset outside the
+   module. Remove the noise regexes from `.githooks/pre-push`.
 
-## Next Action
+Later stages: finish the clone migration and rewire slot remotes (stage 2); optional
+bare canonical (stage 3); per-item `branch:` in the queue, then the slot-root layout
+in #512 (stage 4). #512 has a review comment listing four gaps to settle first.
 
-**Branch is ready for review and close.** All 5 batches complete:
-- Batch 1: queue_io.py (data foundation)
-- Batch 2: close.py (atomic ceremony)
-- Batch 3: Consumer migration
-- Batch 4: Switchover (SKILL.md, ADR-0017)
-- Batch 5: Deletion sweep (~28,400 LOC removed)
+## Open questions for the user
 
-Run `work end` to close the branch.
+- Do the per-repo `wsp-casehub-*` repos matter as published artifacts, or can one
+  family workspace repo replace them? Decides how the slot root gets a remote (#512).
+- Not yet verified for #515: two remotes where the blessed one accepts and the mirror
+  fails; the per-repo lock under two concurrent closes; git versions other than 2.50.1.
 
-## Design Artifacts
+## State of the repos
 
-| Artifact | Path |
-|----------|------|
-| Design spec | `specs/issue-499-redesign-work-end/2026-11-04-work-end-v2-design.md` |
-| Decisions | `specs/issue-499-redesign-work-end/decisions.md` |
-| Implementation plan | `plans/2026-11-04-work-end-v2.md` |
-| ADR-0017 | `docs/adr/ADR-0017-separate-queue-from-ceremony-state.md` |
-| Spec review | `~/reviews/hortora-soredium/issue-499-work-end-v2-20261104-164925/` |
-| Plan review | `~/reviews/hortora-soredium/issue-499-work-end-v2-plan-20261104-204502/` |
+- **soredium:** on `main`. One local commit not pushed: `cc5c2fc`, the Landing Rules
+  section in `CLAUDE.md`.
+- **This workspace:** on `main`; `.queue` has an uncommitted change from an earlier
+  session. It still names the #501 branch, which is closed, and it has lost its
+  `## Deferred` section (see below).
+- **Installed skills:** synced to soredium `main` as of `73685d7`. A session started
+  before 2026-11-15 needs `/clear` to load the updated work-end and git-squash skills.
+- **Deferred items, no longer in `.queue`:** `pre_push_hook.py` still imports
+  `lifecycle.read_state`; `slot_lifecycle.py` still imports `land_flow`. Both fold
+  into #515 stage 1.
+- **Bug found while writing this handoff:** `plan_manager.py set-state` on this
+  `.queue` dropped the `## Deferred` section and doubled the heading to
+  `# Work Plan — Work Plan —`. Seen in the uncommitted diff; not yet reproduced in a
+  test. Recorded on #515.
 
-## Key Files Changed (Session 3)
+## Known stale documentation
 
-| File | What changed |
-|------|-------------|
-| `project/queue_io.py` | Added validate_queue(), Finding (Batch 3) |
-| `project/ctx.py` | read_queue replaces corruption + plan_io; dual-key output (Batch 3) |
-| `project/work_state.py` | read_queue replaces lifecycle; multi-location search (Batch 3) |
-| `project/work_chain.py` | QUEUE_STATUS with META_STATE fallback (Batch 3) |
-| `project/work_health.py` | read_queue replaces plan_io.read_field (Batch 3) |
-| `project/work_progress.py` | read_queue replaces plan_io (Batch 3) |
-| `project/conflict_resolution.py` | .queue added to auto-resolve set (Batch 3) |
-| `work-slot/slot_lifecycle.py` | queue_io replaces plan_io imports (Batch 3) |
-| `handover/wrap_orchestrator.py` | queue_io replaces plan_io imports (Batch 3) |
-| `work-end/SKILL.md` | Rewritten: 3-phase close model (Batch 4) |
-| `work-end/close.py` | Added main() CLI entry point (Batch 4) |
-| `work-end/audit_work_end.py` | Rewritten: close.py module audit (Batch 4) |
-| `work-slot/plan_manager.py` | detect() .queue-first; parse_plan() .queue format (Batch 4) |
-| `docs/adr/ADR-0017-*` | NEW — Separate Queue from Ceremony State (Batch 4) |
-| 70 files | DELETED — orchestrator, corruption, handlers, tests (Batch 5) |
+- `CLAUDE.md` still describes `lifecycle.py` as owning 12 lifecycle states and lists
+  `tests/test_lifecycle.py`, which was deleted in #499.
+- The commit-tier validators (frontmatter, CSO, references) fail on `main`; the
+  failures predate this work and have not been investigated.
+
+## Key files
+
+| File | Role |
+|---|---|
+| `work-end/close.py` | Close ceremony: guards, review gate, rebase and fast-forward, stamp, advance |
+| `project/squash_marker.py` | Squash-review marker: `mark`, `status`, `clear` |
+| `project/queue_io.py` | `.queue` reader and writer, queue validation |
+| `work-end/artifact_sweep.py` | Workspace to project artifact promotion |
+| `tests/test_close_integration.py` | Ceremony tests on real repo topologies |
+| `tests/test_git_landing_behaviour.py` | Observed git behaviours the #515 design relies on |

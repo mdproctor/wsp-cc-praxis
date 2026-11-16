@@ -1,13 +1,14 @@
-# Work Plan — Work Plan —
+# Work Plan —
 
 ## State
-branch: issue-499-redesign-work-end
+branch: issue-516-queue-roundtrip
 status: active
 issue-repo: Hortora/soredium
-covers: Hortora/soredium#499
+covers: Hortora/soredium#516
 
 ## Queue
 (empty — issues created during design)
 
 ## Deferred
-- [ ] slot_lifecycle.py: replace land_flow import with close.py land (slot archival rewrite) (M / Med) []
+- [ ] slot_lifecycle.py: replace land_flow import with close.py land (slot archival rewrite) (M / Med) [] — folds into #515 stage 1
+- [ ] pre_push_hook.py: replace lifecycle.read_state closing gates with a .close-state check (S / Med) [] — folds into #515 stage 1

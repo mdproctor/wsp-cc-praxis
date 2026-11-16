@@ -47,7 +47,34 @@ Claims about git or script behaviour must be observed by running them, not assum
 Also landed with #518: a commit from another session making a running Claude Code
 session a hard stop in `archive_slot` that `--force` cannot bypass. Tests added here.
 
-soredium `main` equals `origin/main` at `c528bad`. #516, #518, #519, #520 and #521 are closed.
+soredium `origin/main` is at `c528bad`. #516, #518, #519, #520 and #521 are closed.
+
+## #517 landed on local main, installed, NOT pushed (2026-11-16)
+
+Local `main` is 4 commits ahead of `origin/main` (tip `971b114`). Push awaits the
+user's go-ahead; then close #517 on GitHub.
+
+- A queue item can be **done but not closed**: `- [ ] ref — title ← done on <branch>`.
+  `plan_manager.py mark-done <queue> [branch=]` writes it. Both queue modules keep it.
+- `work next` on a feature branch runs `mark-done`, not `advance`. Before, it checked
+  the item without landing it and blanked the queue's branch.
+- `close.py` lands every done item's branch in queue order, then the active one, and
+  checks each item after its own landing and stamp. Squash review needed anywhere, or
+  a done branch missing, stops the batch with nothing changed. A failure part-way
+  commits the closed items and leaves the rest done. Output: `CLOSED_ITEM=<ref> branch=<b>`.
+- `project/work_chain.py` is now a script the work skill runs
+  (`work_chain.py <cmd> queue=<path>`). It had no caller before: the skill read
+  `CHAIN_DIRECTIVE` from `ctx.py`, which never emitted it. It reads done-ness from the
+  queue, not GitHub, and prints `OFFER=wrap_or_continue` whenever an item is finished
+  or done items are waiting. `ctx.py` reports `DONE_PENDING` and `DONE_ITEMS`.
+- Tests: `tests/test_queue_done_state.py`, `tests/test_close_batch.py`,
+  `tests/test_done_wiring.py`.
+
+Not done for #517: nothing enforces that a new branch is cut from base rather than
+from the done branch (stacking works and is tested, but is not chosen for the user);
+epic checkbox ticking on GitHub (`tick_github` in the next pipeline) was not
+re-examined against the done state; the behaviour has not been exercised in a real
+multi-issue session or in a slot.
 
 ## Artifact recovery (handed to a separate session)
 
@@ -60,11 +87,8 @@ the work-end and slot tooling.
 
 ## Next action
 
-1. `work start soredium#517`: a "done, not yet closed" queue state so several issues
-   can be finished in one session and closed by one batch-aware `work end`. Decided:
-   one branch per issue, each done item records its branch, `work end` lands them in
-   queue order. Details and the batch behaviour are on the issue.
-2. Then #515 stage 1, below. **First item: delete `work-end/land_flow.py`** and replace
+1. Push soredium `main` once approved; close #517.
+2. #515 stage 1, below. **First item: delete `work-end/land_flow.py`** and replace
    its one caller, `work-slot/slot_lifecycle.py` (`build_slot_batch`, `land_batch`).
    It still hard-resets to the remote (lines near 430 and 570); evidence of lost
    workspace commits is recorded on #515.
@@ -103,15 +127,19 @@ in #512 (stage 4). #512 has a review comment listing four gaps to settle first.
 
 ## State of the repos
 
-- **soredium:** on `main`, equal to `origin/main` at `c528bad`, working tree clean.
+- **soredium:** on `main` at `971b114`, 4 commits ahead of `origin/main`, working tree clean.
 - **This workspace:** on `main`. `.queue` has no active item and two deferred items.
-- **Installed skills:** synced to soredium `main` at `c528bad` on 2026-11-16.
+- **Installed skills:** synced to soredium local `main` at `971b114` on 2026-11-16.
 - **Deferred in `.queue`:** `pre_push_hook.py` still imports `lifecycle.read_state`;
   `slot_lifecycle.py` still imports `land_flow`. Both fold into #515 stage 1.
 - **Shared checkout:** another session committed onto this session's branch because
   both use the soredium checkout. Check `git log` before landing a branch.
 
 ## Known gaps
+
+- 26 tests fail on `main` and predate this work: `tests/test_close_report.py` (22),
+  `tests/test_close_verify.py`, `tests/test_close_checks_images.py`,
+  `tests/test_post_close_audit.py`. Not yet diagnosed.
 
 - `verification/outcomes.py` `verify_content_landed` compares source-extension files
   only (the #519 flaw). No callers found; delete or fix under #515.

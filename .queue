@@ -1,15 +1,12 @@
-# Work Plan —
+- [x] hortora/soredium#526 — Close rebases onto the newer of the local and remote base
+- [ ] hortora/soredium#525 — Restore the adr skill to its own directory        ← active
+- [x] hortora/soredium#473 — Correct stale statements in CLAUDE.md
 
 ## State
 branch: issue-526-rebase-onto-local-base
 issue-repo: Hortora/soredium
 status: active
 covers: hortora/soredium#526
-
-## Queue
-- [ ] hortora/soredium#526 — Close rebases onto the newer of the local and remote base ← active
-- [ ] hortora/soredium#525 — Restore the adr skill to its own directory
-- [x] hortora/soredium#473 — Correct stale statements in CLAUDE.md
 
 ## Deferred
 - [ ] slot_lifecycle.py: replace land_flow import with close.py land (slot archival rewrite) (M / Med) [] — folds into #515 stage 1

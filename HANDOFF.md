@@ -2,7 +2,7 @@
 
 **Branch:** `main` (no work branch open)
 **Date:** 2026-11-16
-**Next issue:** Hortora/soredium#515 — Canonical sync: one landing flow with linear history, canonical as the only publisher
+**Next issue:** Hortora/soredium#517, then #515 — Canonical sync: one landing flow with linear history, canonical as the only publisher
 
 ## Where things stand
 
@@ -34,10 +34,34 @@ Recorded in the project `CLAUDE.md` under "Landing Rules":
 
 Claims about git or script behaviour must be observed by running them, not assumed.
 
+## Landed on 2026-11-16 (local main, installed with sync-local, NOT pushed)
+
+| Issue | What was wrong | Fix |
+|---|---|---|
+| #516 | `plan_manager` deleted deferred items written with no repos, and any line or section it could not parse; `queue_io` read zero items after any `plan_manager` write | Both modules keep each other's data; `tests/test_queue_file_roundtrip.py` |
+| #518 | Close ceremony's stamp, queue-advance, merge and strip commits had no issue reference; the commit hook rejected the stamp after `main` had advanced | Commits carry `Refs <owner/repo#N>`; hook accepts qualified references |
+| #519 | Slot merge (`land_flow.py`) treated a branch with only Markdown, text or image changes as already merged and stamped it unmerged; `restore-slot` crashed on a removed function; seven slot tests used a real workspace under the home directory | Whole-tree comparison; dead call removed; slot tests run with an isolated home |
+| #520 | Duplicate-work check on `plan_manager append` never ran from the installed copy; the import error was swallowed | `worklog.py` finds `plan_io` when installed; failures print a warning |
+
+Also landed with #518: a commit from another session making a running Claude Code
+session a hard stop in `archive_slot` that `--force` cannot bypass. Tests added here.
+
+soredium `main` is 8 commits ahead of `origin/main`. Pushing awaits the user's go-ahead.
+Then close #516, #518, #519, #520 on GitHub.
+
 ## Next action
 
-`work start soredium#515`, stage 1. The issue holds the eight-step landing flow, the
-table of observed git behaviour, the list of scripts to change and the stages.
+1. Push soredium `main`; close #516, #518, #519, #520.
+2. `work start soredium#517`: a "done, not yet closed" queue state so several issues
+   can be finished in one session and closed by one batch-aware `work end`. Decided:
+   one branch per issue, each done item records its branch, `work end` lands them in
+   queue order. Details and the batch behaviour are on the issue.
+3. Then #515 stage 1, below. **First item: delete `work-end/land_flow.py`** and replace
+   its one caller, `work-slot/slot_lifecycle.py` (`build_slot_batch`, `land_batch`).
+   It still hard-resets to the remote (lines near 430 and 570); evidence of lost
+   workspace commits is recorded on #515.
+
+### #515 stage 1
 
 Stage 1, in order:
 
@@ -71,20 +95,22 @@ in #512 (stage 4). #512 has a review comment listing four gaps to settle first.
 
 ## State of the repos
 
-- **soredium:** on `main`. One local commit not pushed: `cc5c2fc`, the Landing Rules
-  section in `CLAUDE.md`.
-- **This workspace:** on `main`; `.queue` has an uncommitted change from an earlier
-  session. It still names the #501 branch, which is closed, and it has lost its
-  `## Deferred` section (see below).
-- **Installed skills:** synced to soredium `main` as of `73685d7`. A session started
-  before 2026-11-15 needs `/clear` to load the updated work-end and git-squash skills.
-- **Deferred items, no longer in `.queue`:** `pre_push_hook.py` still imports
-  `lifecycle.read_state`; `slot_lifecycle.py` still imports `land_flow`. Both fold
-  into #515 stage 1.
-- **Bug found while writing this handoff:** `plan_manager.py set-state` on this
-  `.queue` dropped the `## Deferred` section and doubled the heading to
-  `# Work Plan — Work Plan —`. Seen in the uncommitted diff; not yet reproduced in a
-  test. Recorded on #515.
+- **soredium:** on `main`, 8 commits ahead of `origin/main`, working tree clean.
+- **This workspace:** on `main`. `.queue` has no active item and two deferred items.
+- **Installed skills:** synced to soredium local `main` at `5b08f8f` on 2026-11-16.
+- **Deferred in `.queue`:** `pre_push_hook.py` still imports `lifecycle.read_state`;
+  `slot_lifecycle.py` still imports `land_flow`. Both fold into #515 stage 1.
+- **Shared checkout:** another session committed onto this session's branch because
+  both use the soredium checkout. Check `git log` before landing a branch.
+
+## Known gaps
+
+- `verification/outcomes.py` `verify_content_landed` compares source-extension files
+  only (the #519 flaw). No callers found; delete or fix under #515.
+- `archive_slot` can be refused with `ERROR=active_sessions` naming a short-lived
+  `sleep` process left by the machine's managed git hook after a commit. Retrying works.
+- Other workspaces' queues have not been checked for deferred items lost before #516.
+- `work-end` is not batch aware: it closes only the branch named in the queue (#517).
 
 ## Known stale documentation
 

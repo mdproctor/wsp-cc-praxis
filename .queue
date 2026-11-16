@@ -1,12 +1,16 @@
+# Work Plan —
+
+## State
+branch: issue-527-landed-check-whole-tree
+issue-repo: Hortora/soredium
+status: drained
+covers: Hortora/soredium#527
+
+## Queue
+- [ ] hortora/soredium#527 — Landed check compares every file and needs proof ← active
 - [x] hortora/soredium#526 — Close rebases onto the newer of the local and remote base
 - [x] hortora/soredium#525 — Restore the adr skill to its own directory
 - [x] hortora/soredium#473 — Correct stale statements in CLAUDE.md
-
-## State
-branch: issue-525-restore-adr-skill
-issue-repo: Hortora/soredium
-status: drained
-covers: hortora/soredium#525
 
 ## Deferred
 - [ ] slot_lifecycle.py: replace land_flow import with close.py land (slot archival rewrite) (M / Med) [] — folds into #515 stage 1

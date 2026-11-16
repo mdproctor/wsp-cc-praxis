@@ -1,10 +1,10 @@
 # Work Plan —
 
 ## State
-branch: issue-518-stamp-issue-ref
+branch: issue-519-slot-tests
 status: active
 issue-repo: Hortora/soredium
-covers: Hortora/soredium#518
+covers: Hortora/soredium#519,Hortora/soredium#520
 
 ## Queue
 (empty — issues created during design)

@@ -1,10 +1,10 @@
 # Work Plan —
 
 ## State
-branch: issue-517-done-not-closed
+branch: issue-524-epic-tick
 status: active
 issue-repo: Hortora/soredium
-covers: Hortora/soredium#517
+covers: Hortora/soredium#524
 
 ## Queue
 (empty — issues created during design)

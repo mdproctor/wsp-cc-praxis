@@ -1,10 +1,10 @@
 # Work Plan —
 
 ## State
-branch: issue-516-queue-roundtrip
+branch: issue-518-stamp-issue-ref
 status: active
 issue-repo: Hortora/soredium
-covers: Hortora/soredium#516
+covers: Hortora/soredium#518
 
 ## Queue
 (empty — issues created during design)

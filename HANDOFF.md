@@ -130,8 +130,8 @@ in #512 (stage 4). #512 has a review comment listing four gaps to settle first.
 
 - **soredium:** on `main` at `d018592`, 4 commits ahead of `origin/main`, working tree
   clean. Unpushed: #473 (CLAUDE.md staleness corrected; the issue itself is broader and
-  stays open), #526, #525. Installed with sync-local. Push awaits the user's go-ahead;
-  then close #525 and #526.
+  stays open), #526, #525, #527. Installed with sync-local. Push awaits the user's
+  go-ahead; then close #525, #526 and #527.
 - **Worktree:** this session works in `.worktrees/fable`. Detach it
   (`git checkout --detach`) before each close: the ceremony checks the branch out in
   the main checkout, and a branch cannot be checked out in two places.
@@ -144,6 +144,18 @@ in #512 (stage 4). #512 has a review comment listing four gaps to settle first.
 
 ## Known gaps
 
+- #527 (landed locally, 9bfc418): archive-slot's landed check passed work that never
+  landed (same commit subject on main, or no source-code files changed). Both
+  `verify_landed_shas` and `verification/outcomes.py` now use
+  `project/landed_check.content_on_base`: every file compared, pass only on proof
+  (ancestry, patch-equivalent commits, identical paths, content held on base since the
+  fork, squash-equivalent). Tests: `tests/test_landed_check.py`. Run read-only over the
+  11 real slots with `.landed`: casehub attic 203 fails (neocortex `b461b9d95d0f`, 14
+  `SearchBudget*` files never on main); slot 196 and attic 201 record commits canonical
+  lacks.
+- #515 stage 1: design proposal for `project/canonical_sync.py` presented; two
+  decisions open (mirror push failure: warn and continue; repo without a remote: land
+  in canonical only). Not started.
 - #526 (landed): the close ceremony rebased onto the remote base and ignored a local
   base that had moved on, so any close with unpushed commits on local `main` failed
   with "not a fast-forward". Found by the first real batch close; the fixture repos had

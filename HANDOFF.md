@@ -34,7 +34,7 @@ Recorded in the project `CLAUDE.md` under "Landing Rules":
 
 Claims about git or script behaviour must be observed by running them, not assumed.
 
-## Landed on 2026-11-16 (local main, installed with sync-local, NOT pushed)
+## Landed on 2026-11-16 (pushed to origin, installed with sync-local, issues closed)
 
 | Issue | What was wrong | Fix |
 |---|---|---|
@@ -42,21 +42,29 @@ Claims about git or script behaviour must be observed by running them, not assum
 | #518 | Close ceremony's stamp, queue-advance, merge and strip commits had no issue reference; the commit hook rejected the stamp after `main` had advanced | Commits carry `Refs <owner/repo#N>`; hook accepts qualified references |
 | #519 | Slot merge (`land_flow.py`) treated a branch with only Markdown, text or image changes as already merged and stamped it unmerged; `restore-slot` crashed on a removed function; seven slot tests used a real workspace under the home directory | Whole-tree comparison; dead call removed; slot tests run with an isolated home |
 | #520 | Duplicate-work check on `plan_manager append` never ran from the installed copy; the import error was swallowed | `worklog.py` finds `plan_io` when installed; failures print a warning |
+| #521 | Archive kept `.m2` and Maven `target/` in the attic; work-end in a slot tried to archive the slot it was running in; a session in `slots/211` counted as active in `slots/21` | Archive purges build outputs inside the slot; `close.py` writes `.landed` when the queue drains and prints `SLOT_READY_FOR_ARCHIVE`; work-end never archives or offers to; cwd match respects the slot boundary |
 
 Also landed with #518: a commit from another session making a running Claude Code
 session a hard stop in `archive_slot` that `--force` cannot bypass. Tests added here.
 
-soredium `main` is 8 commits ahead of `origin/main`. Pushing awaits the user's go-ahead.
-Then close #516, #518, #519, #520 on GitHub.
+soredium `main` equals `origin/main` at `c528bad`. #516, #518, #519, #520 and #521 are closed.
+
+## Artifact recovery (handed to a separate session)
+
+Every commit that no branch reached is pinned under `refs/rescue/<sha>` in 88
+canonical repos (10,683 commits), so nothing can be pruned. Restoring, promoting
+and publishing the lost blogs, specs and images is a separate session's job. Its
+brief, scripts and draft inventory are in
+`/Users/mdproctor/claude/casehub/recovery-2026-11-16/`. This workspace stays on
+the work-end and slot tooling.
 
 ## Next action
 
-1. Push soredium `main`; close #516, #518, #519, #520.
-2. `work start soredium#517`: a "done, not yet closed" queue state so several issues
+1. `work start soredium#517`: a "done, not yet closed" queue state so several issues
    can be finished in one session and closed by one batch-aware `work end`. Decided:
    one branch per issue, each done item records its branch, `work end` lands them in
    queue order. Details and the batch behaviour are on the issue.
-3. Then #515 stage 1, below. **First item: delete `work-end/land_flow.py`** and replace
+2. Then #515 stage 1, below. **First item: delete `work-end/land_flow.py`** and replace
    its one caller, `work-slot/slot_lifecycle.py` (`build_slot_batch`, `land_batch`).
    It still hard-resets to the remote (lines near 430 and 570); evidence of lost
    workspace commits is recorded on #515.
@@ -95,9 +103,9 @@ in #512 (stage 4). #512 has a review comment listing four gaps to settle first.
 
 ## State of the repos
 
-- **soredium:** on `main`, 8 commits ahead of `origin/main`, working tree clean.
+- **soredium:** on `main`, equal to `origin/main` at `c528bad`, working tree clean.
 - **This workspace:** on `main`. `.queue` has no active item and two deferred items.
-- **Installed skills:** synced to soredium local `main` at `5b08f8f` on 2026-11-16.
+- **Installed skills:** synced to soredium `main` at `c528bad` on 2026-11-16.
 - **Deferred in `.queue`:** `pre_push_hook.py` still imports `lifecycle.read_state`;
   `slot_lifecycle.py` still imports `land_flow`. Both fold into #515 stage 1.
 - **Shared checkout:** another session committed onto this session's branch because

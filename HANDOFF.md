@@ -88,8 +88,8 @@ the work-end and slot tooling.
 
 ## Next action
 
-1. Push soredium `main` once approved (2 commits: #524, #515 first step); close #524.
-2. #515 stage 1 from item 1 below (the shared sync module). `land_flow.py` is gone. **Done 2026-11-16:** `work-end/land_flow.py` deleted;
+1. Fix `slot_metadata.verify_landed_shas` (see Known gaps) on its own issue.
+2. #515 stage 1 from item 1 below (the shared sync module): propose the design first. `land_flow.py` is gone. **Done 2026-11-16:** `work-end/land_flow.py` deleted;
    `merge-slot` is a stub (`ERROR=merge_slot_removed`). It could not run anyway:
    nothing writes `.phase-a-complete` any more. The behaviours its tests pinned, to
    be re-pinned on the sync module, are listed in a comment on #515.
@@ -128,7 +128,7 @@ in #512 (stage 4). #512 has a review comment listing four gaps to settle first.
 
 ## State of the repos
 
-- **soredium:** on `main` at `e83d075`, 2 commits ahead of `origin/main`, working tree clean.
+- **soredium:** on `main`, equal to `origin/main` at `e83d075`, working tree clean.
 - **This workspace:** on `main`. `.queue` has no active item and two deferred items.
 - **Installed skills:** synced to soredium local `main` at `971b114` on 2026-11-16.
 - **Deferred in `.queue`:** `pre_push_hook.py` still imports `lifecycle.read_state`;
@@ -138,7 +138,7 @@ in #512 (stage 4). #512 has a review comment listing four gaps to settle first.
 
 ## Known gaps
 
-- #524 (landed, not pushed): slots never ticked epic checkboxes on GitHub; both call
+- #524 (landed, pushed, closed): slots never ticked epic checkboxes on GitHub; both call
   sites passed three arguments to a two-argument function and the error was swallowed.
 - `slot_metadata.verify_landed_shas` accepts a SHA that is not on main when a commit
   with the same subject exists, or when the diff of source-code extensions is empty.

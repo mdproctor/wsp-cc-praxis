@@ -1,18 +1,15 @@
-# Work Plan —
+- [x] hortora/soredium#530 — git-squash never pushes or stashes
+- [x] hortora/soredium#515 — Canonical sync stage 1 - sync module
+- [x] hortora/soredium#527 — Landed check compares every file and needs proof
+- [x] hortora/soredium#526 — Close rebases onto the newer of the local and remote base
+- [x] hortora/soredium#525 — Restore the adr skill to its own directory
+- [x] hortora/soredium#473 — Correct stale statements in CLAUDE.md
 
 ## State
 branch: issue-530-squash-no-push
 issue-repo: Hortora/soredium
 status: drained
 covers: hortora/soredium#530
-
-## Queue
-- [ ] hortora/soredium#530 — git-squash never pushes or stashes ← active
-- [x] hortora/soredium#515 — Canonical sync stage 1 - sync module
-- [x] hortora/soredium#527 — Landed check compares every file and needs proof
-- [x] hortora/soredium#526 — Close rebases onto the newer of the local and remote base
-- [x] hortora/soredium#525 — Restore the adr skill to its own directory
-- [x] hortora/soredium#473 — Correct stale statements in CLAUDE.md
 
 ## Deferred
 - [ ] slot_lifecycle.py: replace land_flow import with close.py land (slot archival rewrite) (M / Med) [] — folds into #515 stage 1

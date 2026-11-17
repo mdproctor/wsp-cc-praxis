@@ -173,12 +173,25 @@ in #512 (stage 4). #512 has a review comment listing four gaps to settle first.
   - Remotes convention found on disk: canonical casehub repos use `origin` = main
     remote, `fork` = personal fork; slot clones use `upstream`/`origin` plus `local`.
   - Backup branch kept: `backup/pre-squash-issue-515-canonical-sync-20261117`.
-- #515 still to do, in order: git-squash `branch_swap.py` force-pushes a feature branch
-  (and `rebase_exec.py` stashes); slot post-commit hook pushes to GitHub with `|| true`
-  (replace with `canonical_sync.backup`); `quick_fix.py`; `pause_exec.py` and
-  `branch_create.py`; `safe_commit.py` and `artifact_promote.py`; promotion gating
+- #530 landed locally (dd96773): git-squash `branch_swap.py` only renames (no push, no
+  checkout); `rebase_exec.py` refuses with `dirty_worktree`/`busy` instead of stashing
+  or aborting a rebase it did not start.
+- #531 landed locally (4d33872): the slot post-commit hook runs
+  `canonical_sync.py backup <repo> offsite=yes`: canonical takes the branch into
+  `refs/backup/<slot>/<branch>` and sends that ref to the backup remote (the fork, or
+  `git config soredium.backupRemote`). Failures print `soredium: BACKUP FAILED`, leave
+  `.git/soredium-backup-failed`, and show in `canonical_sync.py status`. Existing
+  slots still have the old push hook until `install_post_commit_hook` is re-run on
+  them; not done, awaiting the user. Repos with one remote have no off-machine backup
+  until `soredium.backupRemote` is set; awaiting the user.
+- soredium main is 9 commits ahead of origin, unpublished (publish is the user's call:
+  `python3 ~/.claude/skills/project/canonical_sync.py publish ~/claude/hortora/soredium`).
+- #515 still to do, in order: `quick_fix.py` (stashes, hard-resets, force-pushes);
+  `pause_exec.py` and `branch_create.py` (push from slots; merge and force-push main);
+  `safe_commit.py` and `artifact_promote.py`; promotion gating
   (docs/audit-findings-for-rewrite.md findings 1, 2); push-blocking hook tested by
-  attempting the push; then stage 2 (slot clones lose GitHub remotes).
+  attempting the push; the git-squash skill text is still organised around a pre-push
+  hook; then stage 2 (slot clones lose GitHub remotes).
 - #529 filed: several standalone projects in one repo (quarkmind), a queue and
   workspace per subfolder; after publish, linked to #512.
 - For the user, not for scripts: several casehub remote URLs embed GitHub access

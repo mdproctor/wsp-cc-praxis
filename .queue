@@ -1,13 +1,4 @@
-# Work Plan —
-
-## State
-branch: issue-533-quick-fix-on-disk
-issue-repo: Hortora/soredium
-status: drained
-covers: hortora/soredium#533
-
-## Queue
-- [ ] hortora/soredium#533 — quick-fix commits and lands on disk ← active
+- [x] hortora/soredium#533 — quick-fix commits and lands on disk
 - [x] hortora/soredium#532 — Script to move existing slots onto the backup path
 - [x] hortora/soredium#531 — Slot commits are backed up through canonical
 - [x] hortora/soredium#530 — git-squash never pushes or stashes
@@ -16,6 +7,12 @@ covers: hortora/soredium#533
 - [x] hortora/soredium#526 — Close rebases onto the newer of the local and remote base
 - [x] hortora/soredium#525 — Restore the adr skill to its own directory
 - [x] hortora/soredium#473 — Correct stale statements in CLAUDE.md
+
+## State
+branch: issue-533-quick-fix-on-disk
+issue-repo: Hortora/soredium
+status: drained
+covers: hortora/soredium#533
 
 ## Deferred
 - [ ] slot_lifecycle.py: replace land_flow import with close.py land (slot archival rewrite) (M / Med) [] — folds into #515 stage 1

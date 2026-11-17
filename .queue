@@ -1,3 +1,13 @@
+# Work Plan —
+
+## State
+branch: wip-stage2-slot-remotes
+issue-repo: Hortora/soredium
+status: drained
+covers: hortora/soredium#545
+
+## Queue
+- [ ] hortora/soredium#545 — Slot clones have only a local remote ← active
 - [x] hortora/soredium#541 — Pre-push hook checks linear history only
 - [x] hortora/soredium#483 — Images travel with their document and nothing is removed unverified
 - [x] hortora/soredium#540 — Stacked branches part two - order and own-commit landing
@@ -16,12 +26,6 @@
 - [x] hortora/soredium#526 — Close rebases onto the newer of the local and remote base
 - [x] hortora/soredium#525 — Restore the adr skill to its own directory
 - [x] hortora/soredium#473 — Correct stale statements in CLAUDE.md
-
-## State
-branch: issue-541-linear-pre-push
-issue-repo: Hortora/soredium
-status: drained
-covers: hortora/soredium#541
 
 ## Deferred
 - [ ] slot_lifecycle.py: replace land_flow import with close.py land (slot archival rewrite) (M / Med) [] — folds into #515 stage 1

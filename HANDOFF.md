@@ -154,15 +154,35 @@ in #512 (stage 4). #512 has a review comment listing four gaps to settle first.
   lacks.
 - Pushed 2026-11-16: soredium main at 9bfc418 (#473 corrections, #525, #526, #527);
   #525, #526, #527 closed. #473 stays open (thinning CLAUDE.md).
-- #515 stage 1, in progress on branch `issue-515-canonical-sync` (worktree
-  `.worktrees/fable`, commit 450f2cb, not landed): `project/canonical_sync.py` with
-  `locate`, `sync_base`, `rebase`, `hold`, `publish`, `advance`, `mirror`, `land`,
-  `land_all`, `refresh`, `backup`, `landing_lock`; `tests/test_canonical_sync.py` (43,
-  canonical + slot clone + two bare remotes). No caller uses it yet. Decided: a mirror
-  push failure warns and the landing stands; a repo with no remote lands in canonical
-  only. Next: migrate `close.py`. Open before that: today `close.py` never pushes, so
-  the migration makes `work end` publish to the remote; and the ceremony's checkouts in
-  canonical (lifecycle strip, stamp, workspace `merge --no-ff`) need replacing.
+- #515 stage 1, first part landed on local soredium main 2026-11-17 (de56853, 7
+  commits, NOT published; installed with sync-local). It was landed by the new
+  ceremony itself. What it is:
+  - `project/canonical_sync.py`: `land`/`land_all` put a branch on the canonical repo's
+    base branch, on disk, with no network and no checkout switched (rebase where the
+    branch is checked out or in a temporary worktree). `publish_base` / `canonical_sync.py
+    publish <repo>` is the only step that uses the network: fetch, rebase unpublished
+    commits if the remote moved, push to the fork as `publish/<base>`, plain push to
+    the main remote, fork base follows. `status <repo>` prints `UNPUBLISHED=N`.
+  - `work-end/close.py` lands through it: slot work reaches canonical, workspace repos
+    land linearly (no merge commit), no commit is added to base after landing, and it
+    prints `UNPUBLISHED=<repo> commits=N` + `OFFER=publish`. In a slot it sweeps every
+    git repo for commits canonical lacks (`CARRIED=`, `NOT_LANDED=`); a slot with
+    anything not landed is not marked ready for archive.
+  - Decided: `work end` = land on disk only; publish is separate and offered; fork
+    first, as a branch; mirror failure warns; repo with no remote lands only.
+  - Remotes convention found on disk: canonical casehub repos use `origin` = main
+    remote, `fork` = personal fork; slot clones use `upstream`/`origin` plus `local`.
+  - Backup branch kept: `backup/pre-squash-issue-515-canonical-sync-20261117`.
+- #515 still to do, in order: git-squash `branch_swap.py` force-pushes a feature branch
+  (and `rebase_exec.py` stashes); slot post-commit hook pushes to GitHub with `|| true`
+  (replace with `canonical_sync.backup`); `quick_fix.py`; `pause_exec.py` and
+  `branch_create.py`; `safe_commit.py` and `artifact_promote.py`; promotion gating
+  (docs/audit-findings-for-rewrite.md findings 1, 2); push-blocking hook tested by
+  attempting the push; then stage 2 (slot clones lose GitHub remotes).
+- #529 filed: several standalone projects in one repo (quarkmind), a queue and
+  workspace per subfolder; after publish, linked to #512.
+- For the user, not for scripts: several casehub remote URLs embed GitHub access
+  tokens; `plan_manager append` truncates a title at its first comma.
 - #526 (landed): the close ceremony rebased onto the remote base and ignored a local
   base that had moved on, so any close with unpushed commits on local `main` failed
   with "not a fast-forward". Found by the first real batch close; the fixture repos had

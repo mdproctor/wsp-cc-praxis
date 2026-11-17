@@ -197,14 +197,28 @@ in #512 (stage 4). #512 has a review comment listing four gaps to settle first.
 - #533 landed locally (c1cabc2): `quick_fix.py` commits on the base branch and lands on
   disk through canonical_sync; no ephemeral branch, stash, reset or push; prints
   `UNPUBLISHED`/`OFFER=publish`; `fix-ci` asks before publishing.
-- soredium main is 2 commits ahead of origin (#532, #533), unpublished.
-- Found, not fixed: `tests/test_cli.py` has 13 failures on main since 3d9e97c rewrote
-  `cli/__main__.py` (`_parse_args`, `COMMANDS`, `emit` no longer exist).
-- #515 still to do, in order: `pause_exec.py` and `branch_create.py` (push from slots;
-  merge and force-push main); `safe_commit.py` and `artifact_promote.py`; promotion
-  gating (docs/audit-findings-for-rewrite.md findings 1, 2); push-blocking hook tested
-  by attempting the push; the git-squash skill text is still organised around a
-  pre-push hook; then stage 2 (slot clones lose GitHub remotes).
+- Applied 2026-11-17 with the user's go-ahead: `slot_backup_setup.py hooks --apply` on
+  casehub (81 replaced, 4 installed, 8 left: no canonical) and hortora (2 installed);
+  `remotes ~/claude/public owner=mdproctor --apply` (31 set to `origin`). Published
+  soredium to c1cabc2.
+- #534 landed locally (dfa7b82): `work pause` backs the branch up through canonical;
+  no push, pull or stash; in a slot the stack entry is committed in the slot workspace
+  and landed in the canonical workspace. Six pause tests that failed on main are fixed.
+- #535 landed locally (8db187f): `work start` sync only fast-forwards (canonical from
+  its remote, a slot clone from canonical); no rebase, merge, duplicate-dropping or
+  push; `commit-scaffold` backs up instead of pushing. `canonical_sync.follow()` added.
+- #536 landed locally (cb42996): `artifact_promote.py` crashed on every markdown
+  promotion after staging and before committing (wrong sys.path for `verification`),
+  exit 0. Fixed. It no longer pushes or pulls; prints `LANDED=yes|branch|no`.
+  `project/safe_commit.py` (no callers) removed; the installed copy under
+  `~/.claude/skills/project/` is still on disk.
+- soredium main is 3 commits ahead of origin (#534, #535, #536), unpublished.
+- Found, not fixed: `tests/test_cli.py` 13 failures on main since 3d9e97c;
+  `tests/test_verify_promotion.py` 7 failures on main (script exits 2).
+- #515 still to do: promotion gating (audit findings 1, 2; `close_artifacts.py`
+  deletes the source before verifying, #483); push-blocking hook tested by attempting
+  the push; the git-squash skill text is still organised around a pre-push hook;
+  then stage 2 (slot clones lose GitHub remotes).
 - #529 filed: several standalone projects in one repo (quarkmind), a queue and
   workspace per subfolder; after publish, linked to #512.
 - For the user, not for scripts: several casehub remote URLs embed GitHub access

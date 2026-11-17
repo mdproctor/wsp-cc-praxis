@@ -245,16 +245,34 @@ in #512 (stage 4). #512 has a review comment listing four gaps to settle first.
     record is stale, or when repos disagree about order. Records are cleared on landing.
   - Tests: `tests/test_branch_base.py`, `TestStackedBranches` in
     `tests/test_close_batch.py`. Full close/sync/squash run before landing: 337 passed.
-- soredium main is 2 commits ahead of origin (#539, #540), unpublished.
+- Published 2026-11-17: soredium main at 75c3af3 (#539, #540).
+- #483 landed locally (f1a7921): `publish-blog/blog_publish.py` copies an entry's images
+  and verifies them (the old import always failed and was swallowed, so images were
+  never copied by the script); `remove-source` needs `verified-in=<dir>[,<dir>]` and
+  removes nothing unless every destination holds the entry and its images, committed
+  and identical; `commit-destination` refuses a destination off its base branch and
+  publishes through canonical_sync; promotion and the sweep fail with nothing
+  committed when an image does not arrive. A reference the source cannot resolve
+  itself stays a warning (deliberately narrower than the issue's wording).
+- #541 landed locally (6ca1599): `git-squash/hooks/pre-push` checks only linear
+  history on a base branch (no merge commit, fast-forward, no delete).
+  `scripts/install_linear_pre_push.py` replaces the two old hooks; dry run on real
+  repos finds 17 to replace, all tracked under `.githooks/` (13 in casehub: aml,
+  clinical, devtown, engine, garden, iot, ledger, pages, parent, quarkmind, scaffold,
+  work, worker; 4 in hortora: engine, garden, soredium, spec). NOT applied: it leaves a
+  tracked modification in each repo for someone to commit. Until replaced, the 12
+  always-prompt repos cannot be published with `canonical_sync.py publish`.
+  `project/pre_push_hook.py` removed. git-squash skill rewritten around the in-place
+  review that work end asks for.
+- soredium main is 2 commits ahead of origin (#483, #541), unpublished.
 - Failing on main, not from this work: `tests/test_cli.py` (13), 
   `tests/test_verify_promotion.py` (7), `tests/test_plan_migrate.py` (3),
   `tests/test_scaffold_api.py` (2).
 - Not yet exercised for real: stacking through a whole plan in a slot (`work next`
   then `work start` then one `work end`). Everything above is from tests on fixture
   repos.
-- #515 still to do: `close_artifacts.py` deletes the source before verifying (#483);
-  the git-squash skill text is still organised around a pre-push hook; stage 2 (slot
-  clones lose GitHub remotes); #529 (several projects in one repo).
+- #515 still to do: stage 2 (slot clones lose GitHub remotes); #529 (several projects
+  in one repo).
 - #529 filed: several standalone projects in one repo (quarkmind), a queue and
   workspace per subfolder; after publish, linked to #512.
 - For the user, not for scripts: several casehub remote URLs embed GitHub access

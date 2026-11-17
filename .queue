@@ -1,3 +1,13 @@
+# Work Plan —
+
+## State
+branch: issue-537-promotion-gate
+issue-repo: Hortora/soredium
+status: drained
+covers: hortora/soredium#537
+
+## Queue
+- [ ] hortora/soredium#537 — Close refuses while documents are unpromoted ← active
 - [x] hortora/soredium#536 — Markdown promotions commit again and never push
 - [x] hortora/soredium#535 — work start only fast-forwards
 - [x] hortora/soredium#534 — work pause backs up through canonical
@@ -10,12 +20,6 @@
 - [x] hortora/soredium#526 — Close rebases onto the newer of the local and remote base
 - [x] hortora/soredium#525 — Restore the adr skill to its own directory
 - [x] hortora/soredium#473 — Correct stale statements in CLAUDE.md
-
-## State
-branch: issue-536-promotion-commits
-issue-repo: Hortora/soredium
-status: drained
-covers: hortora/soredium#536
 
 ## Deferred
 - [ ] slot_lifecycle.py: replace land_flow import with close.py land (slot archival rewrite) (M / Med) [] — folds into #515 stage 1

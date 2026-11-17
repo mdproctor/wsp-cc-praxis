@@ -1,13 +1,4 @@
-# Work Plan —
-
-## State
-branch: issue-538-push-guard
-issue-repo: Hortora/soredium
-status: drained
-covers: hortora/soredium#538
-
-## Queue
-- [ ] hortora/soredium#538 — Hook blocks git push from a slot or of a working branch ← active
+- [x] hortora/soredium#538 — Hook blocks git push from a slot or of a working branch
 - [x] hortora/soredium#537 — Close refuses while documents are unpromoted
 - [x] hortora/soredium#536 — Markdown promotions commit again and never push
 - [x] hortora/soredium#535 — work start only fast-forwards
@@ -21,6 +12,12 @@ covers: hortora/soredium#538
 - [x] hortora/soredium#526 — Close rebases onto the newer of the local and remote base
 - [x] hortora/soredium#525 — Restore the adr skill to its own directory
 - [x] hortora/soredium#473 — Correct stale statements in CLAUDE.md
+
+## State
+branch: issue-538-push-guard
+issue-repo: Hortora/soredium
+status: drained
+covers: hortora/soredium#538
 
 ## Deferred
 - [ ] slot_lifecycle.py: replace land_flow import with close.py land (slot archival rewrite) (M / Med) [] — folds into #515 stage 1

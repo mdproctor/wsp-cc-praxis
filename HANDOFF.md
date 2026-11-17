@@ -184,14 +184,27 @@ in #512 (stage 4). #512 has a review comment listing four gaps to settle first.
   slots still have the old push hook until `install_post_commit_hook` is re-run on
   them; not done, awaiting the user. Repos with one remote have no off-machine backup
   until `soredium.backupRemote` is set; awaiting the user.
-- soredium main is 9 commits ahead of origin, unpublished (publish is the user's call:
-  `python3 ~/.claude/skills/project/canonical_sync.py publish ~/claude/hortora/soredium`).
-- #515 still to do, in order: `quick_fix.py` (stashes, hard-resets, force-pushes);
-  `pause_exec.py` and `branch_create.py` (push from slots; merge and force-push main);
-  `safe_commit.py` and `artifact_promote.py`; promotion gating
-  (docs/audit-findings-for-rewrite.md findings 1, 2); push-blocking hook tested by
-  attempting the push; the git-squash skill text is still organised around a pre-push
-  hook; then stage 2 (slot clones lose GitHub remotes).
+- Published 2026-11-17 with `canonical_sync.py publish` (its first real use): soredium
+  main at 4d33872; #530, #531 closed.
+- #532 landed locally (a8a3351): `scripts/slot_backup_setup.py`, dry run unless
+  `--apply`. Dry-run results on real data, NOT applied (awaiting the user):
+  `hooks ~/claude/casehub` = 81 old hooks to replace, 4 to install, 8 clones with no
+  canonical (slot 100 x4, 207/agency, 207/wsp-casehub-scaffold, 223/wsp-casehub-connectors,
+  223/wsp-casehub-neocortex); `hooks ~/claude/hortora` = 2 to install;
+  `remotes ~/claude/public owner=mdproctor` = 31 to set, 2 owned by orgs left
+  (casehub/worker -> casehubio, hortora/trellis -> Hortora), 1 with no remote
+  (casehub/scaffold).
+- #533 landed locally (c1cabc2): `quick_fix.py` commits on the base branch and lands on
+  disk through canonical_sync; no ephemeral branch, stash, reset or push; prints
+  `UNPUBLISHED`/`OFFER=publish`; `fix-ci` asks before publishing.
+- soredium main is 2 commits ahead of origin (#532, #533), unpublished.
+- Found, not fixed: `tests/test_cli.py` has 13 failures on main since 3d9e97c rewrote
+  `cli/__main__.py` (`_parse_args`, `COMMANDS`, `emit` no longer exist).
+- #515 still to do, in order: `pause_exec.py` and `branch_create.py` (push from slots;
+  merge and force-push main); `safe_commit.py` and `artifact_promote.py`; promotion
+  gating (docs/audit-findings-for-rewrite.md findings 1, 2); push-blocking hook tested
+  by attempting the push; the git-squash skill text is still organised around a
+  pre-push hook; then stage 2 (slot clones lose GitHub remotes).
 - #529 filed: several standalone projects in one repo (quarkmind), a queue and
   workspace per subfolder; after publish, linked to #512.
 - For the user, not for scripts: several casehub remote URLs embed GitHub access

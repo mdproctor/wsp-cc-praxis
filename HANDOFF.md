@@ -223,21 +223,38 @@ in #512 (stage 4). #512 has a review comment listing four gaps to settle first.
 - #538 landed locally (c492ab8), installed and registered in `~/.claude/settings.json`:
   `hooks/push-guard.py` blocks `git push` from a slot clone and of any working branch.
   Confirmed live in this session: a push from a throwaway slot clone was refused.
-- soredium main is 2 commits ahead of origin (#537, #538), unpublished.
-- Found, not fixed: `tests/test_cli.py` 13 failures on main since 3d9e97c;
-  `tests/test_verify_promotion.py` 7 failures on main (script exits 2).
-- Agreed with the user, NOT built yet (next): stacking. Each queue item says where its
-  branch starts, `stack` (default: on the item before it) or `main` (canonical main);
-  the first item starts from main. `work next` cuts the branch that way in every repo
-  (today the project branch is always cut from main and the workspace from whatever
-  is checked out). Each item records the commit it was cut from. `work end` derives
-  landing order from that record and from ancestry, with queue order only as a
-  tie-break; lands only a branch's own commits (so a squashed parent causes no
-  conflict); the squash review counts only own commits; contradictory order across
-  repos stops the ceremony.
-- #515 still to do after that: `close_artifacts.py` deletes the source before verifying
-  (#483); the git-squash skill text is still organised around a pre-push hook; stage 2
-  (slot clones lose GitHub remotes).
+- Published 2026-11-17: soredium main at c492ab8 (#537, #538). Workspace repos
+  published with the user's go-ahead: cc-praxis and 16 casehub workspaces (base branch
+  only). `casehub/pages` was refused and left untouched: local main has 57 unpublished
+  commits, origin/main has 2 it lacks (babb30d, bd2a8aa: slot 218 recovered #531
+  artifacts), and the rebase conflicts in `.plan`, `.work-progress`, `JOURNAL.md`. The
+  user has a brief for a session in that repo to resolve it.
+- Stacking landed locally (#539 8daba83, #540 75c3af3), installed, NOT published.
+  - Queue items stack by default. `(from main)` marks an item that must stand alone
+    (`plan_manager.py append ... base=main`, `set-base <queue> ref= base=`). Code repos
+    honour it; the workspace repo always continues from the previous item's branch
+    because it holds the queue file, tracked per branch.
+  - `work start` (`branch_create.py create-branches`) decides from the queue
+    (`project/branch_base.start_point`) and prints `STACKED=`, `STACKED_ON=`,
+    `START_REASON=`, `CUT_FROM=<repo>:<origin>`. Each repo records
+    `refs/soredium/base/<branch>` and `refs/soredium/parent/<branch>` (symbolic ref).
+  - `close.py order_entries` derives landing order from those records, ancestry for
+    unrecorded branches, queue order as tie-break. `land_targets` lands only a branch's
+    own commits. `squash_marker.review_status` and `git-squash/ctx.py` count only own
+    commits. Refuses when a parent has not landed and is outside the batch, when a
+    record is stale, or when repos disagree about order. Records are cleared on landing.
+  - Tests: `tests/test_branch_base.py`, `TestStackedBranches` in
+    `tests/test_close_batch.py`. Full close/sync/squash run before landing: 337 passed.
+- soredium main is 2 commits ahead of origin (#539, #540), unpublished.
+- Failing on main, not from this work: `tests/test_cli.py` (13), 
+  `tests/test_verify_promotion.py` (7), `tests/test_plan_migrate.py` (3),
+  `tests/test_scaffold_api.py` (2).
+- Not yet exercised for real: stacking through a whole plan in a slot (`work next`
+  then `work start` then one `work end`). Everything above is from tests on fixture
+  repos.
+- #515 still to do: `close_artifacts.py` deletes the source before verifying (#483);
+  the git-squash skill text is still organised around a pre-push hook; stage 2 (slot
+  clones lose GitHub remotes); #529 (several projects in one repo).
 - #529 filed: several standalone projects in one repo (quarkmind), a queue and
   workspace per subfolder; after publish, linked to #512.
 - For the user, not for scripts: several casehub remote URLs embed GitHub access

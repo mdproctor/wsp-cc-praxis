@@ -210,8 +210,7 @@ in #512 (stage 4). #512 has a review comment listing four gaps to settle first.
 - #536 landed locally (cb42996): `artifact_promote.py` crashed on every markdown
   promotion after staging and before committing (wrong sys.path for `verification`),
   exit 0. Fixed. It no longer pushes or pulls; prints `LANDED=yes|branch|no`.
-  `project/safe_commit.py` (no callers) removed; the installed copy under
-  `~/.claude/skills/project/` is still on disk.
+  `project/safe_commit.py` (no callers) removed, from the installed skills too.
 - soredium main is 3 commits ahead of origin (#534, #535, #536), unpublished.
 - Found, not fixed: `tests/test_cli.py` 13 failures on main since 3d9e97c;
   `tests/test_verify_promotion.py` 7 failures on main (script exits 2).

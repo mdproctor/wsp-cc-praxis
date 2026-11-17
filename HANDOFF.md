@@ -211,13 +211,33 @@ in #512 (stage 4). #512 has a review comment listing four gaps to settle first.
   promotion after staging and before committing (wrong sys.path for `verification`),
   exit 0. Fixed. It no longer pushes or pulls; prints `LANDED=yes|branch|no`.
   `project/safe_commit.py` (no callers) removed, from the installed skills too.
-- soredium main is 3 commits ahead of origin (#534, #535, #536), unpublished.
+- Published 2026-11-17: soredium main at cb42996 (#534, #535, #536).
+- #537 landed locally (6294493): promotion gate. `close.py` returns
+  `ACTION=promotion_needed` (with `UNPROMOTED=` and `PROMOTE=` lines) before the squash
+  review when this work added blog/specs/ADR documents to a workspace that the project
+  lacks. Scope is what this work added (branch vs canonical workspace base, plus
+  uncommitted); the older backlog does not block (27 blogs for soredium, 53 quarkmind,
+  44 engine were measured). `artifact_sweep.py scope=branch` promotes only those. The
+  post-close full sweep was removed from the work-end skill so the backlog is not
+  promoted wholesale; it is left for the recovery session.
+- #538 landed locally (c492ab8), installed and registered in `~/.claude/settings.json`:
+  `hooks/push-guard.py` blocks `git push` from a slot clone and of any working branch.
+  Confirmed live in this session: a push from a throwaway slot clone was refused.
+- soredium main is 2 commits ahead of origin (#537, #538), unpublished.
 - Found, not fixed: `tests/test_cli.py` 13 failures on main since 3d9e97c;
   `tests/test_verify_promotion.py` 7 failures on main (script exits 2).
-- #515 still to do: promotion gating (audit findings 1, 2; `close_artifacts.py`
-  deletes the source before verifying, #483); push-blocking hook tested by attempting
-  the push; the git-squash skill text is still organised around a pre-push hook;
-  then stage 2 (slot clones lose GitHub remotes).
+- Agreed with the user, NOT built yet (next): stacking. Each queue item says where its
+  branch starts, `stack` (default: on the item before it) or `main` (canonical main);
+  the first item starts from main. `work next` cuts the branch that way in every repo
+  (today the project branch is always cut from main and the workspace from whatever
+  is checked out). Each item records the commit it was cut from. `work end` derives
+  landing order from that record and from ancestry, with queue order only as a
+  tie-break; lands only a branch's own commits (so a squashed parent causes no
+  conflict); the squash review counts only own commits; contradictory order across
+  repos stops the ceremony.
+- #515 still to do after that: `close_artifacts.py` deletes the source before verifying
+  (#483); the git-squash skill text is still organised around a pre-push hook; stage 2
+  (slot clones lose GitHub remotes).
 - #529 filed: several standalone projects in one repo (quarkmind), a queue and
   workspace per subfolder; after publish, linked to #512.
 - For the user, not for scripts: several casehub remote URLs embed GitHub access

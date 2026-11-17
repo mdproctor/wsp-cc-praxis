@@ -1,13 +1,4 @@
-# Work Plan —
-
-## State
-branch: issue-540-stacking-part-two
-issue-repo: Hortora/soredium
-status: drained
-covers: hortora/soredium#540
-
-## Queue
-- [ ] hortora/soredium#540 — Stacked branches part two - order and own-commit landing ← active
+- [x] hortora/soredium#540 — Stacked branches part two - order and own-commit landing
 - [x] hortora/soredium#539 — Stacked branches part one - record and branch cutting
 - [x] hortora/soredium#538 — Hook blocks git push from a slot or of a working branch
 - [x] hortora/soredium#537 — Close refuses while documents are unpromoted
@@ -23,6 +14,12 @@ covers: hortora/soredium#540
 - [x] hortora/soredium#526 — Close rebases onto the newer of the local and remote base
 - [x] hortora/soredium#525 — Restore the adr skill to its own directory
 - [x] hortora/soredium#473 — Correct stale statements in CLAUDE.md
+
+## State
+branch: issue-540-stacking-part-two
+issue-repo: Hortora/soredium
+status: drained
+covers: hortora/soredium#540
 
 ## Deferred
 - [ ] slot_lifecycle.py: replace land_flow import with close.py land (slot archival rewrite) (M / Med) [] — folds into #515 stage 1

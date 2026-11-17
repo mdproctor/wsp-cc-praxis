@@ -354,3 +354,10 @@ in #512 (stage 4). #512 has a review comment listing four gaps to settle first.
 | `work-end/artifact_sweep.py` | Workspace to project artifact promotion |
 | `tests/test_close_integration.py` | Ceremony tests on real repo topologies |
 | `tests/test_git_landing_behaviour.py` | Observed git behaviours the #515 design relies on |
+
+## Stage 2 of #515 landed (2026-11-17)
+
+- soredium main 893152b (#545): slot clones have only a `local` remote; checks use `canonical_sync.reference`. Installed with sync-local. Not published: soredium main is 6 commits ahead of origin.
+- Conversion applied with `scripts/slot_backup_setup.py detach <family> --apply`: casehub 90 detached, hortora 2 detached.
+- Left untouched, need a decision: `casehub/slots/207/agency` (its `local` remote names /Users/mdproctor/claude/casehub/blocks, which is not a git repo; backup refused, origin kept) and `223/wsp-casehub-connectors`, `223/wsp-casehub-neocortex` (only `origin`, no canonical named).
+- Next: #529, several standalone projects in one repo. Tests first.

@@ -264,15 +264,49 @@ in #512 (stage 4). #512 has a review comment listing four gaps to settle first.
   always-prompt repos cannot be published with `canonical_sync.py publish`.
   `project/pre_push_hook.py` removed. git-squash skill rewritten around the in-place
   review that work end asks for.
-- soredium main is 2 commits ahead of origin (#483, #541), unpublished.
+- Published 2026-11-17: soredium main at 6ca1599 (#483, #541). Old pre-push hooks
+  replaced in 16 more repos with `install_linear_pre_push.py --apply` (user agreed);
+  each has an uncommitted change to its tracked `.githooks/pre-push`, left for a
+  session in that repo to commit.
+- IN PROGRESS, NOT LANDED: #515 stage 2 on branch `wip-stage2-slot-remotes` in the
+  worktree `/Users/mdproctor/claude/hortora/soredium/.worktrees/fable` (one WIP commit
+  on top of main 6ca1599; nothing uncommitted).
+  - `slot_git.configure_slot_remotes`: a new slot clone gets only a `local` remote.
+  - `canonical_sync.reference(repo)`: a slot is measured against `local/<base>`, a
+    canonical repo against its remote. `repo_checks.check_unpushed_main`,
+    `close_checks.check_main_pushed`, `outcomes.verify_push`,
+    `work_health.check_main_divergence` / `check_close_gate`, `slot_query.get_repo_stats`
+    use it; canonical ahead of its remote is INFO `unpublished`, not an error.
+  - `scripts/slot_backup_setup.py detach <family-root> [--apply]`: backs up every
+    local branch of a slot clone into canonical, then removes hosted remotes; renames
+    an `origin` that is the canonical path to `local`.
+  - New tests: `tests/test_reference_checks.py`, `TestDetach` in
+    `tests/test_slot_backup_setup.py`, rewritten `TestConfigureSlotRemotes`.
+  - Suite run on the branch: 32 failed, 389 passed. 10 of the failures also fail on
+    main (`test_repo_state.py` 9, `test_repo_context.py` 1). 4 in
+    `test_close_verify.py` (AttributeError) pass alone and in pairs: order-dependent,
+    cause not yet found. 18 more were cut off in the output and are not yet named. A
+    re-run with the full list writes to the session scratchpad `stage2-full.txt`; if
+    that is gone, re-run: `python3 -m pytest tests/test_slot_lifecycle.py
+    tests/test_slot_manager.py tests/test_slot_git.py tests/test_slot_backup_setup.py
+    tests/test_reference_checks.py tests/test_work_health.py tests/test_close_verify.py
+    tests/test_repo_state.py tests/test_repo_context.py tests/test_canonical_sync.py
+    tests/test_close_integration.py tests/test_close_checks_images.py -q -rf`.
+  - Next: name and fix the failures that are this branch's, land through `work end`,
+    `sync-local`, then apply the conversion the user has agreed to:
+    `slot_backup_setup.py detach ~/claude/casehub --apply` and `... ~/claude/hortora
+    --apply`. Dry run found 93 clones to convert (48 remove origin; 38 remove origin
+    and upstream; 5 rename origin to local, including all of slot 100; 2 remove fork
+    and origin) and 2 that cannot name a canonical repo (223/wsp-casehub-connectors,
+    223/wsp-casehub-neocortex). The live slots have NOT been touched.
 - Failing on main, not from this work: `tests/test_cli.py` (13), 
   `tests/test_verify_promotion.py` (7), `tests/test_plan_migrate.py` (3),
-  `tests/test_scaffold_api.py` (2).
+  `tests/test_scaffold_api.py` (2), `tests/test_repo_state.py` (9),
+  `tests/test_repo_context.py` (1).
 - Not yet exercised for real: stacking through a whole plan in a slot (`work next`
   then `work start` then one `work end`). Everything above is from tests on fixture
   repos.
-- #515 still to do: stage 2 (slot clones lose GitHub remotes); #529 (several projects
-  in one repo).
+- After stage 2: #529 (several projects in one repo).
 - #529 filed: several standalone projects in one repo (quarkmind), a queue and
   workspace per subfolder; after publish, linked to #512.
 - For the user, not for scripts: several casehub remote URLs embed GitHub access

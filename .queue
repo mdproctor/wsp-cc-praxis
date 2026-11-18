@@ -1,13 +1,4 @@
-# Work Plan —
-
-## State
-branch: issue-546-stale-tests
-issue-repo: Hortora/soredium
-status: drained
-covers: hortora/soredium#546
-
-## Queue
-- [ ] hortora/soredium#546 — Remove or update stale tests left by 450 and 499 ← active
+- [x] hortora/soredium#546 — Remove or update stale tests left by 450 and 499
 - [x] hortora/soredium#545 — Slot clones have only a local remote
 - [x] hortora/soredium#541 — Pre-push hook checks linear history only
 - [x] hortora/soredium#483 — Images travel with their document and nothing is removed unverified
@@ -27,6 +18,12 @@ covers: hortora/soredium#546
 - [x] hortora/soredium#526 — Close rebases onto the newer of the local and remote base
 - [x] hortora/soredium#525 — Restore the adr skill to its own directory
 - [x] hortora/soredium#473 — Correct stale statements in CLAUDE.md
+
+## State
+branch: issue-546-stale-tests
+issue-repo: Hortora/soredium
+status: drained
+covers: hortora/soredium#546
 
 ## Deferred
 - [ ] slot_lifecycle.py: replace land_flow import with close.py land (slot archival rewrite) (M / Med) [] — folds into #515 stage 1

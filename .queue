@@ -1,13 +1,4 @@
-# Work Plan —
-
-## State
-branch: issue-548-alignment-detector
-issue-repo: Hortora/soredium
-status: drained
-covers: hortora/soredium#548
-
-## Queue
-- [ ] hortora/soredium#548 — One call per work command with alignment check ← active
+- [x] hortora/soredium#548 — One call per work command with alignment check
 - [x] hortora/soredium#556 — Stamp keeps the repository in a qualified issue reference
 - [x] hortora/soredium#550 — get_lifecycle_state reads to_state
 - [x] hortora/soredium#546 — Remove or update stale tests left by 450 and 499
@@ -30,6 +21,12 @@ covers: hortora/soredium#548
 - [x] hortora/soredium#526 — Close rebases onto the newer of the local and remote base
 - [x] hortora/soredium#525 — Restore the adr skill to its own directory
 - [x] hortora/soredium#473 — Correct stale statements in CLAUDE.md
+
+## State
+branch: issue-548-alignment-detector
+issue-repo: Hortora/soredium
+status: drained
+covers: hortora/soredium#548
 
 ## Deferred
 - [ ] slot_lifecycle.py: replace land_flow import with close.py land (slot archival rewrite) (M / Med) [] — folds into #515 stage 1

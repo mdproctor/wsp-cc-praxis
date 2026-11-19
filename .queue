@@ -25,11 +25,13 @@
 - [x] hortora/soredium#473 — Correct stale statements in CLAUDE.md
 - [x] hortora/soredium#551 — Publish names the push hook that would refuse it
 - [x] hortora/soredium#561 — Named start registers the issue in the queue
+- [ ] hortora/soredium#562 — Step progress belongs to one run        ← active
 
 ## State
-branch: 
+branch: issue-562-progress-per-run
 issue-repo: Hortora/soredium
-status: drained
+status: active
+covers: hortora/soredium#562
 
 ## Deferred
 - [ ] slot_lifecycle.py: replace land_flow import with close.py land (slot archival rewrite) (M / Med) [] — folds into #515 stage 1

@@ -25,7 +25,7 @@
 - [x] hortora/soredium#473 — Correct stale statements in CLAUDE.md
 
 ## State
-branch: issue-553-permanent-clone
+branch: issue-551-publish-names-push-hook
 issue-repo: Hortora/soredium
 status: drained
 covers: hortora/soredium#553

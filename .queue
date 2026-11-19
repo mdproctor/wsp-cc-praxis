@@ -1,12 +1,3 @@
-# Work Plan —
-
-## State
-branch: 
-issue-repo: Hortora/soredium
-status: active
-covers: 
-
-## Queue
 - [x] hortora/soredium#569 — Blog routing is a script with a plan command
 - [x] hortora/soredium#558 — Promotion commits on the base branch and touches no working tree
 - [x] hortora/soredium#553 — Permanent single-repo clone
@@ -42,7 +33,12 @@ covers:
 - [x] hortora/soredium#566 — Close gate sees documents on the workspace base branch
 - [x] hortora/soredium#567 — Start levels the workspace clone before writing the queue
 - [x] hortora/soredium#568 — Hook replacement commits on base; publish runs base hooks
-- [ ] hortora/soredium#572 — Entry with no entry_type is a note ← done on issue-572-untyped-entry-is-a-note
+- [x] hortora/soredium#572 — Entry with no entry_type is a note
+
+## State
+branch: 
+issue-repo: Hortora/soredium
+status: drained
 
 ## Deferred
 - [ ] slot_lifecycle.py: replace land_flow import with close.py land (slot archival rewrite) (M / Med) [] — folds into #515 stage 1

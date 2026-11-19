@@ -1,3 +1,12 @@
+# Work Plan —
+
+## State
+branch: 
+issue-repo: Hortora/soredium
+status: active
+covers: 
+
+## Queue
 - [x] hortora/soredium#553 — Permanent single-repo clone
 - [x] hortora/soredium#559 — Work end offers publishing for every covered repo
 - [x] hortora/soredium#548 — One call per work command with alignment check
@@ -27,13 +36,7 @@
 - [x] hortora/soredium#561 — Named start registers the issue in the queue
 - [ ] hortora/soredium#562 — Step progress belongs to one run ← done on issue-562-progress-per-run
 - [ ] hortora/soredium#563 — Work end in a permanent clone settles the workspace ← done on issue-563-clone-work-end-settles
-- [ ] hortora/soredium#565 — Tests do not run the machine's global git hooks        ← active
-
-## State
-branch: issue-565-hermetic-git-in-tests
-issue-repo: Hortora/soredium
-status: active
-covers: hortora/soredium#565
+- [ ] hortora/soredium#565 — Tests do not run the machine's global git hooks ← done on issue-565-hermetic-git-in-tests
 
 ## Deferred
 - [ ] slot_lifecycle.py: replace land_flow import with close.py land (slot archival rewrite) (M / Med) [] — folds into #515 stage 1

@@ -34,11 +34,13 @@
 - [x] hortora/soredium#567 — Start levels the workspace clone before writing the queue
 - [x] hortora/soredium#568 — Hook replacement commits on base; publish runs base hooks
 - [x] hortora/soredium#572 — Entry with no entry_type is a note
+- [ ] hortora/soredium#571 — work wrap: one command for the end-of-session sequence        ← active
 
 ## State
-branch: 
+branch: issue-571-work-wrap
 issue-repo: Hortora/soredium
-status: drained
+status: active
+covers: hortora/soredium#571
 
 ## Deferred
 - [ ] slot_lifecycle.py: replace land_flow import with close.py land (slot archival rewrite) (M / Med) [] — folds into #515 stage 1

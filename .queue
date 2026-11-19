@@ -1,3 +1,12 @@
+# Work Plan —
+
+## State
+branch: 
+issue-repo: Hortora/soredium
+status: active
+covers: 
+
+## Queue
 - [x] hortora/soredium#558 — Promotion commits on the base branch and touches no working tree
 - [x] hortora/soredium#553 — Permanent single-repo clone
 - [x] hortora/soredium#559 — Work end offers publishing for every covered repo
@@ -31,13 +40,7 @@
 - [x] hortora/soredium#565 — Tests do not run the machine's global git hooks
 - [x] hortora/soredium#566 — Close gate sees documents on the workspace base branch
 - [x] hortora/soredium#567 — Start levels the workspace clone before writing the queue
-- [ ] hortora/soredium#568 — Hook replacement commits on base; publish runs base hooks        ← active
-
-## State
-branch: issue-568-hooks-on-base
-issue-repo: Hortora/soredium
-status: active
-covers: hortora/soredium#568
+- [ ] hortora/soredium#568 — Hook replacement commits on base; publish runs base hooks ← done on issue-568-hooks-on-base
 
 ## Deferred
 - [ ] slot_lifecycle.py: replace land_flow import with close.py land (slot archival rewrite) (M / Med) [] — folds into #515 stage 1

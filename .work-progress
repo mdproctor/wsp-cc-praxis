@@ -1,0 +1,15 @@
+_exec_ok:sync_main=yes
+sync_main=done
+_exec_ok:stacked_pr_detect=yes
+stacked_pr_detect=done
+branch_name_attempt=1
+last_yielded=branch_name
+branch_name=done
+_exec_ok:create_branches=yes
+create_branches=done
+_exec_ok:recover_plan=yes
+recover_plan=done
+_exec_ok:design_routing=yes
+design_routing=done
+_exec_ok:scaffold=yes
+scaffold=done

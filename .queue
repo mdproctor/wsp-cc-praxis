@@ -36,11 +36,13 @@
 - [x] hortora/soredium#572 — Entry with no entry_type is a note
 - [x] hortora/soredium#571 — work wrap: one command for the end-of-session sequence
 - [x] hortora/soredium#574 — Reads never write; plan file retired only on first conversion
+- [ ] hortora/soredium#575 — Worklog records every lifecycle action        ← active
 
 ## State
-branch: 
+branch: issue-575-worklog-full-trace
 issue-repo: Hortora/soredium
-status: drained
+status: active
+covers: hortora/soredium#575
 
 ## Deferred
 - [ ] slot_lifecycle.py: replace land_flow import with close.py land (slot archival rewrite) (M / Med) [] — folds into #515 stage 1

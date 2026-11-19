@@ -1,3 +1,4 @@
+- [x] hortora/soredium#558 — Promotion commits on the base branch and touches no working tree
 - [x] hortora/soredium#553 — Permanent single-repo clone
 - [x] hortora/soredium#559 — Work end offers publishing for every covered repo
 - [x] hortora/soredium#548 — One call per work command with alignment check

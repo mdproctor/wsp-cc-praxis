@@ -1,3 +1,12 @@
+# Work Plan —
+
+## State
+branch: 
+issue-repo: Hortora/soredium
+status: active
+covers: 
+
+## Queue
 - [x] hortora/soredium#553 — Permanent single-repo clone
 - [x] hortora/soredium#559 — Work end offers publishing for every covered repo
 - [x] hortora/soredium#548 — One call per work command with alignment check
@@ -24,13 +33,7 @@
 - [x] hortora/soredium#525 — Restore the adr skill to its own directory
 - [x] hortora/soredium#473 — Correct stale statements in CLAUDE.md
 - [ ] hortora/soredium#551 — Publish names the push hook that would refuse it ← done on issue-551-publish-names-push-hook
-- [ ] hortora/soredium#561 — Named start registers the issue in the queue        ← active
-
-## State
-branch: issue-561-named-start-registers-issue
-issue-repo: Hortora/soredium
-status: active
-covers: hortora/soredium#561
+- [ ] hortora/soredium#561 — Named start registers the issue in the queue ← done on issue-561-named-start-registers-issue
 
 ## Deferred
 - [ ] slot_lifecycle.py: replace land_flow import with close.py land (slot archival rewrite) (M / Med) [] — folds into #515 stage 1

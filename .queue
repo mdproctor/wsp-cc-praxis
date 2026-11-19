@@ -1,12 +1,3 @@
-# Work Plan —
-
-## State
-branch: 
-issue-repo: Hortora/soredium
-status: active
-covers: 
-
-## Queue
 - [x] hortora/soredium#569 — Blog routing is a script with a plan command
 - [x] hortora/soredium#558 — Promotion commits on the base branch and touches no working tree
 - [x] hortora/soredium#553 — Permanent single-repo clone
@@ -46,7 +37,12 @@ covers:
 - [x] hortora/soredium#571 — work wrap: one command for the end-of-session sequence
 - [x] hortora/soredium#574 — Reads never write; plan file retired only on first conversion
 - [x] hortora/soredium#575 — Worklog records every lifecycle action
-- [ ] hortora/soredium#576 — Tests never reach the real worklog ← done on issue-576-worklog-test-isolation
+- [x] hortora/soredium#576 — Tests never reach the real worklog
+
+## State
+branch: 
+issue-repo: Hortora/soredium
+status: drained
 
 ## Deferred
 - [ ] slot_lifecycle.py: replace land_flow import with close.py land (slot archival rewrite) (M / Med) [] — folds into #515 stage 1

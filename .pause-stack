@@ -1,0 +1,4 @@
+- branch: issue-587-untrack-pipeline-state-files
+  issue: 579
+  paused: 2026-11-20T15:10:41Z
+  epic_active_issue: hortora/soredium#579

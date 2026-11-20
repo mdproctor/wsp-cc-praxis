@@ -1,7 +1,7 @@
 # Session Handover
 
 **Date:** 2026-11-19
-**Where to work:** the permanent clone, `~/claude/hortora/clone/soredium/` (open the session in `wsp-cc-praxis/`). The canonical repo `~/claude/hortora/soredium` is the sync point only.
+**Where to work:** the permanent clone, `~/claude/hortora/clone/soredium/` (open the session in `wsp-soredium/`). The canonical repo `~/claude/hortora/soredium` is the sync point only.
 **Branch:** `main` in both clone repos (no work branch open)
 **Active queue item:** Hortora/soredium#584 (not started)
 **Queue:** `~/claude/hortora/clone/soredium/.queue` (the clone root; see "One queue per area")

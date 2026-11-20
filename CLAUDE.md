@@ -33,12 +33,12 @@
 ## Git Discipline
 
 Two git repositories are active in every session:
-- **Workspace** (`~/claude/public/cc-praxis`) — plans, blog (staging), snapshots, handover
+- **Workspace** (`~/claude/public/soredium`) — plans, blog (staging), snapshots, handover
 - **Project repo** (proj/) — source code, ADRs (`docs/adr/`)
 
 Never rely on CWD for git operations — the session may have started in either repo. Always use explicit paths:
 ```bash
-git -C ~/claude/public/cc-praxis add <file>                    # workspace artifacts
+git -C ~/claude/public/soredium add <file>                    # workspace artifacts
 git -C proj/ add <file>     # project artifacts
 ```
 
@@ -563,7 +563,7 @@ The test: if the problem could plausibly occur in a different project type, it's
 Skills write methodology artifacts to a companion workspace, not the project repo.
 Full design: `docs/specs/2026-04-09-workspace-model-design.md`
 
-- **soredium workspace:** `~/claude/public/cc-praxis/` → GitHub: `mdproctor/wsp-cc-praxis`
+- **soredium workspace:** `~/claude/public/soredium/` → GitHub: `mdproctor/wsp-soredium`
 - Claude opens in the workspace; project loaded via `add-dir` in workspace CLAUDE.md
 - Navigation: `proj/` in workspace → project; `wksp/` in project → workspace
 

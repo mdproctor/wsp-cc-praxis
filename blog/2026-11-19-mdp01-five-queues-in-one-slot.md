@@ -73,3 +73,4 @@ Each script now records its own action as it performs it: every step of a comman
 That rule was broken almost immediately. A detail field named `action` collided with the recorder's own argument and took the whole command down. Then the tests wrote seven rows into my real database, because one test file copied its environment before the per-test isolation existed. There were 797 older rows from the same leak.
 
 Numbered slots still scaffold their queue the old way when they're created, and that's next. After that, a slot, a clone and a long-lived agent directory are the same shape: a root, a queue, a set of repos. I'd like them to be one thing.
+

@@ -1,363 +1,70 @@
 # Session Handover
 
-**Branch:** `main` (no work branch open)
-**Date:** 2026-11-16
-**Next issue:** Hortora/soredium#517, then #515 — Canonical sync: one landing flow with linear history, canonical as the only publisher
+**Date:** 2026-11-19
+**Where to work:** the permanent clone, `~/claude/hortora/clone/soredium/` (open the session in `wsp-cc-praxis/`). The canonical repo `~/claude/hortora/soredium` is the sync point only.
+**Branch:** `main` in both clone repos (no work branch open)
+**Active queue item:** Hortora/soredium#584 (not started)
+**Queue:** `~/claude/hortora/clone/soredium/.queue` (the clone root; see "One queue per area")
 
-## Where things stand
-
-The work-end redesign (#499) landed on 2026-11-05 and replaced the orchestrator with
-`work-end/close.py`. Real use then exposed a run of failures, all now fixed and pushed:
-
-| Issue | What was wrong | Fix |
-|---|---|---|
-| #501, #502, #503 | Staged but never committed; preflight reset `main`; reset before landing | Commit and tip verification; no resets anywhere in `close.py` |
-| #504, #507 | `work start #N` routing on a feature branch | Router distinguishes active vs other issue |
-| #505 | Handover orchestrator called a deleted script | Uses `pause_exec.py commit-wip` |
-| #506, #508 | Artifacts and images never reached the project | `work-end/artifact_sweep.py`, image co-promotion |
-| #509 | Queue branch empty or stale | Start, continue and resume sync it |
-| #510 | No tests on real topologies | Integration suite, slot detection fix |
-| #513 | Closed an already-stamped branch and reported success | Stamped branches are never targets; queue/branch mismatch fails |
-| #514 | `close.py` collapsed commits via `.squash-plan` | No squash code in `close.py`; git-squash records `refs/squash-reviewed/<branch>` |
-| #515 (part) | Reported SHA not `main`'s tip; same-named repos overwrote each other; ceremony ran on a repo stopped mid-rebase | Strip on the branch; `WORKSPACE_LANDED_*`; idle-repo guard |
-
-Reference incident: casehubio/casehub-pages#666.
-
-## The rules now in force
-
-Recorded in the project `CLAUDE.md` under "Landing Rules":
-
-1. Linear history on every base branch, workspace repos included.
-2. Canonical repos (`~/claude/<family>/<repo>`) are the sync point.
-3. Only canonical pushes to GitHub.
-4. Squashing only through the git-squash skill.
-
-Claims about git or script behaviour must be observed by running them, not assumed.
-
-## Landed on 2026-11-16 (pushed to origin, installed with sync-local, issues closed)
-
-| Issue | What was wrong | Fix |
-|---|---|---|
-| #516 | `plan_manager` deleted deferred items written with no repos, and any line or section it could not parse; `queue_io` read zero items after any `plan_manager` write | Both modules keep each other's data; `tests/test_queue_file_roundtrip.py` |
-| #518 | Close ceremony's stamp, queue-advance, merge and strip commits had no issue reference; the commit hook rejected the stamp after `main` had advanced | Commits carry `Refs <owner/repo#N>`; hook accepts qualified references |
-| #519 | Slot merge (`land_flow.py`) treated a branch with only Markdown, text or image changes as already merged and stamped it unmerged; `restore-slot` crashed on a removed function; seven slot tests used a real workspace under the home directory | Whole-tree comparison; dead call removed; slot tests run with an isolated home |
-| #520 | Duplicate-work check on `plan_manager append` never ran from the installed copy; the import error was swallowed | `worklog.py` finds `plan_io` when installed; failures print a warning |
-| #521 | Archive kept `.m2` and Maven `target/` in the attic; work-end in a slot tried to archive the slot it was running in; a session in `slots/211` counted as active in `slots/21` | Archive purges build outputs inside the slot; `close.py` writes `.landed` when the queue drains and prints `SLOT_READY_FOR_ARCHIVE`; work-end never archives or offers to; cwd match respects the slot boundary |
-
-Also landed with #518: a commit from another session making a running Claude Code
-session a hard stop in `archive_slot` that `--force` cannot bypass. Tests added here.
-
-soredium `origin/main` is at `c528bad`. #516, #518, #519, #520 and #521 are closed.
-
-## #517 landed, pushed and installed; issue closed (2026-11-16)
-
-soredium `main` equals `origin/main` at `52cdfb7`. That tip is #522, committed
-directly onto `main` by another session sharing this checkout: it removed the 26
-stale tests left from the #499 rewrite.
-
-- A queue item can be **done but not closed**: `- [ ] ref — title ← done on <branch>`.
-  `plan_manager.py mark-done <queue> [branch=]` writes it. Both queue modules keep it.
-- `work next` on a feature branch runs `mark-done`, not `advance`. Before, it checked
-  the item without landing it and blanked the queue's branch.
-- `close.py` lands every done item's branch in queue order, then the active one, and
-  checks each item after its own landing and stamp. Squash review needed anywhere, or
-  a done branch missing, stops the batch with nothing changed. A failure part-way
-  commits the closed items and leaves the rest done. Output: `CLOSED_ITEM=<ref> branch=<b>`.
-- `project/work_chain.py` is now a script the work skill runs
-  (`work_chain.py <cmd> queue=<path>`). It had no caller before: the skill read
-  `CHAIN_DIRECTIVE` from `ctx.py`, which never emitted it. It reads done-ness from the
-  queue, not GitHub, and prints `OFFER=wrap_or_continue` whenever an item is finished
-  or done items are waiting. `ctx.py` reports `DONE_PENDING` and `DONE_ITEMS`.
-- Tests: `tests/test_queue_done_state.py`, `tests/test_close_batch.py`,
-  `tests/test_done_wiring.py`.
-
-Not done for #517: nothing enforces that a new branch is cut from base rather than
-from the done branch (stacking works and is tested, but is not chosen for the user);
-epic checkbox ticking on GitHub (`tick_github` in the next pipeline) was not
-re-examined against the done state; the behaviour has not been exercised in a real
-multi-issue session or in a slot.
-
-## Artifact recovery (handed to a separate session)
-
-Every commit that no branch reached is pinned under `refs/rescue/<sha>` in 88
-canonical repos (10,683 commits), so nothing can be pruned. Restoring, promoting
-and publishing the lost blogs, specs and images is a separate session's job. Its
-brief, scripts and draft inventory are in
-`/Users/mdproctor/claude/casehub/recovery-2026-11-16/`. This workspace stays on
-the work-end and slot tooling.
-
-## Next action
-
-1. Fix `slot_metadata.verify_landed_shas` (see Known gaps) on its own issue.
-2. #515 stage 1 from item 1 below (the shared sync module): propose the design first. `land_flow.py` is gone. **Done 2026-11-16:** `work-end/land_flow.py` deleted;
-   `merge-slot` is a stub (`ERROR=merge_slot_removed`). It could not run anyway:
-   nothing writes `.phase-a-complete` any more. The behaviours its tests pinned, to
-   be re-pinned on the sync module, are listed in a comment on #515.
-
-### #515 stage 1
-
-Stage 1, in order:
-
-1. One module that owns every push and every base-branch change (sync from remote,
-   rebase, hold in canonical, publish, advance, mirror, branch backup), tested on a
-   fixture of canonical, a slot clone and two bare remotes.
-2. Move the callers onto it: `close.py`, `artifact_promote.py`,
-   `pause_exec.py`, `branch_create.py`, `safe_commit.py`, `quick_fix.py`,
-   `git-squash/branch_swap.py`, and the "always push from a slot" text in
-   `git-commit/SKILL.md`.
-3. Workspace repos land linearly (supersedes ADR-0016).
-4. Replace `work pause`'s `pull --rebase`, which left the pages workspace stopped
-   mid-rebase and cost four commits.
-5. Every script that runs `rebase --abort` first checks no rebase was already in
-   progress (`branch_create.py`, `quick_fix.py`,
-   `git-squash/rebase_exec.py`; `close.py` is already guarded).
-6. Session start reports a repo that is mid-operation or on a detached HEAD.
-7. Commit-tier validator: no push, non-fast-forward merge or soft reset outside the
-   module. Remove the noise regexes from `.githooks/pre-push`.
-
-Later stages: finish the clone migration and rewire slot remotes (stage 2); optional
-bare canonical (stage 3); per-item `branch:` in the queue, then the slot-root layout
-in #512 (stage 4). #512 has a review comment listing four gaps to settle first.
-
-## Open questions for the user
-
-- Do the per-repo `wsp-casehub-*` repos matter as published artifacts, or can one
-  family workspace repo replace them? Decides how the slot root gets a remote (#512).
-- Not yet verified for #515: two remotes where the blessed one accepts and the mirror
-  fails; the per-repo lock under two concurrent closes; git versions other than 2.50.1.
+Earlier history of this file is in git (`git log -- HANDOFF.md`).
 
 ## State of the repos
 
-- **soredium:** on `main` at `d018592`, 4 commits ahead of `origin/main`, working tree
-  clean. Unpushed: #473 (CLAUDE.md staleness corrected; the issue itself is broader and
-  stays open), #526, #525, #527. Installed with sync-local. All pushed.
-- **Worktree:** this session works in `.worktrees/fable`. Detach it
-  (`git checkout --detach`) before each close: the ceremony checks the branch out in
-  the main checkout, and a branch cannot be checked out in two places.
-- **This workspace:** on `main`. `.queue` has no active item and two deferred items.
-- **Installed skills:** synced to soredium local `main` at `971b114` on 2026-11-16.
-- **Deferred in `.queue`:** `pre_push_hook.py` still imports `lifecycle.read_state`;
-  `slot_lifecycle.py` still imports `land_flow`. Both fold into #515 stage 1.
-- **Shared checkout:** another session committed onto this session's branch because
-  both use the soredium checkout. Check `git log` before landing a branch.
+- soredium `main` equals `origin/main` at `c161e0a`. cc-praxis `main` equals `origin/main` at `d45256b`.
+- Everything below is landed, published and installed with `sync-local`.
+- Sessions that loaded the `work` skill before 2026-11-19 keep the old behaviour until they reload it.
 
-## Known gaps
+## What changed on 2026-11-19
 
-- #527 (landed locally, 9bfc418): archive-slot's landed check passed work that never
-  landed (same commit subject on main, or no source-code files changed). Both
-  `verify_landed_shas` and `verification/outcomes.py` now use
-  `project/landed_check.content_on_base`: every file compared, pass only on proof
-  (ancestry, patch-equivalent commits, identical paths, content held on base since the
-  fork, squash-equivalent). Tests: `tests/test_landed_check.py`. Run read-only over the
-  11 real slots with `.landed`: casehub attic 203 fails (neocortex `b461b9d95d0f`, 14
-  `SearchBudget*` files never on main); slot 196 and attic 201 record commits canonical
-  lacks.
-- Pushed 2026-11-16: soredium main at 9bfc418 (#473 corrections, #525, #526, #527);
-  #525, #526, #527 closed. #473 stays open (thinning CLAUDE.md).
-- #515 stage 1, first part landed on local soredium main 2026-11-17 (de56853, 7
-  commits, NOT published; installed with sync-local). It was landed by the new
-  ceremony itself. What it is:
-  - `project/canonical_sync.py`: `land`/`land_all` put a branch on the canonical repo's
-    base branch, on disk, with no network and no checkout switched (rebase where the
-    branch is checked out or in a temporary worktree). `publish_base` / `canonical_sync.py
-    publish <repo>` is the only step that uses the network: fetch, rebase unpublished
-    commits if the remote moved, push to the fork as `publish/<base>`, plain push to
-    the main remote, fork base follows. `status <repo>` prints `UNPUBLISHED=N`.
-  - `work-end/close.py` lands through it: slot work reaches canonical, workspace repos
-    land linearly (no merge commit), no commit is added to base after landing, and it
-    prints `UNPUBLISHED=<repo> commits=N` + `OFFER=publish`. In a slot it sweeps every
-    git repo for commits canonical lacks (`CARRIED=`, `NOT_LANDED=`); a slot with
-    anything not landed is not marked ready for archive.
-  - Decided: `work end` = land on disk only; publish is separate and offered; fork
-    first, as a branch; mirror failure warns; repo with no remote lands only.
-  - Remotes convention found on disk: canonical casehub repos use `origin` = main
-    remote, `fork` = personal fork; slot clones use `upstream`/`origin` plus `local`.
-  - Backup branch kept: `backup/pre-squash-issue-515-canonical-sync-20261117`.
-- #530 landed locally (dd96773): git-squash `branch_swap.py` only renames (no push, no
-  checkout); `rebase_exec.py` refuses with `dirty_worktree`/`busy` instead of stashing
-  or aborting a rebase it did not start.
-- #531 landed locally (4d33872): the slot post-commit hook runs
-  `canonical_sync.py backup <repo> offsite=yes`: canonical takes the branch into
-  `refs/backup/<slot>/<branch>` and sends that ref to the backup remote (the fork, or
-  `git config soredium.backupRemote`). Failures print `soredium: BACKUP FAILED`, leave
-  `.git/soredium-backup-failed`, and show in `canonical_sync.py status`. Existing
-  slots still have the old push hook until `install_post_commit_hook` is re-run on
-  them; not done, awaiting the user. Repos with one remote have no off-machine backup
-  until `soredium.backupRemote` is set; awaiting the user.
-- Published 2026-11-17 with `canonical_sync.py publish` (its first real use): soredium
-  main at 4d33872; #530, #531 closed.
-- #532 landed locally (a8a3351): `scripts/slot_backup_setup.py`, dry run unless
-  `--apply`. Dry-run results on real data, NOT applied (awaiting the user):
-  `hooks ~/claude/casehub` = 81 old hooks to replace, 4 to install, 8 clones with no
-  canonical (slot 100 x4, 207/agency, 207/wsp-casehub-scaffold, 223/wsp-casehub-connectors,
-  223/wsp-casehub-neocortex); `hooks ~/claude/hortora` = 2 to install;
-  `remotes ~/claude/public owner=mdproctor` = 31 to set, 2 owned by orgs left
-  (casehub/worker -> casehubio, hortora/trellis -> Hortora), 1 with no remote
-  (casehub/scaffold).
-- #533 landed locally (c1cabc2): `quick_fix.py` commits on the base branch and lands on
-  disk through canonical_sync; no ephemeral branch, stash, reset or push; prints
-  `UNPUBLISHED`/`OFFER=publish`; `fix-ci` asks before publishing.
-- Applied 2026-11-17 with the user's go-ahead: `slot_backup_setup.py hooks --apply` on
-  casehub (81 replaced, 4 installed, 8 left: no canonical) and hortora (2 installed);
-  `remotes ~/claude/public owner=mdproctor --apply` (31 set to `origin`). Published
-  soredium to c1cabc2.
-- #534 landed locally (dfa7b82): `work pause` backs the branch up through canonical;
-  no push, pull or stash; in a slot the stack entry is committed in the slot workspace
-  and landed in the canonical workspace. Six pause tests that failed on main are fixed.
-- #535 landed locally (8db187f): `work start` sync only fast-forwards (canonical from
-  its remote, a slot clone from canonical); no rebase, merge, duplicate-dropping or
-  push; `commit-scaffold` backs up instead of pushing. `canonical_sync.follow()` added.
-- #536 landed locally (cb42996): `artifact_promote.py` crashed on every markdown
-  promotion after staging and before committing (wrong sys.path for `verification`),
-  exit 0. Fixed. It no longer pushes or pulls; prints `LANDED=yes|branch|no`.
-  `project/safe_commit.py` (no callers) removed, from the installed skills too.
-- Published 2026-11-17: soredium main at cb42996 (#534, #535, #536).
-- #537 landed locally (6294493): promotion gate. `close.py` returns
-  `ACTION=promotion_needed` (with `UNPROMOTED=` and `PROMOTE=` lines) before the squash
-  review when this work added blog/specs/ADR documents to a workspace that the project
-  lacks. Scope is what this work added (branch vs canonical workspace base, plus
-  uncommitted); the older backlog does not block (27 blogs for soredium, 53 quarkmind,
-  44 engine were measured). `artifact_sweep.py scope=branch` promotes only those. The
-  post-close full sweep was removed from the work-end skill so the backlog is not
-  promoted wholesale; it is left for the recovery session.
-- #538 landed locally (c492ab8), installed and registered in `~/.claude/settings.json`:
-  `hooks/push-guard.py` blocks `git push` from a slot clone and of any working branch.
-  Confirmed live in this session: a push from a throwaway slot clone was refused.
-- Published 2026-11-17: soredium main at c492ab8 (#537, #538). Workspace repos
-  published with the user's go-ahead: cc-praxis and 16 casehub workspaces (base branch
-  only). `casehub/pages` was refused and left untouched: local main has 57 unpublished
-  commits, origin/main has 2 it lacks (babb30d, bd2a8aa: slot 218 recovered #531
-  artifacts), and the rebase conflicts in `.plan`, `.work-progress`, `JOURNAL.md`. The
-  user has a brief for a session in that repo to resolve it.
-- Stacking landed locally (#539 8daba83, #540 75c3af3), installed, NOT published.
-  - Queue items stack by default. `(from main)` marks an item that must stand alone
-    (`plan_manager.py append ... base=main`, `set-base <queue> ref= base=`). Code repos
-    honour it; the workspace repo always continues from the previous item's branch
-    because it holds the queue file, tracked per branch.
-  - `work start` (`branch_create.py create-branches`) decides from the queue
-    (`project/branch_base.start_point`) and prints `STACKED=`, `STACKED_ON=`,
-    `START_REASON=`, `CUT_FROM=<repo>:<origin>`. Each repo records
-    `refs/soredium/base/<branch>` and `refs/soredium/parent/<branch>` (symbolic ref).
-  - `close.py order_entries` derives landing order from those records, ancestry for
-    unrecorded branches, queue order as tie-break. `land_targets` lands only a branch's
-    own commits. `squash_marker.review_status` and `git-squash/ctx.py` count only own
-    commits. Refuses when a parent has not landed and is outside the batch, when a
-    record is stale, or when repos disagree about order. Records are cleared on landing.
-  - Tests: `tests/test_branch_base.py`, `TestStackedBranches` in
-    `tests/test_close_batch.py`. Full close/sync/squash run before landing: 337 passed.
-- Published 2026-11-17: soredium main at 75c3af3 (#539, #540).
-- #483 landed locally (f1a7921): `publish-blog/blog_publish.py` copies an entry's images
-  and verifies them (the old import always failed and was swallowed, so images were
-  never copied by the script); `remove-source` needs `verified-in=<dir>[,<dir>]` and
-  removes nothing unless every destination holds the entry and its images, committed
-  and identical; `commit-destination` refuses a destination off its base branch and
-  publishes through canonical_sync; promotion and the sweep fail with nothing
-  committed when an image does not arrive. A reference the source cannot resolve
-  itself stays a warning (deliberately narrower than the issue's wording).
-- #541 landed locally (6ca1599): `git-squash/hooks/pre-push` checks only linear
-  history on a base branch (no merge commit, fast-forward, no delete).
-  `scripts/install_linear_pre_push.py` replaces the two old hooks; dry run on real
-  repos finds 17 to replace, all tracked under `.githooks/` (13 in casehub: aml,
-  clinical, devtown, engine, garden, iot, ledger, pages, parent, quarkmind, scaffold,
-  work, worker; 4 in hortora: engine, garden, soredium, spec). NOT applied: it leaves a
-  tracked modification in each repo for someone to commit. Until replaced, the 12
-  always-prompt repos cannot be published with `canonical_sync.py publish`.
-  `project/pre_push_hook.py` removed. git-squash skill rewritten around the in-place
-  review that work end asks for.
-- Published 2026-11-17: soredium main at 6ca1599 (#483, #541). Old pre-push hooks
-  replaced in 16 more repos with `install_linear_pre_push.py --apply` (user agreed);
-  each has an uncommitted change to its tracked `.githooks/pre-push`, left for a
-  session in that repo to commit.
-- IN PROGRESS, NOT LANDED: #515 stage 2 on branch `wip-stage2-slot-remotes` in the
-  worktree `/Users/mdproctor/claude/hortora/soredium/.worktrees/fable` (one WIP commit
-  on top of main 6ca1599; nothing uncommitted).
-  - `slot_git.configure_slot_remotes`: a new slot clone gets only a `local` remote.
-  - `canonical_sync.reference(repo)`: a slot is measured against `local/<base>`, a
-    canonical repo against its remote. `repo_checks.check_unpushed_main`,
-    `close_checks.check_main_pushed`, `outcomes.verify_push`,
-    `work_health.check_main_divergence` / `check_close_gate`, `slot_query.get_repo_stats`
-    use it; canonical ahead of its remote is INFO `unpublished`, not an error.
-  - `scripts/slot_backup_setup.py detach <family-root> [--apply]`: backs up every
-    local branch of a slot clone into canonical, then removes hosted remotes; renames
-    an `origin` that is the canonical path to `local`.
-  - New tests: `tests/test_reference_checks.py`, `TestDetach` in
-    `tests/test_slot_backup_setup.py`, rewritten `TestConfigureSlotRemotes`.
-  - Suite run on the branch: 32 failed, 389 passed. 10 of the failures also fail on
-    main (`test_repo_state.py` 9, `test_repo_context.py` 1). 4 in
-    `test_close_verify.py` (AttributeError) pass alone and in pairs: order-dependent,
-    cause not yet found. 18 more were cut off in the output and are not yet named. A
-    re-run with the full list writes to the session scratchpad `stage2-full.txt`; if
-    that is gone, re-run: `python3 -m pytest tests/test_slot_lifecycle.py
-    tests/test_slot_manager.py tests/test_slot_git.py tests/test_slot_backup_setup.py
-    tests/test_reference_checks.py tests/test_work_health.py tests/test_close_verify.py
-    tests/test_repo_state.py tests/test_repo_context.py tests/test_canonical_sync.py
-    tests/test_close_integration.py tests/test_close_checks_images.py -q -rf`.
-  - Next: name and fix the failures that are this branch's, land through `work end`,
-    `sync-local`, then apply the conversion the user has agreed to:
-    `slot_backup_setup.py detach ~/claude/casehub --apply` and `... ~/claude/hortora
-    --apply`. Dry run found 93 clones to convert (48 remove origin; 38 remove origin
-    and upstream; 5 rename origin to local, including all of slot 100; 2 remove fork
-    and origin) and 2 that cannot name a canonical repo (223/wsp-casehub-connectors,
-    223/wsp-casehub-neocortex). The live slots have NOT been touched.
-- Failing on main, not from this work: `tests/test_cli.py` (13), 
-  `tests/test_verify_promotion.py` (7), `tests/test_plan_migrate.py` (3),
-  `tests/test_scaffold_api.py` (2), `tests/test_repo_state.py` (9),
-  `tests/test_repo_context.py` (1).
-- Not yet exercised for real: stacking through a whole plan in a slot (`work next`
-  then `work start` then one `work end`). Everything above is from tests on fixture
-  repos.
-- After stage 2: #529 (several projects in one repo).
-- #529 filed: several standalone projects in one repo (quarkmind), a queue and
-  workspace per subfolder; after publish, linked to #512.
-- For the user, not for scripts: several casehub remote URLs embed GitHub access
-  tokens; `plan_manager append` truncates a title at its first comma.
-- #526 (landed): the close ceremony rebased onto the remote base and ignored a local
-  base that had moved on, so any close with unpushed commits on local `main` failed
-  with "not a fast-forward". Found by the first real batch close; the fixture repos had
-  no remote. `tests/test_close_batch.py::TestLocalBaseAheadOfRemote` uses a real one.
-- #525 (landed): the `adr` skill's own files had been moved into `docs/adr/` by an
-  artifact migration in August, so the repo had no `adr` skill. Restored.
-- `plan_manager append` to a queue with no active item leaves nothing active; `reorder`
-  activates the first open item. Not changed.
-- `tests/test_marketplace.py::test_every_skill_in_marketplace` fails on `main`:
-  `branch-audit` and `doc-freshness` have no marketplace entry.
-
-- #524 (landed, pushed, closed): slots never ticked epic checkboxes on GitHub; both call
-  sites passed three arguments to a two-argument function and the error was swallowed.
-- `slot_metadata.verify_landed_shas` accepts a SHA that is not on main when a commit
-  with the same subject exists, or when the diff of source-code extensions is empty.
-  Docs-only work passes without landing. Recorded on #515, not fixed.
-- `slot_lifecycle._strip_inherited_lifecycle` is defined twice.
-
-
-- `verification/outcomes.py` `verify_content_landed` compares source-extension files
-  only (the #519 flaw). No callers found; delete or fix under #515.
-- `archive_slot` can be refused with `ERROR=active_sessions` naming a short-lived
-  `sleep` process left by the machine's managed git hook after a commit. Retrying works.
-- Other workspaces' queues have not been checked for deferred items lost before #516.
-- `work-end` is not batch aware: it closes only the branch named in the queue (#517).
-
-## Known stale documentation
-
-- `CLAUDE.md` still describes `lifecycle.py` as owning 12 lifecycle states and lists
-  `tests/test_lifecycle.py`, which was deleted in #499.
-- The commit-tier validators (frontmatter, CSO, references) fail on `main`; the
-  failures predate this work and have not been investigated.
-
-## Key files
-
-| File | Role |
+| Issue | What it does now |
 |---|---|
-| `work-end/close.py` | Close ceremony: guards, review gate, rebase and fast-forward, stamp, advance |
-| `project/squash_marker.py` | Squash-review marker: `mark`, `status`, `clear` |
-| `project/queue_io.py` | `.queue` reader and writer, queue validation |
-| `work-end/artifact_sweep.py` | Workspace to project artifact promotion |
-| `tests/test_close_integration.py` | Ceremony tests on real repo topologies |
-| `tests/test_git_landing_behaviour.py` | Observed git behaviours the #515 design relies on |
+| Hortora/soredium#571 | `work wrap` and `work end` are pipelines in `project/work.py`. Wrap: review, diary, issues filed and queued, "is the item finished?", mark done, handoff. End: the same plus land what is marked done, promote, publish the covered repos and their blog entries. Scope is printed first and enforced by `work-end/scope.py`. A failed step stops the sequence; it is never skipped. |
+| Hortora/soredium#574 | Reading the queue, detecting state and resolving context change no file. An older `.plan` is renamed only by the write that first creates `.queue`, and says so. A `design/` layout is reported as `LEGACY_LAYOUT=`; `plan_migrate.py to-root <workspace>` converts it on request. |
+| Hortora/soredium#575, #576 | Every lifecycle action is recorded in the worklog by the script that performs it (`project/worktrace.py`). `python3 ~/.claude/skills/project/worktrace.py show limit=40` lists them. The test session uses a temporary worklog database. |
+| Hortora/soredium#577 | One queue per area of work, never synced. `queue_io.queue_dir()` is the one rule. `project/queue_home.py adopt <slot>` switches one existing slot. New permanent clones get a root queue. |
+| Hortora/soredium#578 | A test that had been failing on `main` is fixed. |
 
-## Stage 2 of #515 landed (2026-11-17)
+## One queue per area
 
-- soredium main 893152b (#545): slot clones have only a `local` remote; checks use `canonical_sync.reference`. Installed with sync-local. Not published: soredium main is 6 commits ahead of origin.
-- Conversion applied with `scripts/slot_backup_setup.py detach <family> --apply`: casehub 90 detached, hortora 2 detached.
-- Left untouched, need a decision: `casehub/slots/207/agency` (its `local` remote names /Users/mdproctor/claude/casehub/blocks, which is not a git repo; backup refused, origin kept) and `223/wsp-casehub-connectors`, `223/wsp-casehub-neocortex` (only `origin`, no canonical named).
-- Next: #529, several standalone projects in one repo. Tests first.
+`queue_io.queue_dir(workspace)` decides, in this order:
+
+1. a slot or clone with `.slot` and the marker `.queue-root`: the area root
+2. a workspace whose `.notes` worktree already holds `.queue`: `.notes`
+3. a workspace with its own `.queue` or `.plan`: the workspace (never hidden by a worktree appearing)
+4. a workspace with a `.notes` worktree and no queue yet: `.notes`
+5. otherwise the workspace
+
+Switched so far: the hortora clone only. Its workspace clone still carries the `.queue` and `.plan` it inherited from the repo; they are not read and must not be removed.
+
+Not switched: every casehub slot. Each has several differing queues (slot 196 has five). Switch one at a time, dry run first, and only when its owner chooses which queue is the slot's:
+
+```
+python3 ~/.claude/skills/project/queue_home.py show  <slot-dir>
+python3 ~/.claude/skills/project/queue_home.py adopt <slot-dir> from=<dir> [--apply]
+```
+
+The notes store (`project/notes_store.py`) is landed but nothing creates the worktree yet, so rules 2 and 4 are dormant. `casehub-ops` has a plain `.notes` directory holding `NOTES.md`; the store refuses it rather than replacing it.
+
+## First live `work end`: what it showed
+
+Ran on Hortora/soredium#578 in the switched clone. It landed, promoted, published soredium and cc-praxis, and published the diary entry.
+
+- Fixed during the run: after an item is marked done the next item becomes active and `covers` changes, so a retry after a failed step restarted from the review. A wrap or end now resumes whatever the queue says.
+- Still open, recorded on Hortora/soredium#584: the promote command printed for a done item carries the queue's current `covers` (the next item), not the done item's reference.
+- The blog step published the new entry to `hortora.github.io` and `mdproctor.github.io`, and also refreshed 21 already-published soredium entries whose metadata had been repaired earlier in the day (frontmatter only).
+- The workspace clone was left on the closed branch because `.work-progress` is a tracked file the pipeline itself modifies. It was moved to `main` by hand. Worth fixing: `.work-progress` should not be tracked.
+
+## Queue
+
+Work tracking is in the queue and on GitHub, not here: `python3 ~/.claude/skills/project/queue_home.py show ~/claude/hortora/clone/soredium`. Open items, in order: Hortora/soredium#584 (active), #579, #582, #580, #583, #581, #585. Not queued: Hortora/soredium#570, #573, #529, #560.
+
+Added on 2026-11-20: five protocols in `docs/protocols/` (a read never writes; one queue per area; the script that acts records it; qualified issue references; a test must fail with the rule removed), six garden entries, and CLAUDE.md sections for the queue rule and `work wrap`/`work end`. The protocols and CLAUDE.md commit (`14aa10d`) is on the clone's project `main`, not yet landed: the next ceremony carries it.
+
+## Things the next session must know
+
+- Never run soredium tools inside a slot or workspace to "look": use `queue_home.py show`, file reads and read-only git. Reads are safe now, but that is how slot 207 was migrated by accident before the fix.
+- `casehub/slots/207` holds a clone whose `main` has diverged from canonical by more than a thousand commits each way. The ceremony now refuses to carry a diverged base, but leave that slot alone.
+- Publishing needs the user's go-ahead each time, except that typing `work end` is the go-ahead for exactly the repos its `SCOPE=` line lists.
+- Issue references are always written in full, `owner/repo#N`, in stored fields and in commit messages.
+- Unlanded branches from another session in canonical soredium worktrees: `issue-567-notes-store` (superseded by `issue-567-store-v2`, which is landed), `issue-547-cso-fix`, `issue-551-hook-setup`, `issue-529-multi-project-tests`. None may be deleted without the user's explicit yes.
+- The worklog backup taken before test rows were removed: `~/.hortora/worklog.db.before-test-purge-20261119`.

@@ -1,3 +1,5 @@
 _run=pause:579
 _exec_ok:wip_commit_project=yes
 wip_commit_project=done
+_exec_ok:wip_commit_workspace=yes
+wip_commit_workspace=done
